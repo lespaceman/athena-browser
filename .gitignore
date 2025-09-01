@@ -1,0 +1,95 @@
+############################
+# General build outputs
+############################
+/build/
+/dist/
+/out/
+
+############################
+# CMake and C/C++ artifacts
+############################
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+_deps/
+Testing/
+Makefile
+compile_commands.json
+install_manifest.txt
+
+# Compiler outputs
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.so
+*.dylib
+*.dll
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.pch
+*.dSYM/
+*.out
+*.app
+*.exe
+
+############################
+# Frontend (Node/Vite)
+############################
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.vite/
+/frontend/.cache/
+/frontend/coverage/
+/frontend/.eslintcache
+
+# Lockfiles are intentionally kept (package-lock.json, pnpm-lock.yaml, yarn.lock)
+
+############################
+# Logs
+############################
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+############################
+# Editor/OS metadata
+############################
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.vs/
+
+############################
+# Environment files
+############################
+.env
+.env.*
+!.env.example
+
+############################
+# Resources (built web bundle)
+############################
+/resources/web/*
+!/resources/web/.gitkeep
+
+############################
+# Third-party vendor content
+############################
+# Don’t commit unpacked CEF binary distributions or archives
+/third_party/cef_binary_*/
+/third_party/cef_binary*.tar.*
+/third_party/cef_binary*.zip
+/frontend/third_party/*
+
+# Ignore everything else in third_party by default, but allow docs/placeholders
+/third_party/*
+!/third_party/.gitkeep
+!/third_party/README.md
