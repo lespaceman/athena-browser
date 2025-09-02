@@ -28,3 +28,33 @@ if(MSVC)
 else()
   target_compile_options(athena-browser PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+# Post-build: copy CEF Resources (icudtl.dat, locales/) next to the binary for all configs
+if(CEF_FOUND)
+  add_custom_command(TARGET athena-browser POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CEF_ROOT}/Resources" "$<TARGET_FILE_DIR:athena-browser>"
+    COMMENT "Copying CEF Resources and locales to output dir")
+
+  # Copy essential CEF binary files next to the executable (Linux)
+  set(CEF_BIN_DIR "${CEF_ROOT}/Release")
+  foreach(f IN ITEMS chrome-sandbox libcef.so libEGL.so libGLESv2.so v8_context_snapshot.bin vk_swiftshader_icd.json libvk_swiftshader.so libvulkan.so.1)
+    if(EXISTS "${CEF_BIN_DIR}/${f}")
+      add_custom_command(TARGET athena-browser POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CEF_BIN_DIR}/${f}" "$<TARGET_FILE_DIR:athena-browser>/${f}")
+    endif()
+  endforeach()
+endif()
+
+# Install rules (staging minimal runtime layout)
+install(TARGETS athena-browser
+  RUNTIME DESTINATION bin
+  BUNDLE DESTINATION .)
+
+if(CEF_FOUND)
+  install(DIRECTORY "${CEF_ROOT}/Resources/" DESTINATION bin)
+endif()
+
+# Install web assets if present (built by scripts/build.sh)
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/web/" DESTINATION bin/resources/web OPTIONAL)

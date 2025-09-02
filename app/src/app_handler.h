@@ -4,9 +4,11 @@
 #include "cef_app.h"
 #include "cef_browser_process_handler.h"
 #include "cef_render_process_handler.h"
+#include "wrapper/cef_message_router.h"
 
 class AppHandler : public CefApp,
-                   public CefBrowserProcessHandler {
+                   public CefBrowserProcessHandler,
+                   public CefRenderProcessHandler {
  public:
   AppHandler();
 
@@ -14,12 +16,28 @@ class AppHandler : public CefApp,
   CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override {
     return this;
   }
+  CefRefPtr<CefRenderProcessHandler> GetRenderProcessHandler() override {
+    return this;
+  }
 
   // CefBrowserProcessHandler methods
   void OnContextInitialized() override;
   void OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) override;
 
+  // CefRenderProcessHandler methods
+  void OnContextCreated(CefRefPtr<CefBrowser> browser,
+                        CefRefPtr<CefFrame> frame,
+                        CefRefPtr<CefV8Context> context) override;
+  void OnContextReleased(CefRefPtr<CefBrowser> browser,
+                         CefRefPtr<CefFrame> frame,
+                         CefRefPtr<CefV8Context> context) override;
+  bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
+                                CefRefPtr<CefFrame> frame,
+                                CefProcessId source_process,
+                                CefRefPtr<CefProcessMessage> message) override;
+
  private:
+  CefRefPtr<CefMessageRouterRendererSide> renderer_router_;
   IMPLEMENT_REFCOUNTING(AppHandler);
 };
 

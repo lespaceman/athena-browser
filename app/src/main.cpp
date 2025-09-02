@@ -3,6 +3,7 @@
 #include "cef_client.h"
 #include "cef_command_line.h"
 #include "wrapper/cef_helpers.h"
+#include "wrapper/cef_message_router.h"
 #ifdef _WIN32
 #include "cef_sandbox_win.h"
 #endif
@@ -11,6 +12,7 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include <memory>
 #include <limits.h>
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -18,7 +20,12 @@
 
 class SimpleHandler : public CefClient, public CefLifeSpanHandler, public CefRequestHandler {
  public:
-  SimpleHandler() = default;
+  SimpleHandler() {
+    CefMessageRouterConfig config;
+    router_ = CefMessageRouterBrowserSide::Create(config);
+    version_handler_ = std::make_unique<VersionQueryHandler>();
+    router_->AddHandler(version_handler_.get(), false);
+  }
 
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
@@ -35,6 +42,8 @@ class SimpleHandler : public CefClient, public CefLifeSpanHandler, public CefReq
 
   void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
     CEF_REQUIRE_UI_THREAD();
+    if (router_)
+      router_->OnBeforeClose(browser);
     browser_ = nullptr;
   }
 
@@ -48,13 +57,50 @@ class SimpleHandler : public CefClient, public CefLifeSpanHandler, public CefReq
     const std::string url = request->GetURL();
     // Allow app:// and http(s) only; block file://, chrome://, devtools://, etc.
     if (url.rfind("app://", 0) == 0 || url.rfind("http://", 0) == 0 || url.rfind("https://", 0) == 0) {
+      if (router_)
+        router_->OnBeforeBrowse(browser, frame);
       return false; // allow
     }
     return true; // cancel navigation
   }
 
+  bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
+                                CefRefPtr<CefFrame> frame,
+                                CefProcessId source_process,
+                                CefRefPtr<CefProcessMessage> message) override {
+    if (router_ && router_->OnProcessMessageReceived(browser, frame, source_process, message))
+      return true;
+    return false;
+  }
+
+  // Optionally handle render-process termination if needed to reset router state.
+
  private:
+  // Simple handler for 'getVersion' queries.
+  class VersionQueryHandler : public CefMessageRouterBrowserSide::Handler {
+   public:
+    bool OnQuery(CefRefPtr<CefBrowser> browser,
+                 CefRefPtr<CefFrame> frame,
+                 int64_t query_id,
+                 const CefString& request,
+                 bool persistent,
+                 CefRefPtr<Callback> callback) override {
+      const std::string req = request;
+      if (req == "getVersion") {
+        callback->Success("0.1.0");
+        return true;
+      }
+      return false;
+    }
+    void OnQueryCanceled(CefRefPtr<CefBrowser> browser,
+                         CefRefPtr<CefFrame> frame,
+                         int64_t query_id) override {}
+   private:
+  };
+
   CefRefPtr<CefBrowser> browser_;
+  CefRefPtr<CefMessageRouterBrowserSide> router_;
+  std::unique_ptr<VersionQueryHandler> version_handler_;
   IMPLEMENT_REFCOUNTING(SimpleHandler);
 };
 
