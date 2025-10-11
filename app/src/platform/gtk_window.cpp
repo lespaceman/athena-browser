@@ -1,5 +1,6 @@
 #include "platform/gtk_window.h"
 #include "browser/browser_engine.h"
+#include "browser/cef_engine.h"
 #include "browser/cef_client.h"
 #include "rendering/gl_renderer.h"
 
@@ -449,22 +450,38 @@ utils::Result<void> GtkWindow::CreateBrowser(const std::string& url) {
     return utils::Error("GLRenderer not initialized");
   }
 
+  if (!engine_) {
+    return utils::Error("BrowserEngine not available");
+  }
+
   // Get scale factor
   float scale_factor = static_cast<float>(gtk_widget_get_scale_factor(gl_area_));
 
-  // Create CefClient
-  cef_client_ = new browser::CefClient(gl_area_, gl_renderer_.get());
-  cef_client_->SetDeviceScaleFactor(scale_factor);
-  cef_client_->SetSize(config_.size.width, config_.size.height);
+  // Use BrowserEngine abstraction to create browser
+  browser::BrowserConfig browser_config;
+  browser_config.url = url;
+  browser_config.width = config_.size.width;
+  browser_config.height = config_.size.height;
+  browser_config.device_scale_factor = scale_factor;
+  browser_config.gl_renderer = gl_renderer_.get();
+  browser_config.native_window_handle = gl_area_;
 
-  // Create OSR browser
-  CefWindowInfo window_info;
-  window_info.SetAsWindowless(0);
+  auto result = engine_->CreateBrowser(browser_config);
+  if (!result) {
+    return utils::Error("Failed to create browser: " + result.GetError().Message());
+  }
 
-  CefBrowserSettings browser_settings;
-  browser_settings.windowless_frame_rate = 60;
+  browser_id_ = result.Value();
 
-  CefBrowserHost::CreateBrowser(window_info, cef_client_, url, browser_settings, nullptr, nullptr);
+  // Get the CEF client for backward compatibility with existing code
+  // that directly accesses cef_client_
+  auto* cef_engine = dynamic_cast<browser::CefEngine*>(engine_);
+  if (cef_engine) {
+    auto client = cef_engine->GetCefClient(browser_id_);
+    if (client) {
+      cef_client_ = client.get();
+    }
+  }
 
   return utils::Ok();
 }

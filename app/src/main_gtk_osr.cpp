@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
   // ============================================================================
 
   platform::GtkWindowSystem window_system;
-  browser::CefEngine browser_engine(app);
+  browser::CefEngine browser_engine(app, &main_args);
 
   // Initialize window system (also initializes GTK)
   auto init_result = window_system.Initialize(argc, argv, &browser_engine);
@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  // Initialize browser engine (initializes CEF)
+  // Initialize browser engine (initializes CEF with the same main_args from CefExecuteProcess)
   auto engine_result = browser_engine.Initialize(engine_config);
   if (!engine_result) {
     std::cerr << "ERROR: Failed to initialize browser engine: "

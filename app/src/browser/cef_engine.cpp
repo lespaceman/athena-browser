@@ -19,8 +19,9 @@ static std::string GetExecutablePath() {
   return "";
 }
 
-CefEngine::CefEngine(CefRefPtr<::CefApp> app)
+CefEngine::CefEngine(CefRefPtr<::CefApp> app, const CefMainArgs* main_args)
     : app_(app),
+      main_args_(main_args),
       initialized_(false),
       next_id_(1) {
 }
@@ -61,10 +62,17 @@ utils::Result<void> CefEngine::Initialize(const EngineConfig& config) {
     CefString(&settings.browser_subprocess_path).FromString(subprocess_path);
   }
 
-  // Initialize CEF
-  CefMainArgs main_args(0, nullptr);
-  if (!CefInitialize(main_args, settings, app_, nullptr)) {
-    return utils::Err<void>("CefInitialize failed");
+  // Initialize CEF (using the CefMainArgs passed to constructor, if available)
+  if (main_args_) {
+    if (!CefInitialize(*main_args_, settings, app_, nullptr)) {
+      return utils::Err<void>("CefInitialize failed");
+    }
+  } else {
+    // Fallback: create CefMainArgs if not provided
+    CefMainArgs default_main_args(0, nullptr);
+    if (!CefInitialize(default_main_args, settings, app_, nullptr)) {
+      return utils::Err<void>("CefInitialize failed");
+    }
   }
 
   initialized_ = true;

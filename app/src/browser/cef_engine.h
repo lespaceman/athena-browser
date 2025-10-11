@@ -29,8 +29,9 @@ class CefEngine : public BrowserEngine {
    * Note: Does not initialize CEF. Call Initialize() explicitly.
    *
    * @param app CEF application handler (optional, for custom handlers)
+   * @param main_args CEF main arguments (optional, will be passed to Initialize)
    */
-  explicit CefEngine(CefRefPtr<::CefApp> app = nullptr);
+  explicit CefEngine(CefRefPtr<::CefApp> app = nullptr, const CefMainArgs* main_args = nullptr);
 
   ~CefEngine() override;
 
@@ -109,6 +110,7 @@ class CefEngine : public BrowserEngine {
   const BrowserInfo* FindBrowser(BrowserId id) const;
 
   CefRefPtr<::CefApp> app_;           // CEF application handler
+  const CefMainArgs* main_args_;      // CEF main arguments (non-owning)
   bool initialized_;                  // Initialization state
   BrowserId next_id_;                 // Next browser ID to assign
   std::map<BrowserId, BrowserInfo> browsers_;  // Active browsers
