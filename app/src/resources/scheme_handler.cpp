@@ -1,4 +1,4 @@
-#include "scheme_handler.h"
+#include "resources/scheme_handler.h"
 #include "cef_parser.h"
 #include <filesystem>
 #include <fstream>

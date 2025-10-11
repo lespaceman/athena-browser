@@ -1,5 +1,5 @@
-#include "app_handler.h"
-#include "scheme_handler.h"
+#include "browser/app_handler.h"
+#include "resources/scheme_handler.h"
 #include "cef_scheme.h"
 #include "cef_command_line.h"
 #include "wrapper/cef_helpers.h"
