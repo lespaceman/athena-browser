@@ -4,9 +4,10 @@
 #include "include/cef_render_handler.h"
 #include "include/wrapper/cef_helpers.h"
 #include "app_handler.h"
+#include "rendering/gl_renderer.h"
 
 #include <gtk/gtk.h>
-#include <cairo.h>
+#include <GL/gl.h>
 #include <iostream>
 #include <cstdlib>
 #include <unistd.h>
@@ -21,20 +22,15 @@ class OSRClient : public CefClient,
                   public CefDisplayHandler,
                   public CefRenderHandler {
  public:
-  OSRClient(GtkWidget* widget)
+  OSRClient(GtkWidget* widget, athena::rendering::GLRenderer* gl_renderer)
     : widget_(widget),
-      buffer_(nullptr),
+      gl_renderer_(gl_renderer),
       width_(0),
       height_(0),
-      buffer_width_(0),
-      buffer_height_(0),
       device_scale_factor_(1.0f) {}
 
   ~OSRClient() {
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
-    if (buffer_) {
-      delete[] buffer_;
-    }
+    // GL resources cleaned up by GLRenderer
   }
 
   // CefClient methods
@@ -97,136 +93,29 @@ class OSRClient : public CefClient,
                int height) override {
     CEF_REQUIRE_UI_THREAD();
 
-    if (type != PET_VIEW) {
+    if (!gl_renderer_) {
       return;
     }
 
-    if (width <= 0 || height <= 0 || !buffer) {
-      return;
-    }
-
-    // Lock buffer for thread-safe access
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
-
-    // Update buffer if size changed
-    if (width != buffer_width_ || height != buffer_height_) {
-      if (buffer_) {
-        delete[] buffer_;
-        buffer_ = nullptr;
-      }
-      // CRITICAL: Allocate with proper stride BEFORE updating dimensions
-      // This ensures buffer size always matches buffer_width_/buffer_height_
-      int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, width);
-      buffer_ = new unsigned char[stride * height];
-
-      // NOW update buffer dimensions - this order is critical to avoid TOCTOU race
-      buffer_width_ = width;
-      buffer_height_ = height;
-
-      std::cout << "[OnPaint] Buffer resized to " << width << "x" << height
-                << " (stride: " << stride << ", scale: " << device_scale_factor_ << ")" << std::endl;
-    }
-
-    if (!buffer_) {
-      return;
-    }
-
-    // Copy BGRA data from CEF to our buffer
-    // CEF gives us tightly packed data, but Cairo may need stride alignment
-    int cef_stride = width * 4;
-    int cairo_stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, width);
-
-    if (cef_stride == cairo_stride) {
-      // Same stride, direct copy
-      memcpy(buffer_, buffer, cairo_stride * height);
-    } else {
-      // Different stride, copy line by line
-      const unsigned char* src = static_cast<const unsigned char*>(buffer);
-      unsigned char* dst = buffer_;
-      for (int y = 0; y < height; y++) {
-        memcpy(dst, src, cef_stride);
-        src += cef_stride;
-        dst += cairo_stride;
-      }
-    }
-
-    // Queue redraw only for dirty regions (convert physical to logical pixels)
-    if (widget_) {
-      for (const auto& rect : dirtyRects) {
-        // Convert physical pixel rect to logical pixel rect for GTK
-        gtk_widget_queue_draw_area(widget_,
-                                    rect.x / device_scale_factor_,
-                                    rect.y / device_scale_factor_,
-                                    rect.width / device_scale_factor_,
-                                    rect.height / device_scale_factor_);
-      }
-    }
+    // Forward to GLRenderer which handles OpenGL texture updates
+    gl_renderer_->OnPaint(browser, type, dirtyRects, buffer, width, height);
   }
 
-  // Draw the buffer to Cairo surface
-  void DrawToSurface(cairo_t* cr, int widget_width, int widget_height) {
-    // Lock buffer for thread-safe access
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
-
-    if (!buffer_ || buffer_width_ == 0 || buffer_height_ == 0) {
-      // No content yet, draw white background
-      cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-      cairo_paint(cr);
-      return;
-    }
-
-    // CRITICAL: Capture buffer dimensions NOW to prevent TOCTOU race condition
-    int local_width = buffer_width_;
-    int local_height = buffer_height_;
-    float local_scale = device_scale_factor_;
-
-    // Save Cairo state
-    cairo_save(cr);
-
-    // Create a NEW Cairo image surface and COPY our buffer data into it
-    // This ensures Cairo has its own copy and isn't affected by buffer changes
-    // CEF provides BGRA, which Cairo treats as ARGB32 on little-endian systems
-    int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, local_width);
-    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, local_width, local_height);
-
-    if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-      cairo_surface_destroy(surface);
-      cairo_restore(cr);
-      return;
-    }
-
-    // Copy our buffer data into Cairo's surface
-    cairo_surface_flush(surface);  // Prepare for direct access
-    unsigned char* cairo_data = cairo_image_surface_get_data(surface);
-    if (cairo_data && buffer_) {
-      memcpy(cairo_data, buffer_, stride * local_height);
-      cairo_surface_mark_dirty(surface);  // Tell Cairo we modified the data
-    }
-
-    // CEF rendered at physical pixels (logical_size * device_scale_factor)
-    // Tell Cairo about the device scale so it renders at the correct size
-    cairo_surface_set_device_scale(surface, local_scale, local_scale);
-
-    // Now just paint directly - Cairo will handle the scaling
-    cairo_set_source_surface(cr, surface, 0, 0);
-    cairo_paint(cr);
-    cairo_surface_destroy(surface);
-    cairo_restore(cr);
-  }
 
   CefRefPtr<CefBrowser> GetBrowser() { return browser_; }
 
   void SetSize(int width, int height) {
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
     width_ = width;
     height_ = height;
+    if (gl_renderer_) {
+      gl_renderer_->SetViewSize(width, height);
+    }
     if (browser_) {
       browser_->GetHost()->WasResized();
     }
   }
 
   void SetDeviceScaleFactor(float scale_factor) {
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
     if (device_scale_factor_ != scale_factor) {
       device_scale_factor_ = scale_factor;
       if (browser_) {
@@ -238,19 +127,17 @@ class OSRClient : public CefClient,
  private:
   GtkWidget* widget_;
   CefRefPtr<CefBrowser> browser_;
-  unsigned char* buffer_;
+  athena::rendering::GLRenderer* gl_renderer_;
   int width_;   // Logical widget size
   int height_;  // Logical widget size
-  int buffer_width_;   // Physical buffer dimensions (logical * scale_factor)
-  int buffer_height_;  // Physical buffer dimensions (logical * scale_factor)
   float device_scale_factor_;  // HiDPI scale factor (1.0, 2.0, etc.)
-  std::mutex buffer_mutex_;  // Protects buffer_, buffer_width_, buffer_height_, device_scale_factor_
 
   IMPLEMENT_REFCOUNTING(OSRClient);
 };
 
 // Global data
 static CefRefPtr<OSRClient> g_client;
+static std::unique_ptr<athena::rendering::GLRenderer> g_gl_renderer;
 
 // ============================================================================
 // INPUT EVENT HANDLING - Forward GTK events to CEF
@@ -588,21 +475,51 @@ static gboolean cef_do_message_loop_work(gpointer data) {
   return G_SOURCE_CONTINUE;
 }
 
-// Draw callback - paint the OSR buffer
-static gboolean on_draw(GtkWidget* widget, cairo_t* cr, gpointer user_data) {
+// GL realize callback - initialize OpenGL
+static void on_gl_realize(GtkGLArea* gl_area, gpointer user_data) {
   (void)user_data;  // Unused
-  GtkAllocation allocation;
-  gtk_widget_get_allocation(widget, &allocation);
 
-  if (g_client) {
-    g_client->DrawToSurface(cr, allocation.width, allocation.height);
-  } else {
-    // No browser yet, draw white
-    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-    cairo_paint(cr);
+  gtk_gl_area_make_current(gl_area);
+
+  if (gtk_gl_area_get_error(gl_area) != nullptr) {
+    std::cerr << "[on_gl_realize] OpenGL context error!" << std::endl;
+    return;
   }
 
-  return FALSE;
+  // Create GLRenderer
+  g_gl_renderer = std::make_unique<athena::rendering::GLRenderer>();
+  auto result = g_gl_renderer->Initialize(GTK_WIDGET(gl_area));
+
+  if (!result) {
+    std::cerr << "[on_gl_realize] Failed to initialize GLRenderer: "
+              << result.GetError().Message() << std::endl;
+    g_gl_renderer.reset();
+    return;
+  }
+
+  std::cout << "[on_gl_realize] OpenGL renderer initialized successfully" << std::endl;
+}
+
+// GL render callback - render the frame
+static gboolean on_gl_render(GtkGLArea* gl_area, GdkGLContext* context, gpointer user_data) {
+  (void)context;  // Unused
+  (void)user_data;  // Unused
+
+  if (!g_gl_renderer) {
+    // Not initialized yet, clear to white
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    return TRUE;
+  }
+
+  auto result = g_gl_renderer->Render();
+  if (!result) {
+    std::cerr << "[on_gl_render] Render failed: "
+              << result.GetError().Message() << std::endl;
+    return FALSE;
+  }
+
+  return TRUE;
 }
 
 // Size allocate callback - notify CEF of resize
@@ -614,7 +531,7 @@ static void on_size_allocate(GtkWidget* widget, GdkRectangle* allocation, gpoint
   }
 }
 
-// Realize callback - create the OSR browser
+// Realize callback - create the OSR browser (called AFTER on_gl_realize)
 static void on_realize(GtkWidget* widget, gpointer user_data) {
   (void)user_data;  // Unused
 
@@ -627,13 +544,20 @@ static void on_realize(GtkWidget* widget, gpointer user_data) {
   std::cout << "[on_realize] Widget size: " << allocation.width << "x" << allocation.height
             << ", GTK scale factor: " << scale_factor << std::endl;
 
+  // Ensure GLRenderer is initialized
+  if (!g_gl_renderer) {
+    std::cerr << "[on_realize] ERROR: GLRenderer not initialized! on_gl_realize should have been called first." << std::endl;
+    return;
+  }
+
   // Get URL from environment or use default
   const char* dev_url = std::getenv("DEV_URL");
   std::string url = dev_url ? dev_url : "https://www.google.com";
 
-  // Create OSR client with device scale factor
-  g_client = new OSRClient(widget);
+  // Create OSR client with device scale factor and GLRenderer
+  g_client = new OSRClient(widget, g_gl_renderer.get());
   g_client->SetDeviceScaleFactor(static_cast<float>(scale_factor));
+  g_client->SetSize(allocation.width, allocation.height);
 
   // Create OSR browser
   CefWindowInfo window_info;
@@ -719,15 +643,19 @@ int main(int argc, char* argv[]) {
   g_signal_connect(window, "delete-event", G_CALLBACK(on_delete), nullptr);
   g_signal_connect(window, "destroy", G_CALLBACK(on_destroy), nullptr);
 
-  // Create drawing area for OSR rendering
-  GtkWidget* drawing_area = gtk_drawing_area_new();
-  gtk_container_add(GTK_CONTAINER(window), drawing_area);
+  // Create GL area for hardware-accelerated OSR rendering
+  GtkWidget* gl_area = gtk_gl_area_new();
+  gtk_container_add(GTK_CONTAINER(window), gl_area);
+
+  // Configure GL area
+  gtk_gl_area_set_auto_render(GTK_GL_AREA(gl_area), FALSE);  // Manual rendering
+  gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(gl_area), FALSE);  // No depth buffer needed
 
   // Enable focus for keyboard events
-  gtk_widget_set_can_focus(drawing_area, TRUE);
+  gtk_widget_set_can_focus(gl_area, TRUE);
 
   // Add event masks to receive input events
-  gtk_widget_add_events(drawing_area,
+  gtk_widget_add_events(gl_area,
     GDK_BUTTON_PRESS_MASK |
     GDK_BUTTON_RELEASE_MASK |
     GDK_POINTER_MOTION_MASK |
@@ -737,21 +665,22 @@ int main(int argc, char* argv[]) {
     GDK_FOCUS_CHANGE_MASK |
     GDK_LEAVE_NOTIFY_MASK);
 
-  // Connect drawing area signals
-  g_signal_connect(drawing_area, "realize", G_CALLBACK(on_realize), nullptr);
-  g_signal_connect(drawing_area, "draw", G_CALLBACK(on_draw), nullptr);
-  g_signal_connect(drawing_area, "size-allocate", G_CALLBACK(on_size_allocate), nullptr);
+  // Connect GL area signals (realize MUST come before realize for browser)
+  g_signal_connect(gl_area, "realize", G_CALLBACK(on_gl_realize), nullptr);
+  g_signal_connect(gl_area, "render", G_CALLBACK(on_gl_render), nullptr);
+  g_signal_connect_after(gl_area, "realize", G_CALLBACK(on_realize), nullptr);
+  g_signal_connect(gl_area, "size-allocate", G_CALLBACK(on_size_allocate), nullptr);
 
   // Connect input event handlers
-  g_signal_connect(drawing_area, "button-press-event", G_CALLBACK(on_button_press), nullptr);
-  g_signal_connect(drawing_area, "button-release-event", G_CALLBACK(on_button_release), nullptr);
-  g_signal_connect(drawing_area, "motion-notify-event", G_CALLBACK(on_motion_notify), nullptr);
-  g_signal_connect(drawing_area, "scroll-event", G_CALLBACK(on_scroll), nullptr);
-  g_signal_connect(drawing_area, "key-press-event", G_CALLBACK(on_key_press), nullptr);
-  g_signal_connect(drawing_area, "key-release-event", G_CALLBACK(on_key_release), nullptr);
-  g_signal_connect(drawing_area, "focus-in-event", G_CALLBACK(on_focus_in), nullptr);
-  g_signal_connect(drawing_area, "focus-out-event", G_CALLBACK(on_focus_out), nullptr);
-  g_signal_connect(drawing_area, "leave-notify-event", G_CALLBACK(on_leave_notify), nullptr);
+  g_signal_connect(gl_area, "button-press-event", G_CALLBACK(on_button_press), nullptr);
+  g_signal_connect(gl_area, "button-release-event", G_CALLBACK(on_button_release), nullptr);
+  g_signal_connect(gl_area, "motion-notify-event", G_CALLBACK(on_motion_notify), nullptr);
+  g_signal_connect(gl_area, "scroll-event", G_CALLBACK(on_scroll), nullptr);
+  g_signal_connect(gl_area, "key-press-event", G_CALLBACK(on_key_press), nullptr);
+  g_signal_connect(gl_area, "key-release-event", G_CALLBACK(on_key_release), nullptr);
+  g_signal_connect(gl_area, "focus-in-event", G_CALLBACK(on_focus_in), nullptr);
+  g_signal_connect(gl_area, "focus-out-event", G_CALLBACK(on_focus_out), nullptr);
+  g_signal_connect(gl_area, "leave-notify-event", G_CALLBACK(on_leave_notify), nullptr);
 
   // Show all widgets
   gtk_widget_show_all(window);
@@ -764,6 +693,10 @@ int main(int argc, char* argv[]) {
 
   // Cleanup
   g_client = nullptr;
+  if (g_gl_renderer) {
+    g_gl_renderer->Cleanup();
+    g_gl_renderer.reset();
+  }
   CefShutdown();
 
   return 0;

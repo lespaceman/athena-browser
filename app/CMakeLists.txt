@@ -6,6 +6,9 @@ add_executable(athena-browser
   # Phase 2: Rendering Layer
   src/rendering/buffer_manager.cpp
   src/rendering/scaling_manager.cpp
+  src/rendering/gl_renderer.cpp
+  # CEF's official OpenGL renderer
+  ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
 )
 
 target_include_directories(athena-browser PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -24,12 +27,18 @@ if(CEF_FOUND)
   if(UNIX AND NOT APPLE)
     # Find and link GTK3 and X11 for proper window embedding
     find_package(X11 REQUIRED)
+    find_package(OpenGL REQUIRED)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
     pkg_check_modules(GDK3_X11 REQUIRED gdk-x11-3.0)
 
     target_include_directories(athena-browser PRIVATE ${GTK3_INCLUDE_DIRS} ${GDK3_X11_INCLUDE_DIRS})
-    target_link_libraries(athena-browser PRIVATE ${GTK3_LIBRARIES} ${GDK3_X11_LIBRARIES} ${X11_LIBRARIES})
+    target_link_libraries(athena-browser PRIVATE
+      ${GTK3_LIBRARIES}
+      ${GDK3_X11_LIBRARIES}
+      ${X11_LIBRARIES}
+      ${OPENGL_LIBRARIES}
+    )
     target_compile_options(athena-browser PRIVATE ${GTK3_CFLAGS_OTHER})
 
     # Ensure the runtime loader can find libcef.so next to the executable
