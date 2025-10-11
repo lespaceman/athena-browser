@@ -1,0 +1,92 @@
+---
+# Athena Browser C++ Coding Style
+# Based on Google C++ Style Guide with some modifications
+
+BasedOnStyle: Google
+
+# Indentation
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+ContinuationIndentWidth: 4
+
+# Line length
+ColumnLimit: 100
+
+# Namespaces
+NamespaceIndentation: None
+CompactNamespaces: false
+
+# Classes
+AccessModifierOffset: -1
+ConstructorInitializerIndentWidth: 4
+
+# Braces
+BreakBeforeBraces: Attach
+
+# Function declarations and calls
+AlignAfterOpenBracket: Align
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+BinPackArguments: false
+BinPackParameters: false
+
+# Pointers and references
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# Comments
+ReflowComments: true
+SpacesBeforeTrailingComments: 2
+
+# Include sorting
+SortIncludes: CaseInsensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  # Main header first (for .cpp files)
+  - Regex:           '^".*\.h"$'
+    Priority:        1
+  # Project headers
+  - Regex:           '^<(core|utils|rendering|browser|platform)/'
+    Priority:        2
+  # CEF headers
+  - Regex:           '^<include/'
+    Priority:        3
+  # GTK/system headers
+  - Regex:           '^<(gtk|cairo|GL)/'
+    Priority:        4
+  # Standard library
+  - Regex:           '^<'
+    Priority:        5
+
+# Spacing
+SpaceAfterCStyleCast: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesInAngles: false
+SpacesInContainerLiterals: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+
+# Line breaks
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: false
+AlwaysBreakTemplateDeclarations: Yes
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+BreakStringLiterals: true
+
+# Other
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+IndentCaseLabels: true
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
