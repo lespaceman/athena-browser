@@ -75,61 +75,67 @@ install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/web/" DESTINATION bin/resources
 # ============================================================================
 # Additional test executables for scaling experiments
 # ============================================================================
+# NOTE: Commented out during refactoring - will be removed in Phase 7
 
-# Integer scaling test version
-add_executable(athena_gtk_osr_int_scale
-  src/main_gtk_osr_int_scale.cpp
-  src/app_handler.cpp
-  src/scheme_handler.cpp
-)
+# # Integer scaling test version
+# add_executable(athena_gtk_osr_int_scale
+#   src/main_gtk_osr_int_scale.cpp
+#   src/app_handler.cpp
+#   src/scheme_handler.cpp
+# )
+#
+# target_compile_definitions(athena_gtk_osr_int_scale PRIVATE $<$<CONFIG:Debug>:DEBUG>)
+#
+# if(CEF_FOUND)
+#   target_include_directories(athena_gtk_osr_int_scale PRIVATE ${CEF_ROOT} ${CEF_ROOT}/include)
+#   target_link_libraries(athena_gtk_osr_int_scale PRIVATE
+#     libcef_dll_wrapper
+#     ${CEF_ROOT}/Release/libcef.so
+#     ${CEF_STANDARD_LIBS}
+#   )
+#
+#   if(UNIX AND NOT APPLE)
+#     target_include_directories(athena_gtk_osr_int_scale PRIVATE ${GTK3_INCLUDE_DIRS} ${GDK3_X11_INCLUDE_DIRS})
+#     target_link_libraries(athena_gtk_osr_int_scale PRIVATE ${GTK3_LIBRARIES} ${GDK3_X11_LIBRARIES} ${X11_LIBRARIES})
+#     target_compile_options(athena_gtk_osr_int_scale PRIVATE ${GTK3_CFLAGS_OTHER})
+#     set_target_properties(athena_gtk_osr_int_scale PROPERTIES BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
+#   endif()
+# endif()
+#
+# if(NOT MSVC)
+#   target_compile_options(athena_gtk_osr_int_scale PRIVATE -Wall -Wextra -Wpedantic -Wno-error)
+# endif()
+#
+# # 1.5x scaling test version (sweet spot between 1x and 2x)
+# add_executable(athena_gtk_osr_1.5x
+#   src/main_gtk_osr_1.5x.cpp
+#   src/app_handler.cpp
+#   src/scheme_handler.cpp
+# )
+#
+# target_compile_definitions(athena_gtk_osr_1.5x PRIVATE $<$<CONFIG:Debug>:DEBUG>)
+#
+# if(CEF_FOUND)
+#   target_include_directories(athena_gtk_osr_1.5x PRIVATE ${CEF_ROOT} ${CEF_ROOT}/include)
+#   target_link_libraries(athena_gtk_osr_1.5x PRIVATE
+#     libcef_dll_wrapper
+#     ${CEF_ROOT}/Release/libcef.so
+#     ${CEF_STANDARD_LIBS}
+#   )
+#
+#   if(UNIX AND NOT APPLE)
+#     target_include_directories(athena_gtk_osr_1.5x PRIVATE ${GTK3_INCLUDE_DIRS} ${GDK3_X11_INCLUDE_DIRS})
+#     target_link_libraries(athena_gtk_osr_1.5x PRIVATE ${GTK3_LIBRARIES} ${GDK3_X11_LIBRARIES} ${X11_LIBRARIES})
+#     target_compile_options(athena_gtk_osr_1.5x PRIVATE ${GTK3_CFLAGS_OTHER})
+#     set_target_properties(athena_gtk_osr_1.5x PROPERTIES BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
+#   endif()
+# endif()
+#
+# if(NOT MSVC)
+#   target_compile_options(athena_gtk_osr_1.5x PRIVATE -Wall -Wextra -Wpedantic -Wno-error)
+# endif()
 
-target_compile_definitions(athena_gtk_osr_int_scale PRIVATE $<$<CONFIG:Debug>:DEBUG>)
-
-if(CEF_FOUND)
-  target_include_directories(athena_gtk_osr_int_scale PRIVATE ${CEF_ROOT} ${CEF_ROOT}/include)
-  target_link_libraries(athena_gtk_osr_int_scale PRIVATE
-    libcef_dll_wrapper
-    ${CEF_ROOT}/Release/libcef.so
-    ${CEF_STANDARD_LIBS}
-  )
-
-  if(UNIX AND NOT APPLE)
-    target_include_directories(athena_gtk_osr_int_scale PRIVATE ${GTK3_INCLUDE_DIRS} ${GDK3_X11_INCLUDE_DIRS})
-    target_link_libraries(athena_gtk_osr_int_scale PRIVATE ${GTK3_LIBRARIES} ${GDK3_X11_LIBRARIES} ${X11_LIBRARIES})
-    target_compile_options(athena_gtk_osr_int_scale PRIVATE ${GTK3_CFLAGS_OTHER})
-    set_target_properties(athena_gtk_osr_int_scale PROPERTIES BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
-  endif()
-endif()
-
-if(NOT MSVC)
-  target_compile_options(athena_gtk_osr_int_scale PRIVATE -Wall -Wextra -Wpedantic -Wno-error)
-endif()
-
-# 1.5x scaling test version (sweet spot between 1x and 2x)
-add_executable(athena_gtk_osr_1.5x
-  src/main_gtk_osr_1.5x.cpp
-  src/app_handler.cpp
-  src/scheme_handler.cpp
-)
-
-target_compile_definitions(athena_gtk_osr_1.5x PRIVATE $<$<CONFIG:Debug>:DEBUG>)
-
-if(CEF_FOUND)
-  target_include_directories(athena_gtk_osr_1.5x PRIVATE ${CEF_ROOT} ${CEF_ROOT}/include)
-  target_link_libraries(athena_gtk_osr_1.5x PRIVATE
-    libcef_dll_wrapper
-    ${CEF_ROOT}/Release/libcef.so
-    ${CEF_STANDARD_LIBS}
-  )
-
-  if(UNIX AND NOT APPLE)
-    target_include_directories(athena_gtk_osr_1.5x PRIVATE ${GTK3_INCLUDE_DIRS} ${GDK3_X11_INCLUDE_DIRS})
-    target_link_libraries(athena_gtk_osr_1.5x PRIVATE ${GTK3_LIBRARIES} ${GDK3_X11_LIBRARIES} ${X11_LIBRARIES})
-    target_compile_options(athena_gtk_osr_1.5x PRIVATE ${GTK3_CFLAGS_OTHER})
-    set_target_properties(athena_gtk_osr_1.5x PROPERTIES BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
-  endif()
-endif()
-
-if(NOT MSVC)
-  target_compile_options(athena_gtk_osr_1.5x PRIVATE -Wall -Wextra -Wpedantic -Wno-error)
+# Add tests subdirectory
+if(BUILD_TESTING)
+  add_subdirectory(tests)
 endif()

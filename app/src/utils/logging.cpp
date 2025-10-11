@@ -1,0 +1,145 @@
+#include "utils/logging.h"
+#include <ctime>
+
+namespace athena {
+namespace utils {
+
+static Logger* g_global_logger = nullptr;
+
+Logger::Logger(const std::string& name)
+    : name_(name),
+      level_(LogLevel::INFO),
+      console_output_(true),
+      file_output_(false) {
+}
+
+Logger::~Logger() {
+  if (file_stream_ && file_stream_->is_open()) {
+    file_stream_->close();
+  }
+}
+
+void Logger::SetLevel(LogLevel level) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  level_ = level;
+}
+
+void Logger::SetOutputFile(const std::string& filepath) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  output_file_ = filepath;
+
+  if (!filepath.empty()) {
+    file_stream_ = std::make_unique<std::ofstream>(filepath, std::ios::app);
+    if (!file_stream_->is_open()) {
+      std::cerr << "Failed to open log file: " << filepath << std::endl;
+      file_stream_.reset();
+    }
+  }
+}
+
+void Logger::EnableConsoleOutput(bool enable) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  console_output_ = enable;
+}
+
+void Logger::EnableFileOutput(bool enable) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  file_output_ = enable;
+}
+
+void Logger::Debug(const std::string& message) {
+  Log(LogLevel::DEBUG, message);
+}
+
+void Logger::Info(const std::string& message) {
+  Log(LogLevel::INFO, message);
+}
+
+void Logger::Warn(const std::string& message) {
+  Log(LogLevel::WARN, message);
+}
+
+void Logger::Error(const std::string& message) {
+  Log(LogLevel::ERROR, message);
+}
+
+void Logger::Fatal(const std::string& message) {
+  Log(LogLevel::FATAL, message);
+}
+
+void Logger::Log(LogLevel level, const std::string& message) {
+  if (level < level_) {
+    return;
+  }
+
+  std::string log_line = FormatLogLine(level, message);
+
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  if (console_output_) {
+    if (level >= LogLevel::ERROR) {
+      std::cerr << log_line << std::endl;
+    } else {
+      std::cout << log_line << std::endl;
+    }
+  }
+
+  if (file_output_ && file_stream_ && file_stream_->is_open()) {
+    *file_stream_ << log_line << std::endl;
+    file_stream_->flush();
+  }
+}
+
+std::string Logger::FormatLogLine(LogLevel level, const std::string& message) {
+  std::ostringstream oss;
+  oss << "[" << CurrentTimestamp() << "] "
+      << "[" << name_ << "] "
+      << "[" << LevelToString(level) << "] "
+      << message;
+  return oss.str();
+}
+
+std::string Logger::LevelToString(LogLevel level) {
+  switch (level) {
+    case LogLevel::DEBUG: return "DEBUG";
+    case LogLevel::INFO:  return "INFO";
+    case LogLevel::WARN:  return "WARN";
+    case LogLevel::ERROR: return "ERROR";
+    case LogLevel::FATAL: return "FATAL";
+    default: return "UNKNOWN";
+  }
+}
+
+std::string Logger::CurrentTimestamp() {
+  auto now = std::chrono::system_clock::now();
+  auto now_time_t = std::chrono::system_clock::to_time_t(now);
+  auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      now.time_since_epoch()) % 1000;
+
+  std::tm tm_buf;
+#if defined(_WIN32)
+  localtime_s(&tm_buf, &now_time_t);
+#else
+  localtime_r(&now_time_t, &tm_buf);
+#endif
+
+  std::ostringstream oss;
+  oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S")
+      << '.' << std::setfill('0') << std::setw(3) << now_ms.count();
+  return oss.str();
+}
+
+Logger* GetGlobalLogger() {
+  if (!g_global_logger) {
+    static Logger default_logger("athena");
+    g_global_logger = &default_logger;
+  }
+  return g_global_logger;
+}
+
+void SetGlobalLogger(Logger* logger) {
+  g_global_logger = logger;
+}
+
+}  // namespace utils
+}  // namespace athena
