@@ -20,6 +20,10 @@ class AppHandler : public CefApp,
     return this;
   }
 
+  // CefApp methods  
+  void OnBeforeCommandLineProcessing(const CefString& process_type,
+                                     CefRefPtr<CefCommandLine> command_line) override;
+  
   // CefBrowserProcessHandler methods
   void OnContextInitialized() override;
   void OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) override;

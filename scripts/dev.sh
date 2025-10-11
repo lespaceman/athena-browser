@@ -16,14 +16,14 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Build the app if needed
+# Build the GTK app if needed
 BUILD_DIR="$ROOT_DIR/build/debug"
 if [ ! -f "$BUILD_DIR/app/athena-browser" ]; then
-  echo "Building native app in debug mode..."
+  echo "Building GTK native app in debug mode..."
   mkdir -p "$BUILD_DIR"
   cd "$BUILD_DIR"
   cmake ../.. -DCMAKE_BUILD_TYPE=Debug
-  cmake --build . --parallel
+  cmake --build . --target athena-browser --parallel
   cd "$ROOT_DIR"
 fi
 
@@ -31,6 +31,10 @@ fi
 echo "Waiting for Vite dev server..."
 sleep 3
 
-echo "Launching CEF app pointing at DEV_URL=http://localhost:5173"
+# Force X11 backend for proper CEF child window embedding (required on Wayland)
+export GDK_BACKEND=x11
+
+echo "Launching GTK CEF app pointing at DEV_URL=http://localhost:5173"
+echo "Environment: GDK_BACKEND=x11"
 DEV_URL="http://localhost:5173" "$BUILD_DIR/app/athena-browser" || true
 

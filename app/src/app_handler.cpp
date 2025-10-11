@@ -1,11 +1,34 @@
 #include "app_handler.h"
 #include "scheme_handler.h"
 #include "cef_scheme.h"
+#include "cef_command_line.h"
 #include "wrapper/cef_helpers.h"
 // For message router renderer side
 #include "wrapper/cef_message_router.h"
 
 AppHandler::AppHandler() {}
+
+void AppHandler::OnBeforeCommandLineProcessing(const CefString& process_type,
+                                               CefRefPtr<CefCommandLine> command_line) {
+  // Empty process_type means browser process
+  if (process_type.empty()) {
+    // Force X11 platform for proper child window embedding
+    command_line->AppendSwitchWithValue("ozone-platform", "x11");
+
+    // Use in-process GPU to avoid window handle issues
+    command_line->AppendSwitch("in-process-gpu");
+
+    // Disable GPU sandbox (often causes issues on Linux)
+    command_line->AppendSwitch("disable-gpu-sandbox");
+
+    // Use software rendering as fallback
+    command_line->AppendSwitch("disable-gpu-compositing");
+
+    // Logging for debugging
+    command_line->AppendSwitch("enable-logging");
+    command_line->AppendSwitchWithValue("v", "1");
+  }
+}
 
 void AppHandler::OnContextInitialized() {
   CEF_REQUIRE_UI_THREAD();
