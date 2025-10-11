@@ -142,6 +142,47 @@ class GtkWindow : public Window {
    */
   void OnFocusChanged(bool has_focus);
 
+  /**
+   * Update the address bar with the current URL.
+   * Thread-safe: can be called from any thread.
+   */
+  void UpdateAddressBar(const std::string& url);
+
+  /**
+   * Update navigation button states.
+   * Thread-safe: can be called from any thread.
+   */
+  void UpdateNavigationButtons(bool is_loading, bool can_go_back, bool can_go_forward);
+
+  /**
+   * Load a URL in the browser.
+   */
+  void LoadURL(const std::string& url);
+
+  /**
+   * Navigate back in browser history.
+   */
+  void GoBack();
+
+  /**
+   * Navigate forward in browser history.
+   */
+  void GoForward();
+
+  /**
+   * Reload the current page.
+   */
+  void Reload();
+
+  /**
+   * Stop loading the current page.
+   */
+  void StopLoad();
+
+  // Friend functions for GTK idle callbacks
+  friend gboolean update_address_bar_idle(gpointer user_data);
+  friend gboolean update_navigation_buttons_idle(gpointer user_data);
+
  private:
   // Window configuration and state
   WindowConfig config_;
@@ -154,6 +195,13 @@ class GtkWindow : public Window {
 
   // GTK widgets
   GtkWidget* window_;      // GtkWindow
+  GtkWidget* vbox_;        // Main vertical container
+  GtkWidget* toolbar_;     // Toolbar container (HBox)
+  GtkWidget* back_button_;
+  GtkWidget* forward_button_;
+  GtkWidget* reload_button_;
+  GtkWidget* stop_button_;
+  GtkWidget* address_entry_;  // URL input field
   GtkWidget* gl_area_;     // GtkGLArea (rendering widget)
 
   // Rendering components
@@ -164,6 +212,11 @@ class GtkWindow : public Window {
    * Initialize the GTK window and widgets.
    */
   void InitializeWindow();
+
+  /**
+   * Create the toolbar with navigation controls and address bar.
+   */
+  void CreateToolbar();
 
   /**
    * Setup GTK event signals.

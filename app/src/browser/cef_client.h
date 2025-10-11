@@ -4,8 +4,10 @@
 #include "include/cef_client.h"
 #include "include/cef_life_span_handler.h"
 #include "include/cef_display_handler.h"
+#include "include/cef_load_handler.h"
 #include "include/cef_render_handler.h"
 #include "rendering/gl_renderer.h"
+#include <functional>
 
 namespace athena {
 namespace browser {
@@ -17,6 +19,7 @@ namespace browser {
  * - CefClient: Main client interface
  * - CefLifeSpanHandler: Browser lifecycle events
  * - CefDisplayHandler: Display-related events (title changes, etc.)
+ * - CefLoadHandler: Load and navigation events (address changes, loading state)
  * - CefRenderHandler: Rendering events (paint, resize, etc.)
  *
  * Design:
@@ -28,6 +31,7 @@ namespace browser {
 class CefClient : public ::CefClient,
                   public ::CefLifeSpanHandler,
                   public ::CefDisplayHandler,
+                  public ::CefLoadHandler,
                   public ::CefRenderHandler {
  public:
   /**
@@ -52,6 +56,7 @@ class CefClient : public ::CefClient,
 
   CefRefPtr<::CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<::CefDisplayHandler> GetDisplayHandler() override { return this; }
+  CefRefPtr<::CefLoadHandler> GetLoadHandler() override { return this; }
   CefRefPtr<::CefRenderHandler> GetRenderHandler() override { return this; }
 
   // ============================================================================
@@ -67,6 +72,18 @@ class CefClient : public ::CefClient,
   // ============================================================================
 
   void OnTitleChange(CefRefPtr<::CefBrowser> browser, const CefString& title) override;
+  void OnAddressChange(CefRefPtr<::CefBrowser> browser,
+                       CefRefPtr<::CefFrame> frame,
+                       const CefString& url) override;
+
+  // ============================================================================
+  // CefLoadHandler methods
+  // ============================================================================
+
+  void OnLoadingStateChange(CefRefPtr<::CefBrowser> browser,
+                            bool isLoading,
+                            bool canGoBack,
+                            bool canGoForward) override;
 
   // ============================================================================
   // CefRenderHandler methods (for OSR)
@@ -118,6 +135,22 @@ class CefClient : public ::CefClient,
    */
   float GetDeviceScaleFactor() const { return device_scale_factor_; }
 
+  /**
+   * Set callback for address changes.
+   * Called when the URL in the address bar should be updated.
+   */
+  void SetAddressChangeCallback(std::function<void(const std::string&)> callback) {
+    on_address_change_ = std::move(callback);
+  }
+
+  /**
+   * Set callback for loading state changes.
+   * Called when the loading state or navigation button states change.
+   */
+  void SetLoadingStateChangeCallback(std::function<void(bool, bool, bool)> callback) {
+    on_loading_state_change_ = std::move(callback);
+  }
+
  private:
   void* native_window_;              // Platform-specific window handle (non-owning)
   CefRefPtr<::CefBrowser> browser_;  // CEF browser instance
@@ -125,6 +158,10 @@ class CefClient : public ::CefClient,
   int width_;                        // Logical view width
   int height_;                       // Logical view height
   float device_scale_factor_;        // HiDPI scale factor (1.0, 2.0, etc.)
+
+  // Callbacks for UI updates
+  std::function<void(const std::string&)> on_address_change_;         // URL changed
+  std::function<void(bool, bool, bool)> on_loading_state_change_;     // Loading state changed
 
   IMPLEMENT_REFCOUNTING(CefClient);
 };

@@ -60,6 +60,32 @@ void CefClient::OnTitleChange(CefRefPtr<::CefBrowser> browser, const CefString& 
   }
 }
 
+void CefClient::OnAddressChange(CefRefPtr<::CefBrowser> browser,
+                                 CefRefPtr<::CefFrame> frame,
+                                 const CefString& url) {
+  CEF_REQUIRE_UI_THREAD();
+
+  // Only update for the main frame
+  if (frame->IsMain() && on_address_change_) {
+    on_address_change_(url.ToString());
+  }
+}
+
+// ============================================================================
+// CefLoadHandler methods
+// ============================================================================
+
+void CefClient::OnLoadingStateChange(CefRefPtr<::CefBrowser> browser,
+                                      bool isLoading,
+                                      bool canGoBack,
+                                      bool canGoForward) {
+  CEF_REQUIRE_UI_THREAD();
+
+  if (on_loading_state_change_) {
+    on_loading_state_change_(isLoading, canGoBack, canGoForward);
+  }
+}
+
 // ============================================================================
 // CefRenderHandler methods
 // ============================================================================

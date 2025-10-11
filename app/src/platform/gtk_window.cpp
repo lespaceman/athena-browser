@@ -348,6 +348,67 @@ static gboolean on_key_release(GtkWidget* widget, GdkEventKey* event,
   return TRUE;
 }
 
+// ============================================================================
+// Navigation and Address Bar Callbacks
+// ============================================================================
+
+static void on_back_clicked(GtkButton* button, gpointer user_data) {
+  (void)button;
+  GtkWindow* window = GetWindowFromUserData(user_data);
+  if (window) {
+    window->GoBack();
+  }
+}
+
+static void on_forward_clicked(GtkButton* button, gpointer user_data) {
+  (void)button;
+  GtkWindow* window = GetWindowFromUserData(user_data);
+  if (window) {
+    window->GoForward();
+  }
+}
+
+static void on_reload_clicked(GtkButton* button, gpointer user_data) {
+  (void)button;
+  GtkWindow* window = GetWindowFromUserData(user_data);
+  if (window) {
+    window->Reload();
+  }
+}
+
+static void on_stop_clicked(GtkButton* button, gpointer user_data) {
+  (void)button;
+  GtkWindow* window = GetWindowFromUserData(user_data);
+  if (window) {
+    window->StopLoad();
+  }
+}
+
+static void on_address_activate(GtkEntry* entry, gpointer user_data) {
+  (void)entry;
+  GtkWindow* window = GetWindowFromUserData(user_data);
+  if (!window) return;
+
+  const char* url_text = gtk_entry_get_text(entry);
+  if (!url_text || strlen(url_text) == 0) return;
+
+  std::string url(url_text);
+
+  // Add protocol if missing
+  if (url.find("://") == std::string::npos) {
+    // Check if it looks like a domain (has a dot and no spaces)
+    if (url.find('.') != std::string::npos && url.find(' ') == std::string::npos) {
+      url = "https://" + url;
+    } else {
+      // Treat as search query
+      url = "https://www.google.com/search?q=" + url;
+    }
+  }
+
+  std::cout << "[GtkWindow] Loading URL: " << url << std::endl;
+  window->LoadURL(url);
+}
+
 }  // anonymous namespace
 
 // ============================================================================
@@ -365,6 +426,13 @@ GtkWindow::GtkWindow(const WindowConfig& config,
       visible_(false),
       has_focus_(false),
       window_(nullptr),
+      vbox_(nullptr),
+      toolbar_(nullptr),
+      back_button_(nullptr),
+      forward_button_(nullptr),
+      reload_button_(nullptr),
+      stop_button_(nullptr),
+      address_entry_(nullptr),
       gl_area_(nullptr),
       cef_client_(nullptr) {
   InitializeWindow();
@@ -391,9 +459,17 @@ void GtkWindow::InitializeWindow() {
     gtk_window_set_resizable(reinterpret_cast<::GtkWindow*>(window_), TRUE);
   }
 
+  // Create main vertical container
+  vbox_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_container_add(GTK_CONTAINER(window_), vbox_);
+
+  // Create toolbar with address bar and navigation buttons
+  CreateToolbar();
+  gtk_box_pack_start(GTK_BOX(vbox_), toolbar_, FALSE, FALSE, 0);
+
   // Create GL area for hardware-accelerated rendering
   gl_area_ = gtk_gl_area_new();
-  gtk_container_add(GTK_CONTAINER(window_), gl_area_);
+  gtk_box_pack_start(GTK_BOX(vbox_), gl_area_, TRUE, TRUE, 0);
 
   // Configure GL area
   gtk_gl_area_set_auto_render(GTK_GL_AREA(gl_area_), FALSE);  // Manual rendering
@@ -414,6 +490,45 @@ void GtkWindow::InitializeWindow() {
       GDK_FOCUS_CHANGE_MASK |
       GDK_LEAVE_NOTIFY_MASK);
   }
+}
+
+void GtkWindow::CreateToolbar() {
+  // Create horizontal toolbar container
+  toolbar_ = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+  gtk_widget_set_margin_start(toolbar_, 5);
+  gtk_widget_set_margin_end(toolbar_, 5);
+  gtk_widget_set_margin_top(toolbar_, 5);
+  gtk_widget_set_margin_bottom(toolbar_, 5);
+
+  // Create navigation buttons
+  back_button_ = gtk_button_new_with_label("◄");
+  forward_button_ = gtk_button_new_with_label("►");
+  reload_button_ = gtk_button_new_with_label("↻");
+  stop_button_ = gtk_button_new_with_label("■");
+
+  // Create address entry
+  address_entry_ = gtk_entry_new();
+  gtk_entry_set_placeholder_text(GTK_ENTRY(address_entry_), "Enter URL or search...");
+
+  // Pack widgets into toolbar
+  gtk_box_pack_start(GTK_BOX(toolbar_), back_button_, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(toolbar_), forward_button_, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(toolbar_), reload_button_, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(toolbar_), stop_button_, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(toolbar_), address_entry_, TRUE, TRUE, 0);
+
+  // Initially disable navigation buttons (will be enabled when browser loads)
+  gtk_widget_set_sensitive(back_button_, FALSE);
+  gtk_widget_set_sensitive(forward_button_, FALSE);
+  gtk_widget_set_sensitive(reload_button_, FALSE);
+  gtk_widget_set_sensitive(stop_button_, FALSE);
+
+  // Connect signals
+  g_signal_connect(back_button_, "clicked", G_CALLBACK(on_back_clicked), this);
+  g_signal_connect(forward_button_, "clicked", G_CALLBACK(on_forward_clicked), this);
+  g_signal_connect(reload_button_, "clicked", G_CALLBACK(on_reload_clicked), this);
+  g_signal_connect(stop_button_, "clicked", G_CALLBACK(on_stop_clicked), this);
+  g_signal_connect(address_entry_, "activate", G_CALLBACK(on_address_activate), this);
 }
 
 void GtkWindow::SetupEventHandlers() {
@@ -480,6 +595,19 @@ utils::Result<void> GtkWindow::CreateBrowser(const std::string& url) {
     auto client = cef_engine->GetCefClient(browser_id_);
     if (client) {
       cef_client_ = client.get();
+
+      // Wire up address bar and navigation button update callbacks
+      // These callbacks will be called from CEF UI thread, and will marshal
+      // to GTK main thread using g_idle_add in the Update methods
+      cef_client_->SetAddressChangeCallback([this](const std::string& url) {
+        this->UpdateAddressBar(url);
+      });
+
+      cef_client_->SetLoadingStateChangeCallback([this](bool is_loading, bool can_go_back, bool can_go_forward) {
+        this->UpdateNavigationButtons(is_loading, can_go_back, can_go_forward);
+      });
+
+      std::cout << "[GtkWindow] Address bar and navigation callbacks wired" << std::endl;
     }
   }
 
@@ -715,6 +843,103 @@ void GtkWindow::OnFocusChanged(bool focused) {
   if (callbacks_.on_focus_changed) {
     callbacks_.on_focus_changed(focused);
   }
+}
+
+// ============================================================================
+// Navigation Methods
+// ============================================================================
+
+void GtkWindow::LoadURL(const std::string& url) {
+  if (engine_ && browser_id_ != 0) {
+    engine_->LoadURL(browser_id_, url);
+  }
+}
+
+void GtkWindow::GoBack() {
+  if (engine_ && browser_id_ != 0) {
+    engine_->GoBack(browser_id_);
+  }
+}
+
+void GtkWindow::GoForward() {
+  if (engine_ && browser_id_ != 0) {
+    engine_->GoForward(browser_id_);
+  }
+}
+
+void GtkWindow::Reload() {
+  if (engine_ && browser_id_ != 0) {
+    engine_->Reload(browser_id_);
+  }
+}
+
+void GtkWindow::StopLoad() {
+  if (engine_ && browser_id_ != 0) {
+    engine_->StopLoad(browser_id_);
+  }
+}
+
+// ============================================================================
+// Address Bar Update Methods
+// ============================================================================
+
+// Helper structure for thread-safe GTK updates
+struct AddressBarUpdateData {
+  GtkWindow* window;
+  std::string url;
+};
+
+struct NavigationButtonsUpdateData {
+  GtkWindow* window;
+  bool is_loading;
+  bool can_go_back;
+  bool can_go_forward;
+};
+
+// GTK idle callback to update address bar on main thread
+gboolean update_address_bar_idle(gpointer user_data) {
+  auto* data = static_cast<AddressBarUpdateData*>(user_data);
+  if (data && data->window && data->window->address_entry_) {
+    gtk_entry_set_text(GTK_ENTRY(data->window->address_entry_), data->url.c_str());
+  }
+  delete data;
+  return G_SOURCE_REMOVE;
+}
+
+// GTK idle callback to update navigation buttons on main thread
+gboolean update_navigation_buttons_idle(gpointer user_data) {
+  auto* data = static_cast<NavigationButtonsUpdateData*>(user_data);
+  if (data && data->window) {
+    // Update back/forward buttons based on history state
+    if (data->window->back_button_) {
+      gtk_widget_set_sensitive(data->window->back_button_, data->can_go_back);
+    }
+    if (data->window->forward_button_) {
+      gtk_widget_set_sensitive(data->window->forward_button_, data->can_go_forward);
+    }
+
+    // Update reload/stop buttons based on loading state
+    if (data->window->reload_button_) {
+      gtk_widget_set_sensitive(data->window->reload_button_, !data->is_loading);
+    }
+    if (data->window->stop_button_) {
+      gtk_widget_set_sensitive(data->window->stop_button_, data->is_loading);
+    }
+  }
+  delete data;
+  return G_SOURCE_REMOVE;
+}
+
+void GtkWindow::UpdateAddressBar(const std::string& url) {
+  // Thread-safe: marshal to GTK main thread using g_idle_add
+  auto* data = new AddressBarUpdateData{this, url};
+  g_idle_add(update_address_bar_idle, data);
+}
+
+void GtkWindow::UpdateNavigationButtons(bool is_loading, bool can_go_back, bool can_go_forward) {
+  // Thread-safe: marshal to GTK main thread using g_idle_add
+  auto* data = new NavigationButtonsUpdateData{this, is_loading, can_go_back, can_go_forward};
+  g_idle_add(update_navigation_buttons_idle, data);
 }
 
 // ============================================================================
