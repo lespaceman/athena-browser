@@ -44,9 +44,9 @@ add_athena_test(core_types_test core/types_test.cpp)
 add_athena_test(logging_test utils/logging_test.cpp ../src/utils/logging.cpp)
 add_athena_test(error_test utils/error_test.cpp)
 
-# Rendering tests (will be added in Phase 2)
-# add_athena_test(buffer_manager_test rendering/buffer_manager_test.cpp ../src/rendering/buffer_manager.cpp)
-# add_athena_test(scaling_manager_test rendering/scaling_manager_test.cpp ../src/rendering/scaling_manager.cpp)
+# Rendering tests (Phase 2)
+add_athena_test(buffer_manager_test rendering/buffer_manager_test.cpp ../src/rendering/buffer_manager.cpp)
+add_athena_test(scaling_manager_test rendering/scaling_manager_test.cpp ../src/rendering/scaling_manager.cpp)
 # add_athena_test(osr_renderer_test rendering/osr_renderer_test.cpp ../src/rendering/osr_renderer.cpp)
 
 # Platform tests (will be added in Phase 2-3)

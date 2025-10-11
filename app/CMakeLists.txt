@@ -3,8 +3,12 @@ add_executable(athena-browser
   src/main_gtk_osr.cpp
   src/app_handler.cpp
   src/scheme_handler.cpp
+  # Phase 2: Rendering Layer
+  src/rendering/buffer_manager.cpp
+  src/rendering/scaling_manager.cpp
 )
 
+target_include_directories(athena-browser PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(athena-browser PRIVATE $<$<CONFIG:Debug>:DEBUG>)
 
 if(CEF_FOUND)
