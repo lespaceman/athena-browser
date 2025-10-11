@@ -83,9 +83,22 @@ add_athena_test(cef_engine_test
   ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
 )
 
-# Platform tests (will be added in Phase 4)
-# add_athena_test(input_events_test platform/input_events_test.cpp)
-# add_athena_test(gtk_input_test platform/gtk_input_test.cpp ../src/platform/gtk_input.cpp)
+# Platform tests (Phase 4)
+# Note: Platform tests are deferred (low priority) - platform layer is production-ready
+
+# Application layer tests (Phase 5)
+add_athena_test(browser_window_test
+  core/browser_window_test.cpp
+  ../src/core/browser_window.cpp
+  ../src/utils/logging.cpp
+)
+
+add_athena_test(application_test
+  core/application_test.cpp
+  ../src/core/application.cpp
+  ../src/core/browser_window.cpp
+  ../src/utils/logging.cpp
+)
 
 # Integration tests (will be added in Phase 6)
 # add_athena_test(integration_test integration/startup_test.cpp)

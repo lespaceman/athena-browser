@@ -1,6 +1,8 @@
 # Primary GTK3 version with OSR rendering (Off-Screen Rendering)
 add_executable(athena-browser
   src/main_gtk_osr.cpp
+  # Phase 1: Utilities
+  src/utils/logging.cpp
   # Phase 2: Rendering Layer
   src/rendering/buffer_manager.cpp
   src/rendering/scaling_manager.cpp
@@ -11,6 +13,9 @@ add_executable(athena-browser
   src/browser/app_handler.cpp
   # Phase 4: Platform Layer
   src/platform/gtk_window.cpp
+  # Phase 5: Application Layer
+  src/core/browser_window.cpp
+  src/core/application.cpp
   # Resources
   src/resources/scheme_handler.cpp
   # CEF's official OpenGL renderer
