@@ -48,6 +48,12 @@ class MockWindow : public Window {
 
   void* GetRenderWidget() const override { return render_widget_; }
 
+  rendering::GLRenderer* GetGLRenderer() const override {
+    // Mock implementation - return fake pointer for testing
+    // In real tests that need a renderer, this could be set via a setter
+    return reinterpret_cast<rendering::GLRenderer*>(0xABCDEF00);
+  }
+
   // Window State
   bool IsVisible() const override { return visible_; }
 

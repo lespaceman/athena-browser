@@ -51,12 +51,9 @@ utils::Result<void> BrowserWindow::Show() {
     return utils::Error("BrowserWindow::Show - Window not created");
   }
 
+  // Show the window - browser creation will happen asynchronously in
+  // GtkWindow::OnRealize() after the GTK main loop starts
   window_->Show();
-
-  // Load initial URL after window is shown
-  if (!config_.url.empty()) {
-    LoadURL(config_.url);
-  }
 
   return utils::Ok();
 }
@@ -278,6 +275,7 @@ utils::Result<void> BrowserWindow::Initialize() {
   window_config.size = config_.size;
   window_config.resizable = config_.resizable;
   window_config.enable_input = config_.enable_input;
+  window_config.url = config_.url;  // Pass URL for browser creation
 
   platform::WindowCallbacks window_callbacks;
   SetupWindowCallbacks();
@@ -332,26 +330,9 @@ utils::Result<void> BrowserWindow::Initialize() {
 
   window_ = std::move(window_result.Value());
 
-  // Create browser instance
-  browser::BrowserConfig browser_config;
-  browser_config.url = config_.url;
-  browser_config.width = config_.size.width;
-  browser_config.height = config_.size.height;
-  browser_config.device_scale_factor = window_->GetScaleFactor();
-  browser_config.native_window_handle = window_->GetNativeHandle();
-  browser_config.gl_renderer = nullptr;  // Will be set by platform layer
-
-  auto browser_result = browser_engine_->CreateBrowser(browser_config);
-  if (!browser_result) {
-    window_.reset();
-    return utils::Error("BrowserWindow::Initialize - Failed to create browser: " +
-                        browser_result.GetError().Message());
-  }
-
-  browser_id_ = browser_result.Value();
-
-  // Associate browser with window
-  window_->SetBrowser(browser_id_);
+  // NOTE: Browser creation is deferred until Show() is called.
+  // This is because the GLRenderer is only available after the window is realized,
+  // which happens when the window is shown.
 
   initialized_ = true;
   logger.Debug("BrowserWindow::Initialize - Initialization complete");

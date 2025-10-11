@@ -13,6 +13,10 @@ namespace browser {
   using BrowserId = uint64_t;
 }
 
+namespace rendering {
+  class GLRenderer;
+}
+
 namespace platform {
 
 // Forward declarations
@@ -26,6 +30,7 @@ struct WindowConfig {
   core::Size size = {1200, 800};
   bool resizable = true;
   bool enable_input = true;
+  std::string url = "about:blank";  // Initial URL to load
 };
 
 /**
@@ -183,6 +188,12 @@ class Window {
    * Type depends on platform: GtkGLArea*, etc.
    */
   virtual void* GetRenderWidget() const = 0;
+
+  /**
+   * Get the GL renderer for this window.
+   * Returns nullptr if the renderer is not yet initialized (before window realization).
+   */
+  virtual rendering::GLRenderer* GetGLRenderer() const = 0;
 
   // ============================================================================
   // Window State

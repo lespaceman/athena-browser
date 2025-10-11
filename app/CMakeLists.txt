@@ -1,6 +1,6 @@
 # Primary GTK3 version with OSR rendering (Off-Screen Rendering)
 add_executable(athena-browser
-  src/main_gtk_osr.cpp
+  src/main.cpp
   # Phase 1: Utilities
   src/utils/logging.cpp
   # Phase 2: Rendering Layer

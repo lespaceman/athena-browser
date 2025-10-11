@@ -572,6 +572,22 @@ void GtkWindow::Focus() {
 
 void GtkWindow::SetBrowser(browser::BrowserId browser_id) {
   browser_id_ = browser_id;
+
+  // Get the CEF client for input event handling and rendering
+  // This is critical - without cef_client_, input events won't work
+  // and rendering will be broken
+  if (browser_id_ != 0 && engine_) {
+    auto* cef_engine = dynamic_cast<browser::CefEngine*>(engine_);
+    if (cef_engine) {
+      auto client = cef_engine->GetCefClient(browser_id_);
+      if (client) {
+        cef_client_ = client.get();
+        std::cout << "[GtkWindow] CefClient set for browser ID: " << browser_id_ << std::endl;
+      } else {
+        std::cerr << "[GtkWindow] Failed to get CefClient for browser ID: " << browser_id_ << std::endl;
+      }
+    }
+  }
 }
 
 browser::BrowserId GtkWindow::GetBrowser() const {
@@ -643,13 +659,15 @@ void GtkWindow::OnRealize() {
     return;
   }
 
-  // Get URL from environment or use default
-  const char* dev_url = std::getenv("DEV_URL");
-  std::string url = dev_url ? dev_url : "https://www.google.com";
+  std::cout << "[GtkWindow] Window realized, GLRenderer ready" << std::endl;
 
-  auto result = CreateBrowser(url);
+  // Create the browser now that the window is realized and GLRenderer is available
+  // Use the URL from the config
+  auto result = CreateBrowser(config_.url);
   if (!result) {
     std::cerr << "[GtkWindow] Failed to create browser: " << result.GetError().Message() << std::endl;
+  } else {
+    std::cout << "[GtkWindow] Browser created successfully" << std::endl;
   }
 }
 
