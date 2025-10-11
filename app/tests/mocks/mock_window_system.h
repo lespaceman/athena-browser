@@ -1,0 +1,192 @@
+#ifndef ATHENA_TESTS_MOCKS_MOCK_WINDOW_SYSTEM_H_
+#define ATHENA_TESTS_MOCKS_MOCK_WINDOW_SYSTEM_H_
+
+#include "platform/window_system.h"
+#include <gmock/gmock.h>
+#include <memory>
+#include <map>
+
+namespace athena {
+namespace platform {
+namespace testing {
+
+/**
+ * Mock Window implementation for testing.
+ */
+class MockWindow : public Window {
+ public:
+  MockWindow(const WindowConfig& config, const WindowCallbacks& callbacks)
+      : config_(config),
+        callbacks_(callbacks),
+        visible_(false),
+        has_focus_(false),
+        closed_(false),
+        browser_id_(0),
+        scale_factor_(1.0f),
+        native_handle_(reinterpret_cast<void*>(0x12345678)),
+        render_widget_(reinterpret_cast<void*>(0x87654321)) {}
+
+  // Window Properties
+  std::string GetTitle() const override { return config_.title; }
+
+  void SetTitle(const std::string& title) override { config_.title = title; }
+
+  core::Size GetSize() const override { return config_.size; }
+
+  void SetSize(const core::Size& size) override {
+    config_.size = size;
+    if (callbacks_.on_resize) {
+      callbacks_.on_resize(size.width, size.height);
+    }
+  }
+
+  float GetScaleFactor() const override { return scale_factor_; }
+
+  void SetScaleFactor(float scale) { scale_factor_ = scale; }
+
+  void* GetNativeHandle() const override { return native_handle_; }
+
+  void* GetRenderWidget() const override { return render_widget_; }
+
+  // Window State
+  bool IsVisible() const override { return visible_; }
+
+  void Show() override { visible_ = true; }
+
+  void Hide() override { visible_ = false; }
+
+  bool HasFocus() const override { return has_focus_; }
+
+  void Focus() override {
+    has_focus_ = true;
+    if (callbacks_.on_focus_changed) {
+      callbacks_.on_focus_changed(true);
+    }
+  }
+
+  // Browser Integration
+  void SetBrowser(browser::BrowserId browser_id) override {
+    browser_id_ = browser_id;
+  }
+
+  browser::BrowserId GetBrowser() const override { return browser_id_; }
+
+  // Lifecycle
+  void Close(bool force) override {
+    if (!force && callbacks_.on_close) {
+      callbacks_.on_close();
+    }
+    closed_ = true;
+    if (callbacks_.on_destroy) {
+      callbacks_.on_destroy();
+    }
+  }
+
+  bool IsClosed() const override { return closed_; }
+
+  // Test helpers
+  void SimulateFocusChange(bool focused) {
+    has_focus_ = focused;
+    if (callbacks_.on_focus_changed) {
+      callbacks_.on_focus_changed(focused);
+    }
+  }
+
+  void SimulateResize(int width, int height) {
+    config_.size = {width, height};
+    if (callbacks_.on_resize) {
+      callbacks_.on_resize(width, height);
+    }
+  }
+
+ private:
+  WindowConfig config_;
+  WindowCallbacks callbacks_;
+  bool visible_;
+  bool has_focus_;
+  bool closed_;
+  browser::BrowserId browser_id_;
+  float scale_factor_;
+  void* native_handle_;
+  void* render_widget_;
+};
+
+/**
+ * Mock WindowSystem implementation for testing.
+ */
+class MockWindowSystem : public WindowSystem {
+ public:
+  MockWindowSystem() : initialized_(false), running_(false), engine_(nullptr) {}
+
+  // Lifecycle Management
+  utils::Result<void> Initialize(int argc, char* argv[],
+                                  browser::BrowserEngine* engine) override {
+    (void)argc;
+    (void)argv;
+    if (initialized_) {
+      return utils::Error("WindowSystem already initialized");
+    }
+    engine_ = engine;
+    initialized_ = true;
+    return utils::Ok();
+  }
+
+  void Shutdown() override {
+    if (!initialized_) {
+      return;
+    }
+    windows_.clear();
+    initialized_ = false;
+    engine_ = nullptr;
+  }
+
+  bool IsInitialized() const override { return initialized_; }
+
+  // Window Management
+  utils::Result<std::unique_ptr<Window>> CreateWindow(
+      const WindowConfig& config,
+      const WindowCallbacks& callbacks) override {
+    if (!initialized_) {
+      return utils::Error("WindowSystem not initialized");
+    }
+
+    auto window = std::make_unique<MockWindow>(config, callbacks);
+    auto* window_ptr = window.get();
+    windows_[window_ptr] = window_ptr;
+
+    return std::unique_ptr<Window>(std::move(window));
+  }
+
+  // Event Loop
+  void Run() override {
+    if (!initialized_) {
+      return;
+    }
+    running_ = true;
+    // Mock implementation - just set the flag
+    // In real tests, you would call Quit() explicitly
+  }
+
+  void Quit() override {
+    running_ = false;
+  }
+
+  bool IsRunning() const override { return running_; }
+
+  // Test helpers
+  browser::BrowserEngine* GetEngine() const { return engine_; }
+
+  size_t GetWindowCount() const { return windows_.size(); }
+
+ private:
+  bool initialized_;
+  bool running_;
+  browser::BrowserEngine* engine_;
+  std::map<void*, MockWindow*> windows_;  // Non-owning pointers for tracking
+};
+
+}  // namespace testing
+}  // namespace platform
+}  // namespace athena
+
+#endif  // ATHENA_TESTS_MOCKS_MOCK_WINDOW_SYSTEM_H_

@@ -9,6 +9,8 @@ add_executable(athena-browser
   src/browser/cef_client.cpp
   src/browser/cef_engine.cpp
   src/browser/app_handler.cpp
+  # Phase 4: Platform Layer
+  src/platform/gtk_window.cpp
   # Resources
   src/resources/scheme_handler.cpp
   # CEF's official OpenGL renderer
