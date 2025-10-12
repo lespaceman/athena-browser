@@ -75,7 +75,9 @@ void GtkWindow::InitializeWindow() {
   notebook_ = gtk_notebook_new();
   gtk_notebook_set_scrollable(GTK_NOTEBOOK(notebook_), TRUE);
   gtk_notebook_popup_enable(GTK_NOTEBOOK(notebook_));
-  gtk_box_pack_start(GTK_BOX(vbox_), notebook_, FALSE, FALSE, 0);
+  gtk_notebook_set_show_tabs(GTK_NOTEBOOK(notebook_), TRUE);
+  gtk_widget_set_size_request(notebook_, -1, 30);  // Minimum height for tab visibility
+  gtk_box_pack_start(GTK_BOX(vbox_), notebook_, FALSE, TRUE, 0);
 
   // Create GL area for hardware-accelerated rendering
   gl_area_ = gtk_gl_area_new();

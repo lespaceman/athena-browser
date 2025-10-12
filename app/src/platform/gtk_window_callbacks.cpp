@@ -335,6 +335,21 @@ static gboolean on_key_press(GtkWidget* widget, GdkEventKey* event,
   GtkWindow* window = GetWindowFromUserData(user_data);
   if (!window || !window->GetCefClient()) return FALSE;
 
+  // Check for keyboard shortcuts with Ctrl - let them propagate to window handler
+  if (event->state & GDK_CONTROL_MASK) {
+    // Ctrl+T, Ctrl+W, Ctrl+Tab: Tab management shortcuts
+    if (event->keyval == GDK_KEY_t || event->keyval == GDK_KEY_T ||
+        event->keyval == GDK_KEY_w || event->keyval == GDK_KEY_W ||
+        event->keyval == GDK_KEY_Tab) {
+      return FALSE;  // Let window handler process these
+    }
+
+    // Ctrl+1 through Ctrl+9: Switch to specific tab
+    if (event->keyval >= GDK_KEY_1 && event->keyval <= GDK_KEY_9) {
+      return FALSE;  // Let window handler process these
+    }
+  }
+
   auto* client = window->GetCefClient();
   auto browser = client->GetBrowser();
   if (!browser) return FALSE;

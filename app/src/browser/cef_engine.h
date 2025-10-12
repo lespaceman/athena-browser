@@ -86,7 +86,7 @@ class CefEngine : public BrowserEngine {
    * Get the CEF client for a given browser ID.
    * @return Client reference, or nullptr if not found
    */
-  CefRefPtr<CefClient> GetCefClient(BrowserId id) const;
+  virtual CefRefPtr<CefClient> GetCefClient(BrowserId id) const;
 
  private:
   /**

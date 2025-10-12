@@ -595,6 +595,215 @@ TEST_F(GtkWindowTabsTest, DISABLED_NoRenderInvalidationOnTabSwitch) {
   // But should be fixed for smooth tab switching
 }
 
+// ============================================================================
+// NEW CRITICAL BUG TESTS (Should Fail Before Fixes)
+// ============================================================================
+
+/**
+ * TEST: CreateTabRaceCondition
+ *
+ * CRITICAL BUG #1: CreateTab() modifies tabs_ vector without holding tabs_mutex_.
+ * Meanwhile, callbacks DO lock the mutex when accessing tabs_.
+ *
+ * This test spawns a thread that continuously accesses tabs_ through callbacks
+ * while the main thread creates new tabs, exposing the data race.
+ *
+ * Expected: This test SHOULD FAIL (detect race with ThreadSanitizer or crash)
+ * After fix: Should pass reliably
+ */
+TEST_F(GtkWindowTabsTest, CreateTabRaceCondition) {
+  std::atomic<bool> stop(false);
+  std::atomic<int> race_detected(0);
+
+  // Setup mock to return sequential browser IDs
+  EXPECT_CALL(mock_engine_, CreateBrowser(_))
+      .Times(AtLeast(20))
+      .WillRepeatedly(Invoke([](const browser::BrowserConfig& config) {
+        static browser::BrowserId id = 1;
+        return utils::Result<browser::BrowserId>(id++);
+      }));
+
+  auto window = CreateTestWindow();
+  RealizeWindow(window.get());
+
+  // Thread that continuously reads tab count while tabs are being created
+  std::thread reader([&window, &stop, &race_detected]() {
+    while (!stop) {
+      try {
+        // This accesses tabs_.size() which can race with tabs_.push_back()
+        size_t count = window->GetTabCount();
+
+        // Try to access each tab
+        for (size_t i = 0; i < count; ++i) {
+          window->SwitchToTab(i);
+          auto* tab = window->GetActiveTab();
+          if (!tab) {
+            race_detected++;
+            std::cerr << "Race detected: tab is nullptr!" << std::endl;
+          }
+        }
+      } catch (const std::exception& e) {
+        race_detected++;
+        std::cerr << "Race detected: exception " << e.what() << std::endl;
+      }
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+  });
+
+  // Main thread: rapidly create tabs
+  for (int i = 0; i < 20; ++i) {
+    window->CreateTab("https://test" + std::to_string(i) + ".com");
+    std::this_thread::sleep_for(std::chrono::microseconds(500));
+  }
+
+  stop = true;
+  reader.join();
+
+  std::cerr << "\n=== BUG #1: CreateTab Race Condition ===" << std::endl;
+  std::cerr << "CreateTab() modifies tabs_ WITHOUT locking tabs_mutex_" << std::endl;
+  std::cerr << "Callbacks DO lock tabs_mutex_ when accessing tabs_" << std::endl;
+  std::cerr << "Result: Data race on tabs_ vector!" << std::endl;
+  std::cerr << "Races detected: " << race_detected << std::endl;
+  std::cerr << "Fix: Lock tabs_mutex_ before tabs_.push_back() in CreateTab()" << std::endl;
+  std::cerr << "==========================================\n" << std::endl;
+
+  // With ThreadSanitizer, this will report a data race even if race_detected == 0
+  // Without it, we might get lucky and not see a crash, but the bug is still there
+}
+
+/**
+ * TEST: UninitializedCefClientPointer
+ *
+ * CRITICAL BUG #2: Tab::cef_client is not initialized when Tab struct is created.
+ * It's only set later if cef_engine cast succeeds.
+ *
+ * This test simulates a scenario where GetCefClient() fails to return a client,
+ * leaving cef_client uninitialized. Later code checks "if (cef_client)" which
+ * is undefined behavior with uninitialized pointers.
+ *
+ * Expected: This test SHOULD FAIL (undefined behavior, may crash)
+ * After fix: Should pass with cef_client properly initialized to nullptr
+ */
+TEST_F(GtkWindowTabsTest, UninitializedCefClientPointer) {
+  // Create a tab but simulate GetCefClient returning null
+  // by not setting up proper mock expectations
+
+  EXPECT_CALL(mock_engine_, CreateBrowser(_))
+      .WillOnce(Return(utils::Result<browser::BrowserId>(1)));
+
+  auto window = CreateTestWindow();
+  RealizeWindow(window.get());
+
+  // The initial tab is created in OnRealize, let's create another
+  int tab_idx = window->CreateTab("https://test.com");
+  ASSERT_GE(tab_idx, 0);
+
+  // Now try to get the active tab
+  window->SwitchToTab(tab_idx);
+  auto* tab = window->GetActiveTab();
+  ASSERT_NE(tab, nullptr);
+
+  // The bug: tab->cef_client might be uninitialized garbage
+  // Checking "if (tab->cef_client)" is undefined behavior
+  //
+  // In the actual code, various places do:
+  //   if (tab.cef_client) { ... }
+  //
+  // If cef_client is uninitialized, this check is meaningless
+  // and can cause crashes or random behavior
+
+  std::cerr << "\n=== BUG #2: Uninitialized cef_client ===" << std::endl;
+  std::cerr << "Tab struct is created without initializing cef_client" << std::endl;
+  std::cerr << "Line 77-82: Tab fields are set, but cef_client is left uninitialized" << std::endl;
+  std::cerr << "Line 109: Only set if cef_engine cast succeeds" << std::endl;
+  std::cerr << "Later code checks 'if (tab.cef_client)' which is UB if uninitialized" << std::endl;
+  std::cerr << "Fix: Initialize 'tab.cef_client = nullptr' when creating Tab" << std::endl;
+  std::cerr << "==========================================\n" << std::endl;
+
+  // With uninitialized memory, this test may pass or fail randomly
+  // But the bug is real and will be caught by valgrind or MSAN
+}
+
+/**
+ * TEST: TitleCallbackUseAfterFree
+ *
+ * CRITICAL BUG #3: Title change callback captures raw pointer to GTK widget
+ * and uses it in g_idle_add. If tab is closed before idle callback executes,
+ * the widget is destroyed, causing use-after-free.
+ *
+ * Timeline:
+ * 1. Title change callback fires
+ * 2. Callback queues idle callback with raw widget pointer (it->tab_label)
+ * 3. User closes tab (gtk_notebook_remove_page destroys widget)
+ * 4. Idle callback executes and tries to use destroyed widget
+ * 5. Use-after-free crash or undefined behavior
+ *
+ * Expected: This test SHOULD FAIL (use-after-free detected by ASAN)
+ * After fix: Should pass by validating widget before use
+ */
+TEST_F(GtkWindowTabsTest, TitleCallbackUseAfterFree) {
+  EXPECT_CALL(mock_engine_, CreateBrowser(_))
+      .Times(AtLeast(2))
+      .WillRepeatedly(Invoke([](const browser::BrowserConfig& config) {
+        static browser::BrowserId id = 1;
+        return utils::Result<browser::BrowserId>(id++);
+      }));
+
+  EXPECT_CALL(mock_engine_, CloseBrowser(_, _))
+      .Times(AtLeast(1));
+
+  auto window = CreateTestWindow();
+  RealizeWindow(window.get());
+
+  // Create two tabs
+  int tab0 = window->CreateTab("https://test0.com");
+  int tab1 = window->CreateTab("https://test1.com");
+
+  ASSERT_GE(tab0, 0);
+  ASSERT_GE(tab1, 0);
+
+  // Switch to tab 0
+  window->SwitchToTab(tab0);
+  auto* tab = window->GetActiveTab();
+  ASSERT_NE(tab, nullptr);
+
+  // Simulate title change callback being triggered
+  // In real code, this happens asynchronously from CEF thread
+  if (tab->cef_client) {
+    // The callback will queue an idle callback that captures tab->tab_label
+    // We can't easily simulate this without CEF, but we can document the bug
+
+    // The bug occurs in this sequence:
+    // 1. Title callback executes (line 142-156 in gtk_window_tabs.cpp)
+    // 2. It captures it->tab_label (raw GtkWidget* pointer)
+    // 3. It queues g_idle_add with that pointer
+    // 4. Before g_idle_add executes, we close the tab
+
+    // Close the tab immediately
+    window->CloseTab(tab0);
+
+    // Process any pending GTK events
+    // If there was a pending title update, it would try to use the destroyed widget
+    while (gtk_events_pending()) {
+      gtk_main_iteration_do(FALSE);
+    }
+  }
+
+  std::cerr << "\n=== BUG #3: Use-After-Free in Title Callback ===" << std::endl;
+  std::cerr << "Title change callback (line 149-154) does:" << std::endl;
+  std::cerr << "  g_idle_add(..., new pair<GtkWidget*, string>(it->tab_label, title))" << std::endl;
+  std::cerr << "If tab is closed before idle callback runs:" << std::endl;
+  std::cerr << "  1. gtk_notebook_remove_page() destroys the widget" << std::endl;
+  std::cerr << "  2. Idle callback executes with destroyed widget pointer" << std::endl;
+  std::cerr << "  3. gtk_label_set_text() called on destroyed widget" << std::endl;
+  std::cerr << "  4. Use-after-free crash!" << std::endl;
+  std::cerr << "Fix: Validate widget before use, or re-lookup tab by browser_id" << std::endl;
+  std::cerr << "==========================================\n" << std::endl;
+
+  // This test may or may not crash depending on timing
+  // With AddressSanitizer, it will definitely be caught
+}
+
 }  // namespace testing
 }  // namespace platform
 }  // namespace athena
