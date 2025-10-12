@@ -13,6 +13,7 @@ add_executable(athena-browser
   src/browser/app_handler.cpp
   # Phase 4: Platform Layer
   src/platform/gtk_window.cpp
+  src/platform/gtk_window_system.cpp
   # Phase 5: Application Layer
   src/core/browser_window.cpp
   src/core/application.cpp

@@ -111,7 +111,7 @@ class GtkWindowTabsTest : public ::testing::Test {
  * Expected: This test SHOULD FAIL showing the bug exists
  * After fix: Test should PASS
  */
-TEST_F(GtkWindowTabsTest, DISABLED_TabIndexInvalidationOnClose) {
+TEST_F(GtkWindowTabsTest, DISABLED_DISABLED_TabIndexInvalidationOnClose) {
   EXPECT_CALL(mock_engine_, CreateBrowser(_))
       .Times(AtLeast(4))
       .WillRepeatedly(Invoke([](const browser::BrowserConfig& config) {
