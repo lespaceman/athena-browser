@@ -15,11 +15,11 @@
 |-------|--------|-----------|--------|-------|----------|
 | **Phase 1: Preparation** | ✅ Complete | 1h | 0.5h | 3/5 | 60% |
 | **Phase 2: Extract GtkWindowSystem** | ✅ Complete | 30m | 0.2h | 5/5 | 100% |
-| **Phase 3: Extract Tab Management** | ⬜ Not Started | 45m | — | 0/5 | 0% |
+| **Phase 3: Extract Tab Management** | ✅ Complete | 45m | 0.3h | 5/5 | 100% |
 | **Phase 4: Extract GTK Callbacks** | ⬜ Not Started | 1h | — | 0/7 | 0% |
 | **Phase 5: Verification** | ⬜ Not Started | 30m | — | 0/4 | 0% |
 | **Phase 6: Merge & Cleanup** | ⬜ Not Started | 15m | — | 0/3 | 0% |
-| **TOTAL** | 🟦 **27%** | **4h** | **0.7h** | **8/29** | **27%** |
+| **TOTAL** | 🟦 **45%** | **4h** | **1.0h** | **13/29** | **45%** |
 
 **Legend:**
 - ⬜ Not Started | 🟦 In Progress | ✅ Complete | ⚠️ Blocked | ❌ Failed
@@ -30,10 +30,12 @@
 
 | Metric | Value | Target | Status |
 |--------|-------|--------|--------|
-| **gtk_window.cpp** | 1,076 LOC | 800 LOC | ⚠️ +34% over |
+| **gtk_window.cpp** | 1,028 LOC | 800 LOC | ⚠️ +28% over |
+| **gtk_window_tabs.cpp** | 381 LOC (NEW) | 800 LOC | ✅ 52% under limit |
+| **gtk_window_system.cpp** | 112 LOC (NEW) | 800 LOC | ✅ 86% under limit |
 | **gtk_window.h** | 374 LOC | 800 LOC | ✅ Within limit |
-| **Complexity** | High | Medium | ⚠️ Too many responsibilities |
-| **Test Status** | 267/267 passing | 267/267 | ✅ Ready to refactor |
+| **Complexity** | Medium | Medium | 🟦 Improving |
+| **Test Status** | 274/274 passing | 274/274 | ✅ All tests pass |
 
 **Problem:** The file handles too many concerns:
 - GTK event callbacks (16 static functions)

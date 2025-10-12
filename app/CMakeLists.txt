@@ -14,6 +14,7 @@ add_executable(athena-browser
   # Phase 4: Platform Layer
   src/platform/gtk_window.cpp
   src/platform/gtk_window_system.cpp
+  src/platform/gtk_window_tabs.cpp
   # Phase 5: Application Layer
   src/core/browser_window.cpp
   src/core/application.cpp

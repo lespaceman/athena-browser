@@ -89,6 +89,7 @@ add_athena_test(cef_engine_test
 add_athena_test(gtk_window_tabs_test
   platform/gtk_window_tabs_test.cpp
   ../src/platform/gtk_window.cpp
+  ../src/platform/gtk_window_tabs.cpp
   ../src/rendering/gl_renderer.cpp
   ../src/browser/cef_client.cpp
   ../src/browser/cef_engine.cpp
