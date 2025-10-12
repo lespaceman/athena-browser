@@ -141,19 +141,24 @@ TEST_F(BrowserWindowTest, ShowFailsWhenBrowserEngineNotInitialized) {
   EXPECT_NE(result.GetError().Message().find("not initialized"), std::string::npos);
 }
 
-TEST_F(BrowserWindowTest, ShowFailsWhenBrowserCreationFails) {
+TEST_F(BrowserWindowTest, ShowSucceedsEvenWhenBrowserCreationFails) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  // Browser creation fails
+  // Browser creation fails (but Show() still succeeds)
+  // With the tab architecture, browser creation happens asynchronously
+  // and failures are logged but don't prevent the window from showing
   EXPECT_CALL(*browser_engine_, CreateBrowser(_))
       .WillOnce(Return(Result<BrowserId>(Error("Browser creation failed"))));
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
 
   auto result = window.Show();
-  EXPECT_TRUE(result.IsError());
-  EXPECT_NE(result.GetError().Message().find("create browser"), std::string::npos);
+  // Show() should succeed - the window can be shown even if browser creation fails
+  EXPECT_TRUE(result.IsOk());
+  EXPECT_TRUE(window.IsVisible());
+  // But no browser will be created
+  EXPECT_EQ(window.GetBrowserId(), athena::browser::kInvalidBrowserId);
 }
 
 // ============================================================================

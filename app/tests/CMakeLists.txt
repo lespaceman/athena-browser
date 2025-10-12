@@ -84,7 +84,18 @@ add_athena_test(cef_engine_test
 )
 
 # Platform tests (Phase 4)
-# Note: Platform tests are deferred (low priority) - platform layer is production-ready
+# Note: These tests expose critical bugs in the tab implementation
+# Tests are DISABLED by default (they will fail until bugs are fixed)
+add_athena_test(gtk_window_tabs_test
+  platform/gtk_window_tabs_test.cpp
+  ../src/platform/gtk_window.cpp
+  ../src/rendering/gl_renderer.cpp
+  ../src/browser/cef_client.cpp
+  ../src/browser/cef_engine.cpp
+  ../src/browser/app_handler.cpp
+  ../src/resources/scheme_handler.cpp
+  ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
+)
 
 # Application layer tests (Phase 5)
 add_athena_test(browser_window_test

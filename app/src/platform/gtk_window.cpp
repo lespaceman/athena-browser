@@ -289,6 +289,62 @@ static gboolean on_leave_notify(GtkWidget* widget, GdkEventCrossing* event,
 // Input Event Callbacks - Keyboard
 // ============================================================================
 
+static gboolean on_window_key_press(GtkWidget* widget, GdkEventKey* event,
+                                     gpointer user_data) {
+  (void)widget;
+  GtkWindow* window = GetWindowFromUserData(user_data);
+  if (!window) return FALSE;
+
+  // Check for keyboard shortcuts with Ctrl modifier
+  if (event->state & GDK_CONTROL_MASK) {
+    // Ctrl+T: New tab
+    if (event->keyval == GDK_KEY_t || event->keyval == GDK_KEY_T) {
+      window->OnNewTabClicked();
+      return TRUE;  // Handled
+    }
+
+    // Ctrl+W: Close current tab
+    if (event->keyval == GDK_KEY_w || event->keyval == GDK_KEY_W) {
+      size_t active_index = window->GetActiveTabIndex();
+      window->CloseTab(active_index);
+      return TRUE;  // Handled
+    }
+
+    // Ctrl+Tab: Next tab
+    if (event->keyval == GDK_KEY_Tab) {
+      if (event->state & GDK_SHIFT_MASK) {
+        // Ctrl+Shift+Tab: Previous tab
+        size_t count = window->GetTabCount();
+        if (count > 0) {
+          size_t active = window->GetActiveTabIndex();
+          size_t prev = (active == 0) ? count - 1 : active - 1;
+          window->SwitchToTab(prev);
+        }
+      } else {
+        // Ctrl+Tab: Next tab
+        size_t count = window->GetTabCount();
+        if (count > 0) {
+          size_t active = window->GetActiveTabIndex();
+          size_t next = (active + 1) % count;
+          window->SwitchToTab(next);
+        }
+      }
+      return TRUE;  // Handled
+    }
+
+    // Ctrl+1 through Ctrl+9: Switch to tab 1-9
+    if (event->keyval >= GDK_KEY_1 && event->keyval <= GDK_KEY_9) {
+      size_t tab_index = event->keyval - GDK_KEY_1;
+      if (tab_index < window->GetTabCount()) {
+        window->SwitchToTab(tab_index);
+      }
+      return TRUE;  // Handled
+    }
+  }
+
+  return FALSE;  // Not handled, propagate to other handlers
+}
+
 static gboolean on_key_press(GtkWidget* widget, GdkEventKey* event,
                               gpointer user_data) {
   (void)widget;
@@ -409,6 +465,65 @@ static void on_address_activate(GtkEntry* entry, gpointer user_data) {
   window->LoadURL(url);
 }
 
+// ============================================================================
+// Tab Management Callbacks
+// ============================================================================
+
+static void on_tab_switch(GtkNotebook* notebook, GtkWidget* page, guint page_num, gpointer user_data) {
+  (void)notebook;
+  (void)page;
+  GtkWindow* window = GetWindowFromUserData(user_data);
+  if (window) {
+    window->OnTabSwitch(static_cast<int>(page_num));
+  }
+}
+
+static void on_new_tab_clicked(GtkButton* button, gpointer user_data) {
+  (void)button;
+  GtkWindow* window = GetWindowFromUserData(user_data);
+  if (window) {
+    window->OnNewTabClicked();
+  }
+}
+
+static void on_close_tab_button_clicked(GtkButton* button, gpointer user_data) {
+  (void)user_data;
+  // Retrieve the window and browser_id from the button's object data
+  GtkWindow* window = static_cast<GtkWindow*>(g_object_get_data(G_OBJECT(button), "window"));
+  browser::BrowserId browser_id = static_cast<browser::BrowserId>(
+    reinterpret_cast<uintptr_t>(g_object_get_data(G_OBJECT(button), "browser_id")));
+
+  if (window) {
+    // Find the tab with this browser_id and close it
+    for (size_t i = 0; i < window->GetTabCount(); ++i) {
+      // We need to access tabs_ safely, but we can't do it from here
+      // Instead, add a new method CloseTabByBrowserId
+      // For now, we'll assume the window has a way to find it
+      // Actually, let's just iterate and find the right tab
+      window->CloseTabByBrowserId(browser_id);
+      break;
+    }
+  }
+}
+
+static gboolean on_tab_button_press(GtkWidget* widget, GdkEventButton* event, gpointer user_data) {
+  (void)widget;
+  // Check for middle-click (button 2)
+  if (event->button == 2) {
+    // Retrieve the window and browser_id from the widget's object data
+    GtkWindow* window = static_cast<GtkWindow*>(g_object_get_data(G_OBJECT(widget), "window"));
+    browser::BrowserId browser_id = static_cast<browser::BrowserId>(
+      reinterpret_cast<uintptr_t>(g_object_get_data(G_OBJECT(widget), "browser_id")));
+
+    if (window) {
+      window->CloseTabByBrowserId(browser_id);
+      return TRUE;  // Handled
+    }
+  }
+
+  return FALSE;  // Not handled, allow normal processing
+}
+
 }  // anonymous namespace
 
 // ============================================================================
@@ -421,7 +536,6 @@ GtkWindow::GtkWindow(const WindowConfig& config,
     : config_(config),
       callbacks_(callbacks),
       engine_(engine),
-      browser_id_(0),
       closed_(false),
       visible_(false),
       has_focus_(false),
@@ -433,8 +547,10 @@ GtkWindow::GtkWindow(const WindowConfig& config,
       reload_button_(nullptr),
       stop_button_(nullptr),
       address_entry_(nullptr),
+      notebook_(nullptr),
+      new_tab_button_(nullptr),
       gl_area_(nullptr),
-      cef_client_(nullptr) {
+      active_tab_index_(0) {
   InitializeWindow();
   SetupEventHandlers();
 }
@@ -466,6 +582,12 @@ void GtkWindow::InitializeWindow() {
   // Create toolbar with address bar and navigation buttons
   CreateToolbar();
   gtk_box_pack_start(GTK_BOX(vbox_), toolbar_, FALSE, FALSE, 0);
+
+  // Create notebook for tabs
+  notebook_ = gtk_notebook_new();
+  gtk_notebook_set_scrollable(GTK_NOTEBOOK(notebook_), TRUE);
+  gtk_notebook_popup_enable(GTK_NOTEBOOK(notebook_));
+  gtk_box_pack_start(GTK_BOX(vbox_), notebook_, FALSE, FALSE, 0);
 
   // Create GL area for hardware-accelerated rendering
   gl_area_ = gtk_gl_area_new();
@@ -510,12 +632,17 @@ void GtkWindow::CreateToolbar() {
   address_entry_ = gtk_entry_new();
   gtk_entry_set_placeholder_text(GTK_ENTRY(address_entry_), "Enter URL or search...");
 
+  // Create new tab button
+  new_tab_button_ = gtk_button_new_with_label("+");
+  gtk_widget_set_tooltip_text(new_tab_button_, "New Tab");
+
   // Pack widgets into toolbar
   gtk_box_pack_start(GTK_BOX(toolbar_), back_button_, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(toolbar_), forward_button_, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(toolbar_), reload_button_, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(toolbar_), stop_button_, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(toolbar_), address_entry_, TRUE, TRUE, 0);
+  gtk_box_pack_start(GTK_BOX(toolbar_), new_tab_button_, FALSE, FALSE, 0);
 
   // Initially disable navigation buttons (will be enabled when browser loads)
   gtk_widget_set_sensitive(back_button_, FALSE);
@@ -529,12 +656,19 @@ void GtkWindow::CreateToolbar() {
   g_signal_connect(reload_button_, "clicked", G_CALLBACK(on_reload_clicked), this);
   g_signal_connect(stop_button_, "clicked", G_CALLBACK(on_stop_clicked), this);
   g_signal_connect(address_entry_, "activate", G_CALLBACK(on_address_activate), this);
+  g_signal_connect(new_tab_button_, "clicked", G_CALLBACK(on_new_tab_clicked), this);
 }
 
 void GtkWindow::SetupEventHandlers() {
   // Window events
   g_signal_connect(window_, "delete-event", G_CALLBACK(on_delete), this);
   g_signal_connect(window_, "destroy", G_CALLBACK(on_destroy), this);
+
+  // Keyboard shortcuts (at window level, before other handlers)
+  g_signal_connect(window_, "key-press-event", G_CALLBACK(on_window_key_press), this);
+
+  // Tab events
+  g_signal_connect(notebook_, "switch-page", G_CALLBACK(on_tab_switch), this);
 
   // GL area events
   g_signal_connect(gl_area_, "realize", G_CALLBACK(on_gl_realize), this);
@@ -561,62 +695,26 @@ void GtkWindow::SetupEventHandlers() {
 }
 
 utils::Result<void> GtkWindow::CreateBrowser(const std::string& url) {
-  if (!gl_renderer_) {
-    return utils::Error("GLRenderer not initialized");
+  // Legacy method - for backward compatibility, create a tab
+  // Modern code should use CreateTab() directly
+  int tab_index = CreateTab(url);
+  if (tab_index >= 0) {
+    return utils::Ok();
   }
-
-  if (!engine_) {
-    return utils::Error("BrowserEngine not available");
-  }
-
-  // Get scale factor
-  float scale_factor = static_cast<float>(gtk_widget_get_scale_factor(gl_area_));
-
-  // Use BrowserEngine abstraction to create browser
-  browser::BrowserConfig browser_config;
-  browser_config.url = url;
-  browser_config.width = config_.size.width;
-  browser_config.height = config_.size.height;
-  browser_config.device_scale_factor = scale_factor;
-  browser_config.gl_renderer = gl_renderer_.get();
-  browser_config.native_window_handle = gl_area_;
-
-  auto result = engine_->CreateBrowser(browser_config);
-  if (!result) {
-    return utils::Error("Failed to create browser: " + result.GetError().Message());
-  }
-
-  browser_id_ = result.Value();
-
-  // Get the CEF client for backward compatibility with existing code
-  // that directly accesses cef_client_
-  auto* cef_engine = dynamic_cast<browser::CefEngine*>(engine_);
-  if (cef_engine) {
-    auto client = cef_engine->GetCefClient(browser_id_);
-    if (client) {
-      cef_client_ = client.get();
-
-      // Wire up address bar and navigation button update callbacks
-      // These callbacks will be called from CEF UI thread, and will marshal
-      // to GTK main thread using g_idle_add in the Update methods
-      cef_client_->SetAddressChangeCallback([this](const std::string& url) {
-        this->UpdateAddressBar(url);
-      });
-
-      cef_client_->SetLoadingStateChangeCallback([this](bool is_loading, bool can_go_back, bool can_go_forward) {
-        this->UpdateNavigationButtons(is_loading, can_go_back, can_go_forward);
-      });
-
-      std::cout << "[GtkWindow] Address bar and navigation callbacks wired" << std::endl;
-    }
-  }
-
-  return utils::Ok();
+  return utils::Error("Failed to create tab");
 }
 
 // ============================================================================
 // Window Properties
 // ============================================================================
+
+browser::CefClient* GtkWindow::GetCefClient() const {
+  std::lock_guard<std::mutex> lock(tabs_mutex_);
+  if (active_tab_index_ < tabs_.size()) {
+    return tabs_[active_tab_index_].cef_client;
+  }
+  return nullptr;
+}
 
 std::string GtkWindow::GetTitle() const {
   if (!window_) return config_.title;
@@ -699,27 +797,25 @@ void GtkWindow::Focus() {
 // ============================================================================
 
 void GtkWindow::SetBrowser(browser::BrowserId browser_id) {
-  browser_id_ = browser_id;
-
-  // Get the CEF client for input event handling and rendering
-  // This is critical - without cef_client_, input events won't work
-  // and rendering will be broken
-  if (browser_id_ != 0 && engine_) {
-    auto* cef_engine = dynamic_cast<browser::CefEngine*>(engine_);
-    if (cef_engine) {
-      auto client = cef_engine->GetCefClient(browser_id_);
-      if (client) {
-        cef_client_ = client.get();
-        std::cout << "[GtkWindow] CefClient set for browser ID: " << browser_id_ << std::endl;
-      } else {
-        std::cerr << "[GtkWindow] Failed to get CefClient for browser ID: " << browser_id_ << std::endl;
-      }
+  // Legacy method - with tab support, browsers are managed per-tab
+  // Find the tab with this browser_id and switch to it
+  std::lock_guard<std::mutex> lock(tabs_mutex_);
+  for (size_t i = 0; i < tabs_.size(); ++i) {
+    if (tabs_[i].browser_id == browser_id) {
+      active_tab_index_ = i;
+      std::cout << "[GtkWindow] Switched to tab with browser ID: " << browser_id << std::endl;
+      return;
     }
   }
+  std::cerr << "[GtkWindow] Browser ID " << browser_id << " not found in any tab" << std::endl;
 }
 
 browser::BrowserId GtkWindow::GetBrowser() const {
-  return browser_id_;
+  std::lock_guard<std::mutex> lock(tabs_mutex_);
+  if (active_tab_index_ < tabs_.size()) {
+    return tabs_[active_tab_index_].browser_id;
+  }
+  return 0;
 }
 
 // ============================================================================
@@ -729,8 +825,9 @@ browser::BrowserId GtkWindow::GetBrowser() const {
 void GtkWindow::Close(bool force) {
   if (closed_) return;
 
-  if (!force && cef_client_ && cef_client_->GetBrowser()) {
-    cef_client_->GetBrowser()->GetHost()->CloseBrowser(false);
+  auto* client = GetCefClient();
+  if (!force && client && client->GetBrowser()) {
+    client->GetBrowser()->GetHost()->CloseBrowser(false);
   } else if (window_) {
     gtk_widget_destroy(window_);
   }
@@ -789,21 +886,27 @@ void GtkWindow::OnRealize() {
 
   std::cout << "[GtkWindow] Window realized, GLRenderer ready" << std::endl;
 
-  // Create the browser now that the window is realized and GLRenderer is available
+  // Create the initial tab now that the window is realized and GLRenderer is available
   // Use the URL from the config
-  auto result = CreateBrowser(config_.url);
-  if (!result) {
-    std::cerr << "[GtkWindow] Failed to create browser: " << result.GetError().Message() << std::endl;
+  int tab_index = CreateTab(config_.url);
+  if (tab_index < 0) {
+    std::cerr << "[GtkWindow] Failed to create initial tab" << std::endl;
   } else {
-    std::cout << "[GtkWindow] Browser created successfully" << std::endl;
+    std::cout << "[GtkWindow] Initial tab created successfully" << std::endl;
   }
 }
 
 void GtkWindow::OnSizeAllocate(int width, int height) {
   config_.size = {width, height};
 
-  if (cef_client_) {
-    cef_client_->SetSize(width, height);
+  // Resize all tabs, not just the active one
+  {
+    std::lock_guard<std::mutex> lock(tabs_mutex_);
+    for (auto& tab : tabs_) {
+      if (tab.cef_client) {
+        tab.cef_client->SetSize(width, height);
+      }
+    }
   }
 
   if (callbacks_.on_resize) {
@@ -816,8 +919,9 @@ gboolean GtkWindow::OnDelete() {
     callbacks_.on_close();
   }
 
-  if (cef_client_ && cef_client_->GetBrowser()) {
-    cef_client_->GetBrowser()->GetHost()->CloseBrowser(false);
+  auto* client = GetCefClient();
+  if (client && client->GetBrowser()) {
+    client->GetBrowser()->GetHost()->CloseBrowser(false);
     return TRUE;  // Prevent immediate close
   }
 
@@ -836,8 +940,10 @@ void GtkWindow::OnDestroy() {
 void GtkWindow::OnFocusChanged(bool focused) {
   has_focus_ = focused;
 
-  if (cef_client_ && cef_client_->GetBrowser()) {
-    cef_client_->GetBrowser()->GetHost()->SetFocus(focused);
+  // Only set focus on the active tab
+  auto* client = GetCefClient();
+  if (client && client->GetBrowser()) {
+    client->GetBrowser()->GetHost()->SetFocus(focused);
   }
 
   if (callbacks_.on_focus_changed) {
@@ -850,32 +956,37 @@ void GtkWindow::OnFocusChanged(bool focused) {
 // ============================================================================
 
 void GtkWindow::LoadURL(const std::string& url) {
-  if (engine_ && browser_id_ != 0) {
-    engine_->LoadURL(browser_id_, url);
+  browser::BrowserId browser_id = GetBrowser();
+  if (engine_ && browser_id != 0) {
+    engine_->LoadURL(browser_id, url);
   }
 }
 
 void GtkWindow::GoBack() {
-  if (engine_ && browser_id_ != 0) {
-    engine_->GoBack(browser_id_);
+  browser::BrowserId browser_id = GetBrowser();
+  if (engine_ && browser_id != 0) {
+    engine_->GoBack(browser_id);
   }
 }
 
 void GtkWindow::GoForward() {
-  if (engine_ && browser_id_ != 0) {
-    engine_->GoForward(browser_id_);
+  browser::BrowserId browser_id = GetBrowser();
+  if (engine_ && browser_id != 0) {
+    engine_->GoForward(browser_id);
   }
 }
 
 void GtkWindow::Reload() {
-  if (engine_ && browser_id_ != 0) {
-    engine_->Reload(browser_id_);
+  browser::BrowserId browser_id = GetBrowser();
+  if (engine_ && browser_id != 0) {
+    engine_->Reload(browser_id);
   }
 }
 
 void GtkWindow::StopLoad() {
-  if (engine_ && browser_id_ != 0) {
-    engine_->StopLoad(browser_id_);
+  browser::BrowserId browser_id = GetBrowser();
+  if (engine_ && browser_id != 0) {
+    engine_->StopLoad(browser_id);
   }
 }
 
@@ -940,6 +1051,327 @@ void GtkWindow::UpdateNavigationButtons(bool is_loading, bool can_go_back, bool 
   // Thread-safe: marshal to GTK main thread using g_idle_add
   auto* data = new NavigationButtonsUpdateData{this, is_loading, can_go_back, can_go_forward};
   g_idle_add(update_navigation_buttons_idle, data);
+}
+
+// ============================================================================
+// Tab Management Methods
+// ============================================================================
+
+int GtkWindow::CreateTab(const std::string& url) {
+  if (!gl_renderer_) {
+    std::cerr << "[GtkWindow::CreateTab] GLRenderer not initialized" << std::endl;
+    return -1;
+  }
+
+  if (!engine_) {
+    std::cerr << "[GtkWindow::CreateTab] BrowserEngine not available" << std::endl;
+    return -1;
+  }
+
+  std::cout << "[GtkWindow::CreateTab] Creating tab with URL: " << url << std::endl;
+
+  // Create Tab structure
+  Tab tab;
+  tab.url = url;
+  tab.title = "New Tab";
+  tab.is_loading = true;
+  tab.can_go_back = false;
+  tab.can_go_forward = false;
+
+  // Create browser instance
+  float scale_factor = static_cast<float>(gtk_widget_get_scale_factor(gl_area_));
+
+  browser::BrowserConfig browser_config;
+  browser_config.url = url;
+  browser_config.width = config_.size.width;
+  browser_config.height = config_.size.height;
+  browser_config.device_scale_factor = scale_factor;
+  browser_config.gl_renderer = gl_renderer_.get();
+  browser_config.native_window_handle = gl_area_;
+
+  auto result = engine_->CreateBrowser(browser_config);
+  if (!result) {
+    std::cerr << "[GtkWindow::CreateTab] Failed to create browser: "
+              << result.GetError().Message() << std::endl;
+    return -1;
+  }
+
+  tab.browser_id = result.Value();
+
+  // Get the CEF client
+  auto* cef_engine = dynamic_cast<browser::CefEngine*>(engine_);
+  if (cef_engine) {
+    auto client = cef_engine->GetCefClient(tab.browser_id);
+    if (client) {
+      tab.cef_client = client.get();
+
+      // Wire up callbacks for this tab
+      // Use browser_id instead of index to avoid stale references after tab closure
+      browser::BrowserId bid = tab.browser_id;
+      tab.cef_client->SetAddressChangeCallback([this, bid](const std::string& url) {
+        std::lock_guard<std::mutex> lock(tabs_mutex_);
+        auto it = std::find_if(tabs_.begin(), tabs_.end(),
+          [bid](const Tab& t) { return t.browser_id == bid; });
+        if (it != tabs_.end()) {
+          it->url = url;
+          size_t tab_index = std::distance(tabs_.begin(), it);
+          if (tab_index == active_tab_index_) {
+            this->UpdateAddressBar(url);
+          }
+        }
+      });
+
+      tab.cef_client->SetLoadingStateChangeCallback([this, bid](bool is_loading, bool can_go_back, bool can_go_forward) {
+        std::lock_guard<std::mutex> lock(tabs_mutex_);
+        auto it = std::find_if(tabs_.begin(), tabs_.end(),
+          [bid](const Tab& t) { return t.browser_id == bid; });
+        if (it != tabs_.end()) {
+          it->is_loading = is_loading;
+          it->can_go_back = can_go_back;
+          it->can_go_forward = can_go_forward;
+          size_t tab_index = std::distance(tabs_.begin(), it);
+          if (tab_index == active_tab_index_) {
+            this->UpdateNavigationButtons(is_loading, can_go_back, can_go_forward);
+          }
+        }
+      });
+
+      tab.cef_client->SetTitleChangeCallback([this, bid](const std::string& title) {
+        std::lock_guard<std::mutex> lock(tabs_mutex_);
+        auto it = std::find_if(tabs_.begin(), tabs_.end(),
+          [bid](const Tab& t) { return t.browser_id == bid; });
+        if (it != tabs_.end()) {
+          it->title = title;
+          // Update the tab label on the GTK main thread
+          g_idle_add([](gpointer user_data) -> gboolean {
+            auto* data = static_cast<std::pair<GtkWidget*, std::string>*>(user_data);
+            gtk_label_set_text(GTK_LABEL(data->first), data->second.c_str());
+            delete data;
+            return G_SOURCE_REMOVE;
+          }, new std::pair<GtkWidget*, std::string>(it->tab_label, title));
+        }
+      });
+
+      std::cout << "[GtkWindow::CreateTab] Callbacks wired for browser_id " << bid << std::endl;
+    }
+  }
+
+  // Create tab label with close button
+  GtkWidget* tab_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+  GtkWidget* label = gtk_label_new(tab.title.c_str());
+  GtkWidget* close_btn = gtk_button_new_with_label("✕");
+  gtk_widget_set_size_request(close_btn, 20, 20);
+
+  gtk_box_pack_start(GTK_BOX(tab_box), label, TRUE, TRUE, 0);
+  gtk_box_pack_start(GTK_BOX(tab_box), close_btn, FALSE, FALSE, 0);
+  gtk_widget_show_all(tab_box);
+
+  // Enable middle-click to close on the tab box
+  GtkWidget* event_box = gtk_event_box_new();
+  gtk_container_add(GTK_CONTAINER(event_box), tab_box);
+  gtk_widget_add_events(event_box, GDK_BUTTON_PRESS_MASK);
+  g_object_set_data(G_OBJECT(event_box), "window", this);
+  g_object_set_data(G_OBJECT(event_box), "browser_id", reinterpret_cast<gpointer>(static_cast<uintptr_t>(tab.browser_id)));
+  g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_tab_button_press), nullptr);
+  gtk_widget_show(event_box);
+
+  tab.tab_label = label;
+  tab.close_button = close_btn;
+
+  // Add empty page to notebook (we don't need content, just the tab)
+  GtkWidget* empty_page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_notebook_append_page(GTK_NOTEBOOK(notebook_), empty_page, event_box);
+
+  // Store tab
+  tabs_.push_back(tab);
+  size_t new_tab_index = tabs_.size() - 1;
+
+  // Connect close button signal
+  // Note: We store the browser_id as user data to identify which tab to close
+  // This is critical - using tab_index would become stale after tab closures
+  g_object_set_data(G_OBJECT(close_btn), "window", this);
+  g_object_set_data(G_OBJECT(close_btn), "browser_id", reinterpret_cast<gpointer>(static_cast<uintptr_t>(tab.browser_id)));
+  g_signal_connect(close_btn, "clicked", G_CALLBACK(on_close_tab_button_clicked), nullptr);
+
+  // Switch to the new tab
+  gtk_notebook_set_current_page(GTK_NOTEBOOK(notebook_), new_tab_index);
+
+  std::cout << "[GtkWindow::CreateTab] Tab created successfully, index: " << new_tab_index << std::endl;
+  return static_cast<int>(new_tab_index);
+}
+
+void GtkWindow::CloseTab(size_t index) {
+  browser::BrowserId browser_to_close = 0;
+  size_t new_active_index = 0;
+  bool should_close_window = false;
+
+  {
+    std::lock_guard<std::mutex> lock(tabs_mutex_);
+    if (index >= tabs_.size()) {
+      std::cerr << "[GtkWindow::CloseTab] Invalid tab index: " << index << std::endl;
+      return;
+    }
+
+    std::cout << "[GtkWindow::CloseTab] Closing tab " << index << std::endl;
+
+    browser_to_close = tabs_[index].browser_id;
+
+    // Remove the notebook page
+    gtk_notebook_remove_page(GTK_NOTEBOOK(notebook_), index);
+
+    // Remove from tabs vector
+    tabs_.erase(tabs_.begin() + index);
+
+    // Check if we closed the last tab
+    should_close_window = tabs_.empty();
+
+    // Adjust active tab index if needed
+    if (!should_close_window && active_tab_index_ >= tabs_.size()) {
+      active_tab_index_ = tabs_.size() - 1;
+    }
+
+    new_active_index = active_tab_index_;
+  }
+
+  // Close the browser instance (outside lock)
+  if (engine_ && browser_to_close != 0) {
+    engine_->CloseBrowser(browser_to_close, false);
+  }
+
+  // If we closed the last tab, close the window
+  if (should_close_window) {
+    std::cout << "[GtkWindow::CloseTab] No tabs left, closing window" << std::endl;
+    Close();
+    return;
+  }
+
+  // Switch to the new active tab (outside lock to avoid deadlock)
+  SwitchToTab(new_active_index);
+}
+
+void GtkWindow::CloseTabByBrowserId(browser::BrowserId browser_id) {
+  size_t index_to_close = 0;
+  bool found = false;
+  size_t new_active_index = 0;
+  bool should_close_window = false;
+
+  {
+    std::lock_guard<std::mutex> lock(tabs_mutex_);
+    auto it = std::find_if(tabs_.begin(), tabs_.end(),
+      [browser_id](const Tab& t) { return t.browser_id == browser_id; });
+
+    if (it != tabs_.end()) {
+      found = true;
+      index_to_close = std::distance(tabs_.begin(), it);
+      std::cout << "[GtkWindow::CloseTabByBrowserId] Found tab at index " << index_to_close
+                << " for browser_id " << browser_id << std::endl;
+
+      // Remove the notebook page
+      gtk_notebook_remove_page(GTK_NOTEBOOK(notebook_), index_to_close);
+
+      // Remove from tabs vector
+      tabs_.erase(it);
+
+      // Check if we closed the last tab
+      should_close_window = tabs_.empty();
+
+      // Adjust active tab index if needed
+      if (!should_close_window && active_tab_index_ >= tabs_.size()) {
+        active_tab_index_ = tabs_.size() - 1;
+      }
+
+      new_active_index = active_tab_index_;
+    }
+  }
+
+  if (!found) {
+    std::cerr << "[GtkWindow::CloseTabByBrowserId] Tab with browser_id " << browser_id
+              << " not found" << std::endl;
+    return;
+  }
+
+  // Close the browser instance (outside lock)
+  if (engine_ && browser_id != 0) {
+    engine_->CloseBrowser(browser_id, false);
+  }
+
+  // If we closed the last tab, close the window
+  if (should_close_window) {
+    std::cout << "[GtkWindow::CloseTabByBrowserId] No tabs left, closing window" << std::endl;
+    Close();
+    return;
+  }
+
+  // Switch to the new active tab (outside lock to avoid deadlock)
+  SwitchToTab(new_active_index);
+}
+
+void GtkWindow::SwitchToTab(size_t index) {
+  std::lock_guard<std::mutex> lock(tabs_mutex_);
+  if (index >= tabs_.size()) {
+    std::cerr << "[GtkWindow::SwitchToTab] Invalid tab index: " << index << std::endl;
+    return;
+  }
+
+  std::cout << "[GtkWindow::SwitchToTab] Switching to tab " << index << std::endl;
+
+  active_tab_index_ = index;
+  Tab& tab = tabs_[index];
+
+  // Update address bar and navigation buttons
+  UpdateAddressBar(tab.url);
+  UpdateNavigationButtons(tab.is_loading, tab.can_go_back, tab.can_go_forward);
+
+  // Set focus to the browser
+  if (tab.cef_client && tab.cef_client->GetBrowser()) {
+    tab.cef_client->GetBrowser()->GetHost()->SetFocus(has_focus_);
+  }
+
+  // Request a render to show the new tab's content
+  if (gl_area_) {
+    gtk_gl_area_queue_render(GTK_GL_AREA(gl_area_));
+  }
+
+  std::cout << "[GtkWindow::SwitchToTab] Switched to tab " << index
+            << ", URL: " << tab.url << std::endl;
+}
+
+size_t GtkWindow::GetTabCount() const {
+  std::lock_guard<std::mutex> lock(tabs_mutex_);
+  return tabs_.size();
+}
+
+size_t GtkWindow::GetActiveTabIndex() const {
+  std::lock_guard<std::mutex> lock(tabs_mutex_);
+  return active_tab_index_;
+}
+
+Tab* GtkWindow::GetActiveTab() {
+  std::lock_guard<std::mutex> lock(tabs_mutex_);
+  if (active_tab_index_ < tabs_.size()) {
+    return &tabs_[active_tab_index_];
+  }
+  return nullptr;
+}
+
+void GtkWindow::OnTabSwitch(int page_num) {
+  std::cout << "[GtkWindow::OnTabSwitch] Tab switched to page: " << page_num << std::endl;
+  if (page_num >= 0) {
+    size_t tab_count = GetTabCount();  // Thread-safe
+    if (static_cast<size_t>(page_num) < tab_count) {
+      SwitchToTab(static_cast<size_t>(page_num));
+    }
+  }
+}
+
+void GtkWindow::OnNewTabClicked() {
+  std::cout << "[GtkWindow::OnNewTabClicked] Creating new tab" << std::endl;
+  CreateTab("https://www.google.com");
+}
+
+void GtkWindow::OnCloseTabClicked(size_t tab_index) {
+  std::cout << "[GtkWindow::OnCloseTabClicked] Closing tab: " << tab_index << std::endl;
+  CloseTab(tab_index);
 }
 
 // ============================================================================

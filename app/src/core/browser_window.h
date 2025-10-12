@@ -249,10 +249,11 @@ class BrowserWindow {
 
   // Owned resources
   std::unique_ptr<platform::Window> window_;
-  browser::BrowserId browser_id_;
+  // Note: browser_id is no longer tracked here - we delegate to the window's active tab
 
   // State
   bool initialized_;
+  bool browser_closed_;  // Track if we've already closed the browser
 
   // Internal initialization
   utils::Result<void> Initialize();

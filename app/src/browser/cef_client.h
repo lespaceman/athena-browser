@@ -151,6 +151,14 @@ class CefClient : public ::CefClient,
     on_loading_state_change_ = std::move(callback);
   }
 
+  /**
+   * Set callback for title changes.
+   * Called when the page title changes.
+   */
+  void SetTitleChangeCallback(std::function<void(const std::string&)> callback) {
+    on_title_change_ = std::move(callback);
+  }
+
  private:
   void* native_window_;              // Platform-specific window handle (non-owning)
   CefRefPtr<::CefBrowser> browser_;  // CEF browser instance
@@ -162,6 +170,7 @@ class CefClient : public ::CefClient,
   // Callbacks for UI updates
   std::function<void(const std::string&)> on_address_change_;         // URL changed
   std::function<void(bool, bool, bool)> on_loading_state_change_;     // Loading state changed
+  std::function<void(const std::string&)> on_title_change_;           // Title changed
 
   IMPLEMENT_REFCOUNTING(CefClient);
 };

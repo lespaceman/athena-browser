@@ -15,9 +15,11 @@ namespace testing {
  */
 class MockWindow : public Window {
  public:
-  MockWindow(const WindowConfig& config, const WindowCallbacks& callbacks)
+  MockWindow(const WindowConfig& config, const WindowCallbacks& callbacks,
+             browser::BrowserEngine* engine)
       : config_(config),
         callbacks_(callbacks),
+        engine_(engine),
         visible_(false),
         has_focus_(false),
         closed_(false),
@@ -57,7 +59,30 @@ class MockWindow : public Window {
   // Window State
   bool IsVisible() const override { return visible_; }
 
-  void Show() override { visible_ = true; }
+  void Show() override {
+    visible_ = true;
+    // Simulate tab creation like GtkWindow::OnRealize()
+    // Create a browser if we don't already have one
+    if (browser_id_ == 0 && engine_ && engine_->IsInitialized()) {
+      browser::BrowserConfig browser_config;
+      browser_config.url = config_.url;
+      browser_config.width = config_.size.width;
+      browser_config.height = config_.size.height;
+      browser_config.device_scale_factor = scale_factor_;
+      browser_config.gl_renderer = GetGLRenderer();
+      browser_config.native_window_handle = render_widget_;
+
+      auto result = engine_->CreateBrowser(browser_config);
+      if (result.IsOk()) {
+        browser_id_ = result.Value();
+
+        // Load initial URL if provided
+        if (!config_.url.empty()) {
+          engine_->LoadURL(browser_id_, config_.url);
+        }
+      }
+    }
+  }
 
   void Hide() override { visible_ = false; }
 
@@ -108,6 +133,7 @@ class MockWindow : public Window {
  private:
   WindowConfig config_;
   WindowCallbacks callbacks_;
+  browser::BrowserEngine* engine_;  // Non-owning
   bool visible_;
   bool has_focus_;
   bool closed_;
@@ -156,7 +182,7 @@ class MockWindowSystem : public WindowSystem {
       return utils::Error("WindowSystem not initialized");
     }
 
-    auto window = std::make_unique<MockWindow>(config, callbacks);
+    auto window = std::make_unique<MockWindow>(config, callbacks, engine_);
     auto* window_ptr = window.get();
     windows_[window_ptr] = window_ptr;
 

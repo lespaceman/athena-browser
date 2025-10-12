@@ -17,18 +17,21 @@ BrowserWindow::BrowserWindow(const BrowserWindowConfig& config,
       window_system_(window_system),
       browser_engine_(browser_engine),
       window_(nullptr),
-      browser_id_(browser::kInvalidBrowserId),
-      initialized_(false) {
+      initialized_(false),
+      browser_closed_(false) {
   logger.Debug("BrowserWindow::BrowserWindow - Creating browser window");
 }
 
 BrowserWindow::~BrowserWindow() {
   logger.Debug("BrowserWindow::~BrowserWindow - Destroying browser window");
 
-  // Clean up browser first
-  if (browser_id_ != browser::kInvalidBrowserId && browser_engine_) {
-    browser_engine_->CloseBrowser(browser_id_, true);
-    browser_id_ = browser::kInvalidBrowserId;
+  // If the browser wasn't explicitly closed, close it now
+  // This ensures all tabs are properly cleaned up
+  if (!browser_closed_) {
+    auto browser_id = GetBrowserId();
+    if (browser_id != browser::kInvalidBrowserId && browser_engine_) {
+      browser_engine_->CloseBrowser(browser_id, true);
+    }
   }
 
   // Window is automatically destroyed (RAII)
@@ -67,13 +70,14 @@ void BrowserWindow::Hide() {
 void BrowserWindow::Close(bool force) {
   logger.Debug("BrowserWindow::Close - Closing window");
 
-  // Close browser first
-  if (browser_id_ != browser::kInvalidBrowserId && browser_engine_) {
-    browser_engine_->CloseBrowser(browser_id_, force);
-    browser_id_ = browser::kInvalidBrowserId;
+  // Close browser first (get active browser from window)
+  auto browser_id = GetBrowserId();
+  if (browser_id != browser::kInvalidBrowserId && browser_engine_) {
+    browser_engine_->CloseBrowser(browser_id, force);
+    browser_closed_ = true;  // Mark browser as closed
   }
 
-  // Close window (this will trigger on_close callback)
+  // Close window (this will trigger on_close callback and close all tabs)
   if (window_) {
     window_->Close(force);
   }
@@ -114,9 +118,10 @@ void BrowserWindow::SetSize(const Size& size) {
   if (window_) {
     window_->SetSize(size);
 
-    // Notify browser of size change
-    if (browser_id_ != browser::kInvalidBrowserId && browser_engine_) {
-      browser_engine_->SetSize(browser_id_, size.width, size.height);
+    // Notify browser of size change (get active browser from window)
+    auto browser_id = GetBrowserId();
+    if (browser_id != browser::kInvalidBrowserId && browser_engine_) {
+      browser_engine_->SetSize(browser_id, size.width, size.height);
     }
   }
 }
@@ -153,44 +158,49 @@ void BrowserWindow::Focus() {
 // ============================================================================
 
 void BrowserWindow::LoadURL(const std::string& url) {
-  if (browser_id_ == browser::kInvalidBrowserId || !browser_engine_) {
+  auto browser_id = GetBrowserId();
+  if (browser_id == browser::kInvalidBrowserId || !browser_engine_) {
     logger.Error("BrowserWindow::LoadURL - Browser not initialized");
     return;
   }
 
-  browser_engine_->LoadURL(browser_id_, url);
+  browser_engine_->LoadURL(browser_id, url);
 }
 
 void BrowserWindow::GoBack() {
-  if (browser_id_ == browser::kInvalidBrowserId || !browser_engine_) {
+  auto browser_id = GetBrowserId();
+  if (browser_id == browser::kInvalidBrowserId || !browser_engine_) {
     return;
   }
 
-  browser_engine_->GoBack(browser_id_);
+  browser_engine_->GoBack(browser_id);
 }
 
 void BrowserWindow::GoForward() {
-  if (browser_id_ == browser::kInvalidBrowserId || !browser_engine_) {
+  auto browser_id = GetBrowserId();
+  if (browser_id == browser::kInvalidBrowserId || !browser_engine_) {
     return;
   }
 
-  browser_engine_->GoForward(browser_id_);
+  browser_engine_->GoForward(browser_id);
 }
 
 void BrowserWindow::Reload(bool ignore_cache) {
-  if (browser_id_ == browser::kInvalidBrowserId || !browser_engine_) {
+  auto browser_id = GetBrowserId();
+  if (browser_id == browser::kInvalidBrowserId || !browser_engine_) {
     return;
   }
 
-  browser_engine_->Reload(browser_id_, ignore_cache);
+  browser_engine_->Reload(browser_id, ignore_cache);
 }
 
 void BrowserWindow::StopLoad() {
-  if (browser_id_ == browser::kInvalidBrowserId || !browser_engine_) {
+  auto browser_id = GetBrowserId();
+  if (browser_id == browser::kInvalidBrowserId || !browser_engine_) {
     return;
   }
 
-  browser_engine_->StopLoad(browser_id_);
+  browser_engine_->StopLoad(browser_id);
 }
 
 // ============================================================================
@@ -198,35 +208,39 @@ void BrowserWindow::StopLoad() {
 // ============================================================================
 
 bool BrowserWindow::CanGoBack() const {
-  if (browser_id_ == browser::kInvalidBrowserId || !browser_engine_) {
+  auto browser_id = GetBrowserId();
+  if (browser_id == browser::kInvalidBrowserId || !browser_engine_) {
     return false;
   }
 
-  return browser_engine_->CanGoBack(browser_id_);
+  return browser_engine_->CanGoBack(browser_id);
 }
 
 bool BrowserWindow::CanGoForward() const {
-  if (browser_id_ == browser::kInvalidBrowserId || !browser_engine_) {
+  auto browser_id = GetBrowserId();
+  if (browser_id == browser::kInvalidBrowserId || !browser_engine_) {
     return false;
   }
 
-  return browser_engine_->CanGoForward(browser_id_);
+  return browser_engine_->CanGoForward(browser_id);
 }
 
 bool BrowserWindow::IsLoading() const {
-  if (browser_id_ == browser::kInvalidBrowserId || !browser_engine_) {
+  auto browser_id = GetBrowserId();
+  if (browser_id == browser::kInvalidBrowserId || !browser_engine_) {
     return false;
   }
 
-  return browser_engine_->IsLoading(browser_id_);
+  return browser_engine_->IsLoading(browser_id);
 }
 
 std::string BrowserWindow::GetURL() const {
-  if (browser_id_ == browser::kInvalidBrowserId || !browser_engine_) {
+  auto browser_id = GetBrowserId();
+  if (browser_id == browser::kInvalidBrowserId || !browser_engine_) {
     return "";
   }
 
-  return browser_engine_->GetURL(browser_id_);
+  return browser_engine_->GetURL(browser_id);
 }
 
 // ============================================================================
@@ -234,7 +248,11 @@ std::string BrowserWindow::GetURL() const {
 // ============================================================================
 
 browser::BrowserId BrowserWindow::GetBrowserId() const {
-  return browser_id_;
+  // Delegate to the window to get the active tab's browser ID
+  if (window_) {
+    return window_->GetBrowser();
+  }
+  return browser::kInvalidBrowserId;
 }
 
 platform::Window* BrowserWindow::GetWindow() const {
@@ -282,9 +300,10 @@ utils::Result<void> BrowserWindow::Initialize() {
 
   // Assign callbacks
   window_callbacks.on_resize = [this](int width, int height) {
-    // Notify browser of size change
-    if (browser_id_ != browser::kInvalidBrowserId && browser_engine_) {
-      browser_engine_->SetSize(browser_id_, width, height);
+    // Notify browser of size change (get active browser from window)
+    auto browser_id = GetBrowserId();
+    if (browser_id != browser::kInvalidBrowserId && browser_engine_) {
+      browser_engine_->SetSize(browser_id, width, height);
     }
 
     // Forward to user callback
@@ -311,9 +330,10 @@ utils::Result<void> BrowserWindow::Initialize() {
   };
 
   window_callbacks.on_focus_changed = [this](bool focused) {
-    // Notify browser of focus change
-    if (browser_id_ != browser::kInvalidBrowserId && browser_engine_) {
-      browser_engine_->SetFocus(browser_id_, focused);
+    // Notify browser of focus change (get active browser from window)
+    auto browser_id = GetBrowserId();
+    if (browser_id != browser::kInvalidBrowserId && browser_engine_) {
+      browser_engine_->SetFocus(browser_id, focused);
     }
 
     // Forward to user callback

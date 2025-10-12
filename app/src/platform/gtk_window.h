@@ -4,6 +4,7 @@
 #include "platform/window_system.h"
 #include <gtk/gtk.h>
 #include <memory>
+#include <mutex>
 
 namespace athena {
 namespace rendering {
@@ -18,15 +19,31 @@ namespace browser {
 namespace platform {
 
 /**
- * GTK-based window implementation.
+ * Represents a single browser tab.
+ */
+struct Tab {
+  browser::BrowserId browser_id;       // Browser instance ID
+  browser::CefClient* cef_client;      // Non-owning pointer to CefClient
+  GtkWidget* tab_label;                // Tab label widget (for notebook)
+  GtkWidget* close_button;             // Close button for this tab
+  std::string title;                   // Page title
+  std::string url;                     // Current URL
+  bool is_loading;                     // Loading state
+  bool can_go_back;                    // Can navigate back
+  bool can_go_forward;                 // Can navigate forward
+};
+
+/**
+ * GTK-based window implementation with multi-tab support.
  *
  * This class wraps GTK window management and integrates with:
- *   - CEF browser engine for rendering
- *   - GLRenderer for OpenGL rendering
+ *   - CEF browser engine for rendering (multiple browser instances)
+ *   - GLRenderer for OpenGL rendering (shared across tabs)
  *   - Input event handling (mouse, keyboard, focus)
+ *   - Tab management (create, close, switch)
  *
  * Architecture:
- *   GtkWindow (this) -> GtkGLArea (rendering widget) -> GLRenderer -> CEF
+ *   GtkWindow (this) -> GtkNotebook (tabs) -> Multiple browsers -> Shared GLRenderer
  */
 class GtkWindow : public Window {
  public:
@@ -100,10 +117,11 @@ class GtkWindow : public Window {
   rendering::GLRenderer* GetGLRenderer() const { return gl_renderer_.get(); }
 
   /**
-   * Get the CefClient instance.
-   * Returns nullptr if no browser is associated.
+   * Get the CefClient instance for the active tab.
+   * Returns nullptr if no tabs exist or no browser is associated.
+   * Thread-safe: uses tabs_mutex_ for access.
    */
-  browser::CefClient* GetCefClient() const { return cef_client_; }
+  browser::CefClient* GetCefClient() const;
 
   /**
    * Called when the GL area is realized (OpenGL context created).
@@ -179,6 +197,66 @@ class GtkWindow : public Window {
    */
   void StopLoad();
 
+  // ============================================================================
+  // Tab Management
+  // ============================================================================
+
+  /**
+   * Create a new tab with the given URL.
+   * @param url URL to load in the new tab
+   * @return Index of the created tab, or -1 on error
+   */
+  int CreateTab(const std::string& url);
+
+  /**
+   * Close a tab at the given index.
+   * @param index Tab index to close
+   */
+  void CloseTab(size_t index);
+
+  /**
+   * Close a tab by browser ID.
+   * @param browser_id Browser ID of the tab to close
+   */
+  void CloseTabByBrowserId(browser::BrowserId browser_id);
+
+  /**
+   * Switch to a tab at the given index.
+   * @param index Tab index to switch to
+   */
+  void SwitchToTab(size_t index);
+
+  /**
+   * Get the number of tabs.
+   */
+  size_t GetTabCount() const;
+
+  /**
+   * Get the active tab index.
+   */
+  size_t GetActiveTabIndex() const;
+
+  /**
+   * Get the active tab.
+   * @return Pointer to active tab, or nullptr if no tabs exist
+   */
+  Tab* GetActiveTab();
+
+  /**
+   * Called when the notebook tab is switched.
+   */
+  void OnTabSwitch(int page_num);
+
+  /**
+   * Called when the new tab button is clicked.
+   */
+  void OnNewTabClicked();
+
+  /**
+   * Called when a tab's close button is clicked.
+   */
+  void OnCloseTabClicked(size_t tab_index);
+
   // Friend functions for GTK idle callbacks
   friend gboolean update_address_bar_idle(gpointer user_data);
   friend gboolean update_navigation_buttons_idle(gpointer user_data);
@@ -188,7 +266,6 @@ class GtkWindow : public Window {
   WindowConfig config_;
   WindowCallbacks callbacks_;
   browser::BrowserEngine* engine_;  // Non-owning
-  browser::BrowserId browser_id_;
   bool closed_;
   bool visible_;
   bool has_focus_;
@@ -202,11 +279,17 @@ class GtkWindow : public Window {
   GtkWidget* reload_button_;
   GtkWidget* stop_button_;
   GtkWidget* address_entry_;  // URL input field
-  GtkWidget* gl_area_;     // GtkGLArea (rendering widget)
+  GtkWidget* notebook_;    // GtkNotebook (tab container)
+  GtkWidget* new_tab_button_;  // New tab button
+  GtkWidget* gl_area_;     // GtkGLArea (rendering widget) - shared across tabs
+
+  // Tab management
+  std::vector<Tab> tabs_;         // All open tabs
+  size_t active_tab_index_;       // Index of currently active tab
+  mutable std::mutex tabs_mutex_; // Protects tabs_ and active_tab_index_
 
   // Rendering components
   std::unique_ptr<rendering::GLRenderer> gl_renderer_;
-  browser::CefClient* cef_client_;  // Non-owning (managed by CEF)
 
   /**
    * Initialize the GTK window and widgets.

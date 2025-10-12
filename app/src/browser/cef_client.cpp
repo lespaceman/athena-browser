@@ -48,15 +48,13 @@ void CefClient::OnBeforeClose(CefRefPtr<::CefBrowser> browser) {
 // ============================================================================
 
 void CefClient::OnTitleChange(CefRefPtr<::CefBrowser> browser, const CefString& title) {
-  // Update window title if native_window is a GTK widget
-  if (!native_window_) {
-    return;
-  }
+  (void)browser;
+  CEF_REQUIRE_UI_THREAD();
 
-  GtkWidget* widget = static_cast<GtkWidget*>(native_window_);
-  GtkWidget* window = gtk_widget_get_toplevel(widget);
-  if (window && GTK_IS_WINDOW(window)) {
-    gtk_window_set_title(GTK_WINDOW(window), title.ToString().c_str());
+  // Call the title change callback if set
+  // With tabs, the window should update the tab label, not the window title
+  if (on_title_change_) {
+    on_title_change_(title.ToString());
   }
 }
 
