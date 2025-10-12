@@ -10,16 +10,16 @@ using namespace athena::utils;
 TEST(LoggerTest, DefaultConstructor) {
   Logger logger("test");
   EXPECT_EQ(logger.GetName(), "test");
-  EXPECT_EQ(logger.GetLevel(), LogLevel::INFO);
+  EXPECT_EQ(logger.GetLevel(), LogLevel::kInfo);
 }
 
 TEST(LoggerTest, SetLevel) {
   Logger logger("test");
-  logger.SetLevel(LogLevel::DEBUG);
-  EXPECT_EQ(logger.GetLevel(), LogLevel::DEBUG);
+  logger.SetLevel(LogLevel::kDebug);
+  EXPECT_EQ(logger.GetLevel(), LogLevel::kDebug);
 
-  logger.SetLevel(LogLevel::ERROR);
-  EXPECT_EQ(logger.GetLevel(), LogLevel::ERROR);
+  logger.SetLevel(LogLevel::kError);
+  EXPECT_EQ(logger.GetLevel(), LogLevel::kError);
 }
 
 TEST(LoggerTest, SimpleLogging) {
@@ -45,7 +45,7 @@ TEST(LoggerTest, FormattedLogging) {
 
 TEST(LoggerTest, LevelFiltering) {
   Logger logger("test");
-  logger.SetLevel(LogLevel::WARN);
+  logger.SetLevel(LogLevel::kWarn);
   logger.EnableConsoleOutput(false);
 
   // These should be filtered out (below WARN level)
@@ -65,7 +65,7 @@ TEST(LoggerTest, FileOutput) {
 
   {
     Logger logger("test");
-    logger.SetLevel(LogLevel::INFO);
+    logger.SetLevel(LogLevel::kInfo);
     logger.EnableConsoleOutput(false);
     logger.EnableFileOutput(true);
     logger.SetOutputFile(test_file);

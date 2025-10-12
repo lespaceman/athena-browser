@@ -44,13 +44,17 @@ GtkWindow::GtkWindow(const WindowConfig& config,
 }
 
 GtkWindow::~GtkWindow() {
-  if (gl_renderer_) {
-    gl_renderer_->Cleanup();
-  }
-
   if (window_ && !closed_) {
     gtk_widget_destroy(window_);
   }
+}
+
+rendering::GLRenderer* GtkWindow::GetGLRenderer() const {
+  std::lock_guard<std::mutex> lock(tabs_mutex_);
+  if (active_tab_index_ < tabs_.size()) {
+    return tabs_[active_tab_index_].renderer.get();
+  }
+  return nullptr;
 }
 
 void GtkWindow::InitializeWindow() {
@@ -310,27 +314,18 @@ void GtkWindow::OnGLRealize() {
     return;
   }
 
-  gl_renderer_ = std::make_unique<rendering::GLRenderer>();
-  auto result = gl_renderer_->Initialize(gl_area_);
-
-  if (!result) {
-    std::cerr << "[GtkWindow] Failed to initialize GLRenderer: "
-              << result.GetError().Message() << std::endl;
-    gl_renderer_.reset();
-    return;
-  }
-
-  std::cout << "[GtkWindow] OpenGL renderer initialized successfully" << std::endl;
+  std::cout << "[GtkWindow] OpenGL context realized successfully" << std::endl;
 }
 
 gboolean GtkWindow::OnGLRender() {
-  if (!gl_renderer_) {
+  rendering::GLRenderer* renderer = GetGLRenderer();
+  if (!renderer) {
     glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     return TRUE;
   }
 
-  auto result = gl_renderer_->Render();
+  auto result = renderer->Render();
   if (!result) {
     std::cerr << "[GtkWindow] Render failed: " << result.GetError().Message() << std::endl;
     return FALSE;
@@ -340,12 +335,7 @@ gboolean GtkWindow::OnGLRender() {
 }
 
 void GtkWindow::OnRealize() {
-  if (!gl_renderer_) {
-    std::cerr << "[GtkWindow] GLRenderer not initialized! OnGLRealize should have been called first." << std::endl;
-    return;
-  }
-
-  std::cout << "[GtkWindow] Window realized, GLRenderer ready" << std::endl;
+  std::cout << "[GtkWindow] Window realized, ready to create initial tab" << std::endl;
 
   // Create the initial tab now that the window is realized and GLRenderer is available
   // Use the URL from the config
@@ -512,6 +502,25 @@ void GtkWindow::UpdateNavigationButtons(bool is_loading, bool can_go_back, bool 
   // Thread-safe: marshal to GTK main thread using g_idle_add
   auto* data = new NavigationButtonsUpdateData{this, is_loading, can_go_back, can_go_forward};
   g_idle_add(update_navigation_buttons_idle, data);
+}
+
+void GtkWindow::HandleTabRenderInvalidated(
+    browser::BrowserId browser_id,
+    CefRenderHandler::PaintElementType type) {
+  (void)type;
+
+  bool should_render = false;
+  {
+    std::lock_guard<std::mutex> lock(tabs_mutex_);
+    if (active_tab_index_ < tabs_.size() &&
+        tabs_[active_tab_index_].browser_id == browser_id) {
+      should_render = true;
+    }
+  }
+
+  if (should_render && gl_area_) {
+    gtk_gl_area_queue_render(GTK_GL_AREA(gl_area_));
+  }
 }
 
 // ============================================================================

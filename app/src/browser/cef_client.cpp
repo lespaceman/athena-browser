@@ -84,6 +84,27 @@ void CefClient::OnLoadingStateChange(CefRefPtr<::CefBrowser> browser,
   }
 }
 
+void CefClient::OnPopupShow(CefRefPtr<::CefBrowser> browser, bool show) {
+  CEF_REQUIRE_UI_THREAD();
+
+  if (!gl_renderer_) {
+    return;
+  }
+
+  gl_renderer_->OnPopupShow(browser, show);
+}
+
+void CefClient::OnPopupSize(CefRefPtr<::CefBrowser> browser, const CefRect& rect) {
+  CEF_REQUIRE_UI_THREAD();
+
+  if (!gl_renderer_) {
+    return;
+  }
+
+  core::Rect popup_rect{rect.x, rect.y, rect.width, rect.height};
+  gl_renderer_->OnPopupSize(browser, popup_rect);
+}
+
 // ============================================================================
 // CefRenderHandler methods
 // ============================================================================
@@ -119,6 +140,10 @@ void CefClient::OnPaint(CefRefPtr<::CefBrowser> browser,
 
   // Forward to GLRenderer which handles OpenGL texture updates
   gl_renderer_->OnPaint(browser, type, dirtyRects, buffer, width, height);
+
+  if (on_render_invalidated_) {
+    on_render_invalidated_(type);
+  }
 }
 
 // ============================================================================

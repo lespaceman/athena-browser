@@ -202,6 +202,11 @@ static gboolean on_button_press(GtkWidget* widget, GdkEventButton* event,
   GtkWindow* window = GetWindowFromUserData(user_data);
   if (!window || !window->GetCefClient()) return FALSE;
 
+  // Ensure the GL area gains keyboard focus when the user clicks into the page.
+  if (gtk_widget_get_can_focus(widget)) {
+    gtk_widget_grab_focus(widget);
+  }
+
   auto* client = window->GetCefClient();
   auto browser = client->GetBrowser();
   if (!browser) return FALSE;

@@ -12,6 +12,29 @@
 namespace athena {
 namespace rendering {
 
+namespace {
+
+class ScopedGLContext {
+ public:
+  explicit ScopedGLContext(GtkWidget* gl_area)
+      : gl_area_(gl_area), valid_(false) {
+    if (!gl_area_) {
+      return;
+    }
+
+    gtk_gl_area_make_current(GTK_GL_AREA(gl_area_));
+    valid_ = gtk_gl_area_get_error(GTK_GL_AREA(gl_area_)) == nullptr;
+  }
+
+  bool IsValid() const { return valid_; }
+
+ private:
+  GtkWidget* gl_area_;
+  bool valid_;
+};
+
+}  // namespace
+
 GLRenderer::GLRenderer()
     : gl_area_(nullptr),
       osr_renderer_(nullptr),
@@ -31,6 +54,10 @@ GLRenderer::~GLRenderer() {
 }
 
 utils::Result<void> GLRenderer::Initialize(GtkWidget* gl_area) {
+  if (initialized_) {
+    return utils::Error("Renderer already initialized");
+  }
+
   if (!gl_area) {
     return utils::Error("gl_area cannot be null");
   }
@@ -39,18 +66,12 @@ utils::Result<void> GLRenderer::Initialize(GtkWidget* gl_area) {
     return utils::Error("widget must be a GtkGLArea");
   }
 
-  gl_area_ = gl_area;
-
-  // Make the GL context current (should already be current in realize callback)
-  gtk_gl_area_make_current(GTK_GL_AREA(gl_area_));
-
-  // Check for GL errors
-  GError* error = gtk_gl_area_get_error(GTK_GL_AREA(gl_area_));
-  if (error != nullptr) {
-    std::string error_msg = "OpenGL context error: ";
-    error_msg += error->message;
-    return utils::Error(error_msg);
+  ScopedGLContext context(gl_area);
+  if (!context.IsValid()) {
+    return utils::Error("Failed to make GL context current for renderer initialization");
   }
+
+  gl_area_ = gl_area;
 
   // Create CEF's OsrRenderer
   osr_renderer_ = std::make_unique<client::OsrRenderer>(settings_);
@@ -71,11 +92,10 @@ void GLRenderer::Cleanup() {
   }
 
   if (osr_renderer_) {
-    // Make context current before cleanup
-    if (gl_area_) {
-      gtk_gl_area_make_current(GTK_GL_AREA(gl_area_));
+    ScopedGLContext context(gl_area_);
+    if (!context.IsValid()) {
+      std::cerr << "[GLRenderer] Warning: GL context invalid during cleanup" << std::endl;
     }
-
     osr_renderer_->Cleanup();
     osr_renderer_.reset();
   }
@@ -97,13 +117,14 @@ void GLRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
     return;
   }
 
+  ScopedGLContext context(gl_area_);
+  if (!context.IsValid()) {
+    std::cerr << "[GLRenderer] Warning: Unable to make GL context current during OnPaint" << std::endl;
+    return;
+  }
+
   // Forward to CEF's OsrRenderer which will update the GL texture
   osr_renderer_->OnPaint(browser, type, dirty_rects, buffer, width, height);
-
-  // Queue a render pass
-  if (gl_area_) {
-    gtk_gl_area_queue_render(GTK_GL_AREA(gl_area_));
-  }
 }
 
 void GLRenderer::OnPopupShow(CefRefPtr<CefBrowser> browser, bool show) {

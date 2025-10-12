@@ -2,6 +2,8 @@
 #include "browser/browser_engine.h"
 #include "browser/cef_engine.h"
 #include "browser/cef_client.h"
+#include "rendering/gl_renderer.h"
+#include "include/cef_render_handler.h"
 
 #include <iostream>
 #include <algorithm>
@@ -61,8 +63,8 @@ static gboolean on_tab_button_press(GtkWidget* widget, GdkEventButton* event, gp
 // ============================================================================
 
 int GtkWindow::CreateTab(const std::string& url) {
-  if (!gl_renderer_) {
-    std::cerr << "[GtkWindow::CreateTab] GLRenderer not initialized" << std::endl;
+  if (!gl_area_) {
+    std::cerr << "[GtkWindow::CreateTab] GL area not initialized" << std::endl;
     return -1;
   }
 
@@ -84,15 +86,30 @@ int GtkWindow::CreateTab(const std::string& url) {
   tab.tab_label = nullptr;   // Initialize GTK pointers too
   tab.close_button = nullptr;
 
+  // Each tab owns its own GL renderer so it can maintain an independent
+  // backing surface that stays valid while the tab is inactive.
+  tab.renderer = std::make_unique<rendering::GLRenderer>();
+  auto renderer_init = tab.renderer->Initialize(gl_area_);
+  if (!renderer_init) {
+    std::cerr << "[GtkWindow::CreateTab] Failed to initialize GL surface: "
+              << renderer_init.GetError().Message() << std::endl;
+    return -1;
+  }
+  GtkAllocation allocation;
+  gtk_widget_get_allocation(gl_area_, &allocation);
+  int surface_width = allocation.width > 0 ? allocation.width : config_.size.width;
+  int surface_height = allocation.height > 0 ? allocation.height : config_.size.height;
+  tab.renderer->SetViewSize(surface_width, surface_height);
+
   // Create browser instance
   float scale_factor = static_cast<float>(gtk_widget_get_scale_factor(gl_area_));
 
   browser::BrowserConfig browser_config;
   browser_config.url = url;
-  browser_config.width = config_.size.width;
-  browser_config.height = config_.size.height;
+  browser_config.width = surface_width;
+  browser_config.height = surface_height;
   browser_config.device_scale_factor = scale_factor;
-  browser_config.gl_renderer = gl_renderer_.get();
+  browser_config.gl_renderer = tab.renderer.get();
   browser_config.native_window_handle = gl_area_;
 
   auto result = engine_->CreateBrowser(browser_config);
@@ -181,6 +198,11 @@ int GtkWindow::CreateTab(const std::string& url) {
         }
       });
 
+      tab.cef_client->SetRenderInvalidatedCallback(
+          [this, bid](CefRenderHandler::PaintElementType type) {
+            this->HandleTabRenderInvalidated(bid, type);
+          });
+
       std::cout << "[GtkWindow::CreateTab] Callbacks wired for browser_id " << bid << std::endl;
     }
   }
@@ -217,7 +239,7 @@ int GtkWindow::CreateTab(const std::string& url) {
   size_t new_tab_index;
   {
     std::lock_guard<std::mutex> lock(tabs_mutex_);
-    tabs_.push_back(tab);
+    tabs_.push_back(std::move(tab));
     new_tab_index = tabs_.size() - 1;
   }
 
@@ -245,6 +267,8 @@ void GtkWindow::CloseTab(size_t index) {
   browser::BrowserId browser_to_close = 0;
   size_t new_active_index = 0;
   bool should_close_window = false;
+  std::unique_ptr<rendering::GLRenderer> renderer_to_destroy;
+  browser::CefClient* client_to_hide = nullptr;
 
   {
     std::lock_guard<std::mutex> lock(tabs_mutex_);
@@ -256,6 +280,8 @@ void GtkWindow::CloseTab(size_t index) {
     std::cout << "[GtkWindow::CloseTab] Closing tab " << index << std::endl;
 
     browser_to_close = tabs_[index].browser_id;
+    renderer_to_destroy = std::move(tabs_[index].renderer);
+    client_to_hide = tabs_[index].cef_client;
 
     // CRITICAL: Block "switch-page" signal to prevent reentrant locking
     // gtk_notebook_remove_page() triggers switch-page, which calls SwitchToTab()
@@ -286,6 +312,14 @@ void GtkWindow::CloseTab(size_t index) {
     new_active_index = active_tab_index_;
   }
 
+  if (client_to_hide && client_to_hide->GetBrowser()) {
+    client_to_hide->GetBrowser()->GetHost()->WasHidden(true);
+  }
+
+  if (renderer_to_destroy) {
+    renderer_to_destroy->Cleanup();
+  }
+
   // Close the browser instance (outside lock)
   if (engine_ && browser_to_close != 0) {
     engine_->CloseBrowser(browser_to_close, false);
@@ -307,6 +341,8 @@ void GtkWindow::CloseTabByBrowserId(browser::BrowserId browser_id) {
   bool found = false;
   size_t new_active_index = 0;
   bool should_close_window = false;
+  std::unique_ptr<rendering::GLRenderer> renderer_to_destroy;
+  browser::CefClient* client_to_hide = nullptr;
 
   {
     std::lock_guard<std::mutex> lock(tabs_mutex_);
@@ -332,6 +368,9 @@ void GtkWindow::CloseTabByBrowserId(browser::BrowserId browser_id) {
                                          G_SIGNAL_MATCH_DATA,
                                          0, 0, nullptr, nullptr, this);
 
+      renderer_to_destroy = std::move(it->renderer);
+      client_to_hide = it->cef_client;
+
       // Remove from tabs vector
       tabs_.erase(it);
 
@@ -353,6 +392,14 @@ void GtkWindow::CloseTabByBrowserId(browser::BrowserId browser_id) {
     return;
   }
 
+  if (client_to_hide && client_to_hide->GetBrowser()) {
+    client_to_hide->GetBrowser()->GetHost()->WasHidden(true);
+  }
+
+  if (renderer_to_destroy) {
+    renderer_to_destroy->Cleanup();
+  }
+
   // Close the browser instance (outside lock)
   if (engine_ && browser_id != 0) {
     engine_->CloseBrowser(browser_id, false);
@@ -370,33 +417,65 @@ void GtkWindow::CloseTabByBrowserId(browser::BrowserId browser_id) {
 }
 
 void GtkWindow::SwitchToTab(size_t index) {
-  std::lock_guard<std::mutex> lock(tabs_mutex_);
-  if (index >= tabs_.size()) {
-    std::cerr << "[GtkWindow::SwitchToTab] Invalid tab index: " << index << std::endl;
-    return;
+  browser::CefClient* client_to_show = nullptr;
+  browser::CefClient* client_to_hide = nullptr;
+  std::string url;
+  bool is_loading = false;
+  bool can_go_back = false;
+  bool can_go_forward = false;
+  bool index_changed = false;
+
+  {
+    std::lock_guard<std::mutex> lock(tabs_mutex_);
+    if (index >= tabs_.size()) {
+      std::cerr << "[GtkWindow::SwitchToTab] Invalid tab index: " << index << std::endl;
+      return;
+    }
+
+    size_t previous_index = active_tab_index_;
+    if (previous_index < tabs_.size()) {
+      client_to_hide = tabs_[previous_index].cef_client;
+    }
+
+    std::cout << "[GtkWindow::SwitchToTab] Switching to tab " << index << std::endl;
+
+    active_tab_index_ = index;
+    Tab& tab = tabs_[index];
+
+    client_to_show = tab.cef_client;
+    url = tab.url;
+    is_loading = tab.is_loading;
+    can_go_back = tab.can_go_back;
+    can_go_forward = tab.can_go_forward;
+
+    index_changed = (previous_index != index);
   }
 
-  std::cout << "[GtkWindow::SwitchToTab] Switching to tab " << index << std::endl;
+  UpdateAddressBar(url);
+  UpdateNavigationButtons(is_loading, can_go_back, can_go_forward);
 
-  active_tab_index_ = index;
-  Tab& tab = tabs_[index];
-
-  // Update address bar and navigation buttons
-  UpdateAddressBar(tab.url);
-  UpdateNavigationButtons(tab.is_loading, tab.can_go_back, tab.can_go_forward);
-
-  // Set focus to the browser
-  if (tab.cef_client && tab.cef_client->GetBrowser()) {
-    tab.cef_client->GetBrowser()->GetHost()->SetFocus(has_focus_);
+  if (index_changed && client_to_hide && client_to_hide != client_to_show) {
+    if (auto browser = client_to_hide->GetBrowser()) {
+      browser->GetHost()->WasHidden(true);
+    }
   }
 
-  // Request a render to show the new tab's content
+  if (client_to_show && client_to_show->GetBrowser()) {
+    auto host = client_to_show->GetBrowser()->GetHost();
+    host->WasHidden(false);
+    host->SetFocus(has_focus_);
+  }
+
+  if (gl_area_ && config_.enable_input) {
+    gtk_widget_grab_focus(gl_area_);
+  }
+
   if (gl_area_) {
     gtk_gl_area_queue_render(GTK_GL_AREA(gl_area_));
   }
 
   std::cout << "[GtkWindow::SwitchToTab] Switched to tab " << index
-            << ", URL: " << tab.url << std::endl;
+            << ", URL: " << url << std::endl;
 }
 
 size_t GtkWindow::GetTabCount() const {

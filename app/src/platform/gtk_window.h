@@ -5,6 +5,7 @@
 #include <gtk/gtk.h>
 #include <memory>
 #include <mutex>
+#include "include/cef_render_handler.h"
 
 namespace athena {
 namespace rendering {
@@ -31,6 +32,7 @@ struct Tab {
   bool is_loading;                     // Loading state
   bool can_go_back;                    // Can navigate back
   bool can_go_forward;                 // Can navigate forward
+  std::unique_ptr<rendering::GLRenderer> renderer;  // Dedicated renderer surface
 };
 
 /**
@@ -38,12 +40,14 @@ struct Tab {
  *
  * This class wraps GTK window management and integrates with:
  *   - CEF browser engine for rendering (multiple browser instances)
- *   - GLRenderer for OpenGL rendering (shared across tabs)
+ *   - GLRenderer for OpenGL rendering (each tab owns its own renderer)
  *   - Input event handling (mouse, keyboard, focus)
  *   - Tab management (create, close, switch)
  *
  * Architecture:
- *   GtkWindow (this) -> GtkNotebook (tabs) -> Multiple browsers -> Shared GLRenderer
+ *   GtkWindow (this) -> GtkNotebook (tabs) -> Multiple browsers
+ *                                           -> Each tab has its own GLRenderer
+ *   Only the active tab's renderer blits to the shared GtkGLArea
  */
 class GtkWindow : public Window {
  public:
@@ -114,7 +118,7 @@ class GtkWindow : public Window {
    * Get the GLRenderer instance.
    * Returns nullptr if not yet initialized.
    */
-  rendering::GLRenderer* GetGLRenderer() const { return gl_renderer_.get(); }
+  rendering::GLRenderer* GetGLRenderer() const override;
 
   /**
    * Get the CefClient instance for the active tab.
@@ -288,9 +292,6 @@ class GtkWindow : public Window {
   size_t active_tab_index_;       // Index of currently active tab
   mutable std::mutex tabs_mutex_; // Protects tabs_ and active_tab_index_
 
-  // Rendering components
-  std::unique_ptr<rendering::GLRenderer> gl_renderer_;
-
   /**
    * Initialize the GTK window and widgets.
    */
@@ -310,6 +311,12 @@ class GtkWindow : public Window {
    * Create the browser instance with CEF.
    */
   utils::Result<void> CreateBrowser(const std::string& url);
+
+  /**
+   * Queue a render for the active tab when its surface is invalidated.
+   */
+  void HandleTabRenderInvalidated(browser::BrowserId browser_id,
+                                  CefRenderHandler::PaintElementType type);
 };
 
 /**

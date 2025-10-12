@@ -8,7 +8,7 @@ static Logger* g_global_logger = nullptr;
 
 Logger::Logger(const std::string& name)
     : name_(name),
-      level_(LogLevel::INFO),
+      level_(LogLevel::kInfo),
       console_output_(true),
       file_output_(false) {
 }
@@ -48,23 +48,23 @@ void Logger::EnableFileOutput(bool enable) {
 }
 
 void Logger::Debug(const std::string& message) {
-  Log(LogLevel::DEBUG, message);
+  Log(LogLevel::kDebug, message);
 }
 
 void Logger::Info(const std::string& message) {
-  Log(LogLevel::INFO, message);
+  Log(LogLevel::kInfo, message);
 }
 
 void Logger::Warn(const std::string& message) {
-  Log(LogLevel::WARN, message);
+  Log(LogLevel::kWarn, message);
 }
 
 void Logger::Error(const std::string& message) {
-  Log(LogLevel::ERROR, message);
+  Log(LogLevel::kError, message);
 }
 
 void Logger::Fatal(const std::string& message) {
-  Log(LogLevel::FATAL, message);
+  Log(LogLevel::kFatal, message);
 }
 
 void Logger::Log(LogLevel level, const std::string& message) {
@@ -77,7 +77,7 @@ void Logger::Log(LogLevel level, const std::string& message) {
   std::lock_guard<std::mutex> lock(mutex_);
 
   if (console_output_) {
-    if (level >= LogLevel::ERROR) {
+    if (level >= LogLevel::kError) {
       std::cerr << log_line << std::endl;
     } else {
       std::cout << log_line << std::endl;
@@ -101,11 +101,11 @@ std::string Logger::FormatLogLine(LogLevel level, const std::string& message) {
 
 std::string Logger::LevelToString(LogLevel level) {
   switch (level) {
-    case LogLevel::DEBUG: return "DEBUG";
-    case LogLevel::INFO:  return "INFO";
-    case LogLevel::WARN:  return "WARN";
-    case LogLevel::ERROR: return "ERROR";
-    case LogLevel::FATAL: return "FATAL";
+    case LogLevel::kDebug: return "DEBUG";
+    case LogLevel::kInfo:  return "INFO";
+    case LogLevel::kWarn:  return "WARN";
+    case LogLevel::kError: return "ERROR";
+    case LogLevel::kFatal: return "FATAL";
     default: return "UNKNOWN";
   }
 }

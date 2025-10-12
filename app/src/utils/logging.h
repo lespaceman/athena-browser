@@ -14,11 +14,11 @@ namespace athena {
 namespace utils {
 
 enum class LogLevel {
-  DEBUG = 0,
-  INFO = 1,
-  WARN = 2,
-  ERROR = 3,
-  FATAL = 4
+  kDebug = 0,
+  kInfo = 1,
+  kWarn = 2,
+  kError = 3,
+  kFatal = 4
 };
 
 class Logger {
@@ -42,27 +42,27 @@ class Logger {
   // Template methods for formatting
   template<typename... Args>
   void Debug(const std::string& format, Args&&... args) {
-    Log(LogLevel::DEBUG, Format(format, std::forward<Args>(args)...));
+    Log(LogLevel::kDebug, Format(format, std::forward<Args>(args)...));
   }
 
   template<typename... Args>
   void Info(const std::string& format, Args&&... args) {
-    Log(LogLevel::INFO, Format(format, std::forward<Args>(args)...));
+    Log(LogLevel::kInfo, Format(format, std::forward<Args>(args)...));
   }
 
   template<typename... Args>
   void Warn(const std::string& format, Args&&... args) {
-    Log(LogLevel::WARN, Format(format, std::forward<Args>(args)...));
+    Log(LogLevel::kWarn, Format(format, std::forward<Args>(args)...));
   }
 
   template<typename... Args>
   void Error(const std::string& format, Args&&... args) {
-    Log(LogLevel::ERROR, Format(format, std::forward<Args>(args)...));
+    Log(LogLevel::kError, Format(format, std::forward<Args>(args)...));
   }
 
   template<typename... Args>
   void Fatal(const std::string& format, Args&&... args) {
-    Log(LogLevel::FATAL, Format(format, std::forward<Args>(args)...));
+    Log(LogLevel::kFatal, Format(format, std::forward<Args>(args)...));
   }
 
   LogLevel GetLevel() const { return level_; }
