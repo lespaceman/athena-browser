@@ -122,12 +122,25 @@ auto result = runtime->Call("POST", "/v1/myfeature/action", body);
 
 ## Available Endpoints
 
+### Core Endpoints
 - `GET /health` - Health check
 - `GET /v1/capabilities` - List features
 - `GET /v1/system/info` - System information
 - `POST /v1/echo` - Echo test
 - `POST /v1/fs/read` - Read file
 - `POST /v1/fs/write` - Write file
+
+### Claude Agent SDK Endpoints
+- `POST /v1/claude/query` - General Claude query
+- `POST /v1/claude/analyze-code` - Analyze code
+- `POST /v1/claude/generate-code` - Generate code
+- `POST /v1/claude/refactor-code` - Refactor code
+- `POST /v1/claude/search-code` - Search codebase
+- `POST /v1/claude/run-command` - Run commands
+- `POST /v1/claude/analyze-web` - Analyze web content
+- `POST /v1/claude/search-web` - Search web
+
+See `CLAUDE_SDK.md` for complete documentation.
 
 ## Testing Manually
 

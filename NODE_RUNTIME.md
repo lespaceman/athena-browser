@@ -146,7 +146,9 @@ auto result = runtime->Call("POST", "/v1/custom/action", body);
 
 ## Available Node Endpoints
 
-### Health Check
+### Core Endpoints
+
+#### Health Check
 ```
 GET /health
 ```
@@ -180,6 +182,36 @@ Body: {"path": "/path/to/file"}
 ```
 POST /v1/fs/write
 Body: {"path": "/path/to/file", "content": "text"}
+```
+
+### Claude Agent SDK Endpoints
+
+The Node runtime includes the Claude Agent SDK for AI-assisted operations. See `node-runtime/CLAUDE_SDK.md` for complete documentation.
+
+**Available operations:**
+- `POST /v1/claude/query` - General Claude query with full control
+- `POST /v1/claude/analyze-code` - Analyze code in a specific file
+- `POST /v1/claude/generate-code` - Generate code from specification
+- `POST /v1/claude/refactor-code` - Refactor existing code
+- `POST /v1/claude/search-code` - Search codebase with AI assistance
+- `POST /v1/claude/run-command` - Execute shell commands via Claude
+- `POST /v1/claude/analyze-web` - Fetch and analyze web content
+- `POST /v1/claude/search-web` - Search the web
+- `POST /v1/claude/continue` - Continue most recent conversation
+- `POST /v1/claude/resume` - Resume a previous session
+
+**Quick example from C++:**
+```cpp
+// Analyze code with Claude
+std::string request = R"({
+  "filePath": "/path/to/file.cpp",
+  "question": "What design patterns are used here?"
+})";
+
+auto response = runtime->Call("POST", "/v1/claude/analyze-code", request);
+if (response) {
+  std::cout << "Analysis: " << response.Value() << std::endl;
+}
 ```
 
 ## Health Monitoring

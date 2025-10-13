@@ -32,7 +32,9 @@ curl --unix-socket /tmp/athena-<uid>.sock http://localhost/health
 
 ## API Endpoints
 
-### Health Check
+### Core Endpoints
+
+#### Health Check
 ```bash
 GET /health
 ```
@@ -82,6 +84,30 @@ Content-Type: application/json
 ```
 
 Writes content to file.
+
+### Claude Agent SDK Endpoints
+
+The Node runtime includes the Claude Agent SDK for AI-assisted operations. See [CLAUDE_SDK.md](CLAUDE_SDK.md) for complete documentation.
+
+**Available operations:**
+- `POST /v1/claude/query` - General Claude query
+- `POST /v1/claude/analyze-code` - Analyze code in a file
+- `POST /v1/claude/generate-code` - Generate code from specification
+- `POST /v1/claude/refactor-code` - Refactor existing code
+- `POST /v1/claude/search-code` - Search codebase with AI
+- `POST /v1/claude/run-command` - Execute shell commands via Claude
+- `POST /v1/claude/analyze-web` - Fetch and analyze web content
+- `POST /v1/claude/search-web` - Search the web
+- `POST /v1/claude/continue` - Continue most recent conversation
+- `POST /v1/claude/resume` - Resume a previous session
+
+**Quick example:**
+```bash
+curl --unix-socket /tmp/athena-$(id -u).sock \
+  -X POST http://localhost/v1/claude/analyze-code \
+  -H "Content-Type: application/json" \
+  -d '{"filePath": "/path/to/file.cpp", "question": "What does this code do?"}'
+```
 
 ## Request/Response Format
 
