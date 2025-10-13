@@ -24,10 +24,12 @@ static std::string GetExecutablePath() {
 
 Application::Application(const ApplicationConfig& config,
                          std::unique_ptr<browser::BrowserEngine> browser_engine,
-                         std::unique_ptr<platform::WindowSystem> window_system)
+                         std::unique_ptr<platform::WindowSystem> window_system,
+                         std::unique_ptr<runtime::NodeRuntime> node_runtime)
     : config_(config),
       browser_engine_(std::move(browser_engine)),
       window_system_(std::move(window_system)),
+      node_runtime_(std::move(node_runtime)),
       initialized_(false),
       shutdown_requested_(false) {
   logger.Debug("Application::Application - Creating application");
@@ -89,6 +91,19 @@ utils::Result<void> Application::Initialize(int argc, char* argv[]) {
 
   logger.Debug("Application::Initialize - Browser engine initialized");
 
+  // Initialize Node runtime if enabled and provided
+  if (config_.enable_node_runtime && node_runtime_) {
+    auto node_result = node_runtime_->Initialize();
+    if (!node_result) {
+      logger.Warn("Failed to initialize Node runtime: " +
+                  node_result.GetError().Message());
+      // Don't fail application startup if Node runtime fails
+      // Just log and continue without it
+    } else {
+      logger.Debug("Application::Initialize - Node runtime initialized");
+    }
+  }
+
   initialized_ = true;
   logger.Info("Application initialized successfully");
 
@@ -135,6 +150,11 @@ void Application::Shutdown() {
   CloseAllWindows(true);
 
   // Shutdown in reverse order
+  if (node_runtime_) {
+    node_runtime_->Shutdown();
+    logger.Debug("Application::Shutdown - Node runtime shutdown");
+  }
+
   if (browser_engine_) {
     browser_engine_->Shutdown();
     logger.Debug("Application::Shutdown - Browser engine shutdown");
@@ -230,6 +250,10 @@ platform::WindowSystem* Application::GetWindowSystem() const {
 
 const ApplicationConfig& Application::GetConfig() const {
   return config_;
+}
+
+runtime::NodeRuntime* Application::GetNodeRuntime() const {
+  return node_runtime_.get();
 }
 
 // ============================================================================

@@ -110,6 +110,7 @@ add_athena_test(application_test
   core/application_test.cpp
   ../src/core/application.cpp
   ../src/core/browser_window.cpp
+  ../src/runtime/node_runtime.cpp
   ../src/utils/logging.cpp
 )
 

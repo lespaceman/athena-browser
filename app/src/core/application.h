@@ -7,6 +7,7 @@
 #include "core/browser_window.h"
 #include "browser/browser_engine.h"
 #include "platform/window_system.h"
+#include "runtime/node_runtime.h"
 #include "utils/error.h"
 
 namespace athena {
@@ -21,6 +22,8 @@ struct ApplicationConfig {
   bool enable_sandbox = false;
   bool enable_windowless_rendering = true;
   int windowless_frame_rate = 60;
+  bool enable_node_runtime = true;
+  std::string node_runtime_script_path;  // Path to Node server.js
 };
 
 /**
@@ -75,10 +78,12 @@ class Application {
    * @param config Application configuration
    * @param browser_engine Browser engine implementation (ownership transferred)
    * @param window_system Window system implementation (ownership transferred)
+   * @param node_runtime Node.js runtime (optional, ownership transferred)
    */
   Application(const ApplicationConfig& config,
               std::unique_ptr<browser::BrowserEngine> browser_engine,
-              std::unique_ptr<platform::WindowSystem> window_system);
+              std::unique_ptr<platform::WindowSystem> window_system,
+              std::unique_ptr<runtime::NodeRuntime> node_runtime = nullptr);
 
   /**
    * Destructor - performs clean shutdown.
@@ -183,6 +188,11 @@ class Application {
    */
   const ApplicationConfig& GetConfig() const;
 
+  /**
+   * Get the Node runtime (may be null if not enabled).
+   */
+  runtime::NodeRuntime* GetNodeRuntime() const;
+
  private:
   // Configuration
   ApplicationConfig config_;
@@ -190,6 +200,7 @@ class Application {
   // Owned resources
   std::unique_ptr<browser::BrowserEngine> browser_engine_;
   std::unique_ptr<platform::WindowSystem> window_system_;
+  std::unique_ptr<runtime::NodeRuntime> node_runtime_;
 
   // Window tracking (weak pointers - windows are owned by callers)
   std::vector<BrowserWindow*> windows_;
