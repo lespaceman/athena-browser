@@ -1,1 +1,0 @@
-cmd_Release/browser_native.node := ln -f "Release/obj.target/browser_native.node" "Release/browser_native.node" 2>/dev/null || (rm -rf "Release/browser_native.node" && cp -af "Release/obj.target/browser_native.node" "Release/browser_native.node")
