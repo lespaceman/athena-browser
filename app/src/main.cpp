@@ -197,6 +197,8 @@ int main(int argc, char* argv[]) {
   auto check_shutdown = [&]() -> gboolean {
     if (shutdown_requested.load()) {
       std::cout << "\n[Main] Shutdown requested by signal, exiting event loop..." << std::endl;
+      // Initiate shutdown from event loop context (async-signal-safe)
+      // Note: Shutdown() is idempotent, safe to call multiple times
       application->Shutdown();
       gtk_main_quit();
       return G_SOURCE_REMOVE;  // Stop the timeout
@@ -225,6 +227,10 @@ int main(int argc, char* argv[]) {
   }
 
   window.reset();  // Close window
+
+  // Perform final cleanup shutdown
+  // Note: Safe to call even if already called by signal handler (idempotent)
+  // The Shutdown() method checks initialized_ flag and returns early if already shut down
   application->Shutdown();
 
   std::cout << "Shutdown complete" << std::endl;

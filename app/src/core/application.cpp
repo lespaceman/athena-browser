@@ -151,6 +151,7 @@ void Application::Quit() {
 }
 
 void Application::Shutdown() {
+  // Idempotency check: safe to call multiple times (e.g., from signal handler + main cleanup)
   if (!initialized_) {
     return;
   }

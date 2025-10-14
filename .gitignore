@@ -16,6 +16,7 @@ Testing/
 Makefile
 compile_commands.json
 install_manifest.txt
+test_results.xml
 
 # Compiler outputs
 *.o
@@ -45,6 +46,16 @@ install_manifest.txt
 /frontend/.cache/
 /frontend/coverage/
 /frontend/.eslintcache
+
+############################
+# Athena Agent (Node/TypeScript)
+############################
+/athena-agent/node_modules/
+/athena-agent/dist/
+/athena-agent/build/
+/athena-agent/.cache/
+/athena-agent/coverage/
+/athena-agent/.eslintcache
 
 # Lockfiles are intentionally kept (package-lock.json, pnpm-lock.yaml, yarn.lock)
 
