@@ -96,6 +96,8 @@ add_athena_test(gtk_window_tabs_test
   ../src/browser/cef_engine.cpp
   ../src/browser/app_handler.cpp
   ../src/resources/scheme_handler.cpp
+  ../src/runtime/node_runtime.cpp
+  ../src/utils/logging.cpp
   ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
 )
 
@@ -103,6 +105,7 @@ add_athena_test(gtk_window_tabs_test
 add_athena_test(browser_window_test
   core/browser_window_test.cpp
   ../src/core/browser_window.cpp
+  ../src/runtime/node_runtime.cpp
   ../src/utils/logging.cpp
 )
 
@@ -110,8 +113,18 @@ add_athena_test(application_test
   core/application_test.cpp
   ../src/core/application.cpp
   ../src/core/browser_window.cpp
+  ../src/platform/gtk_window.cpp
+  ../src/platform/gtk_window_callbacks.cpp
+  ../src/platform/gtk_window_tabs.cpp
+  ../src/rendering/gl_renderer.cpp
+  ../src/browser/cef_client.cpp
+  ../src/browser/cef_engine.cpp
+  ../src/browser/app_handler.cpp
+  ../src/resources/scheme_handler.cpp
   ../src/runtime/node_runtime.cpp
+  ../src/runtime/browser_control_server.cpp
   ../src/utils/logging.cpp
+  ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
 )
 
 # Integration tests (will be added in Phase 6)

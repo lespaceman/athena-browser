@@ -21,6 +21,7 @@ add_executable(athena-browser
   src/core/application.cpp
   # Phase 6: Runtime Layer
   src/runtime/node_runtime.cpp
+  src/runtime/browser_control_server.cpp
   # Resources
   src/resources/scheme_handler.cpp
   # CEF's official OpenGL renderer

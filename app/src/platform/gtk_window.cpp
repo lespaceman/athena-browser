@@ -4,6 +4,7 @@
 #include "browser/cef_engine.h"
 #include "browser/cef_client.h"
 #include "rendering/gl_renderer.h"
+#include "runtime/node_runtime.h"
 
 #include "include/cef_browser.h"
 #include "include/cef_app.h"
@@ -24,6 +25,7 @@ GtkWindow::GtkWindow(const WindowConfig& config,
     : config_(config),
       callbacks_(callbacks),
       engine_(engine),
+      node_runtime_(config.node_runtime),
       closed_(false),
       visible_(false),
       has_focus_(false),
@@ -37,8 +39,19 @@ GtkWindow::GtkWindow(const WindowConfig& config,
       address_entry_(nullptr),
       notebook_(nullptr),
       new_tab_button_(nullptr),
+      hpaned_(nullptr),
       gl_area_(nullptr),
-      active_tab_index_(0) {
+      sidebar_container_(nullptr),
+      sidebar_header_(nullptr),
+      sidebar_toggle_button_(nullptr),
+      chat_scrolled_window_(nullptr),
+      chat_text_view_(nullptr),
+      chat_text_buffer_(nullptr),
+      chat_input_box_(nullptr),
+      chat_input_(nullptr),
+      chat_send_button_(nullptr),
+      active_tab_index_(0),
+      sidebar_visible_(false) {
   InitializeWindow();
   SetupEventHandlers();
 }
@@ -83,13 +96,22 @@ void GtkWindow::InitializeWindow() {
   gtk_widget_set_size_request(notebook_, -1, 30);  // Minimum height for tab visibility
   gtk_box_pack_start(GTK_BOX(vbox_), notebook_, FALSE, TRUE, 0);
 
-  // Create GL area for hardware-accelerated rendering
+  // Create horizontal paned container for browser and sidebar
+  hpaned_ = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+  gtk_box_pack_start(GTK_BOX(vbox_), hpaned_, TRUE, TRUE, 0);
+
+  // Create GL area for hardware-accelerated rendering (left pane)
   gl_area_ = gtk_gl_area_new();
-  gtk_box_pack_start(GTK_BOX(vbox_), gl_area_, TRUE, TRUE, 0);
+  gtk_paned_pack1(GTK_PANED(hpaned_), gl_area_, TRUE, FALSE);  // Resizable, not shrinkable
 
   // Configure GL area
   gtk_gl_area_set_auto_render(GTK_GL_AREA(gl_area_), FALSE);  // Manual rendering
   gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(gl_area_), FALSE);
+
+  // Create sidebar (right pane)
+  CreateSidebar();
+  gtk_paned_pack2(GTK_PANED(hpaned_), sidebar_container_, FALSE, TRUE);  // Not resizable, shrinkable
+  gtk_paned_set_position(GTK_PANED(hpaned_), config_.size.width);  // Initially hide sidebar (position at far right)
 
   if (config_.enable_input) {
     // Enable focus for keyboard events
@@ -130,6 +152,10 @@ void GtkWindow::CreateToolbar() {
   new_tab_button_ = gtk_button_new_with_label("+");
   gtk_widget_set_tooltip_text(new_tab_button_, "New Tab");
 
+  // Create sidebar toggle button
+  sidebar_toggle_button_ = gtk_button_new_with_label("💬");
+  gtk_widget_set_tooltip_text(sidebar_toggle_button_, "Toggle Claude Chat (Ctrl+Shift+C)");
+
   // Pack widgets into toolbar
   gtk_box_pack_start(GTK_BOX(toolbar_), back_button_, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(toolbar_), forward_button_, FALSE, FALSE, 0);
@@ -137,12 +163,102 @@ void GtkWindow::CreateToolbar() {
   gtk_box_pack_start(GTK_BOX(toolbar_), stop_button_, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(toolbar_), address_entry_, TRUE, TRUE, 0);
   gtk_box_pack_start(GTK_BOX(toolbar_), new_tab_button_, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(toolbar_), sidebar_toggle_button_, FALSE, FALSE, 0);
 
   // Initially disable navigation buttons (will be enabled when browser loads)
   gtk_widget_set_sensitive(back_button_, FALSE);
   gtk_widget_set_sensitive(forward_button_, FALSE);
   gtk_widget_set_sensitive(reload_button_, FALSE);
   gtk_widget_set_sensitive(stop_button_, FALSE);
+}
+
+void GtkWindow::CreateSidebar() {
+  // Main sidebar container (300px width)
+  sidebar_container_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_set_size_request(sidebar_container_, 400, -1);
+
+  // Header with title and close button
+  sidebar_header_ = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+  gtk_widget_set_margin_start(sidebar_header_, 10);
+  gtk_widget_set_margin_end(sidebar_header_, 10);
+  gtk_widget_set_margin_top(sidebar_header_, 10);
+  gtk_widget_set_margin_bottom(sidebar_header_, 10);
+
+  GtkWidget* title_label = gtk_label_new("Claude Chat");
+  gtk_widget_set_halign(title_label, GTK_ALIGN_START);
+  PangoAttrList* attrs = pango_attr_list_new();
+  pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+  pango_attr_list_insert(attrs, pango_attr_scale_new(1.2));
+  gtk_label_set_attributes(GTK_LABEL(title_label), attrs);
+  pango_attr_list_unref(attrs);
+
+  GtkWidget* close_button = gtk_button_new_with_label("✕");
+  gtk_widget_set_halign(close_button, GTK_ALIGN_END);
+
+  gtk_box_pack_start(GTK_BOX(sidebar_header_), title_label, TRUE, TRUE, 0);
+  gtk_box_pack_start(GTK_BOX(sidebar_header_), close_button, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(sidebar_container_), sidebar_header_, FALSE, FALSE, 0);
+
+  // Separator
+  GtkWidget* separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+  gtk_box_pack_start(GTK_BOX(sidebar_container_), separator, FALSE, FALSE, 0);
+
+  // Chat history (scrollable text view)
+  chat_scrolled_window_ = gtk_scrolled_window_new(nullptr, nullptr);
+  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(chat_scrolled_window_),
+                                  GTK_POLICY_AUTOMATIC,
+                                  GTK_POLICY_AUTOMATIC);
+
+  chat_text_view_ = gtk_text_view_new();
+  gtk_text_view_set_editable(GTK_TEXT_VIEW(chat_text_view_), FALSE);
+  gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(chat_text_view_), FALSE);
+  gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(chat_text_view_), GTK_WRAP_WORD_CHAR);
+  gtk_widget_set_margin_start(chat_text_view_, 10);
+  gtk_widget_set_margin_end(chat_text_view_, 10);
+  gtk_widget_set_margin_top(chat_text_view_, 10);
+  gtk_widget_set_margin_bottom(chat_text_view_, 10);
+
+  chat_text_buffer_ = gtk_text_view_get_buffer(GTK_TEXT_VIEW(chat_text_view_));
+
+  // Create text tags for styling
+  gtk_text_buffer_create_tag(chat_text_buffer_, "user",
+                              "weight", PANGO_WEIGHT_BOLD,
+                              "foreground", "#2563eb",
+                              nullptr);
+  gtk_text_buffer_create_tag(chat_text_buffer_, "assistant",
+                              "weight", PANGO_WEIGHT_BOLD,
+                              "foreground", "#16a34a",
+                              nullptr);
+  gtk_text_buffer_create_tag(chat_text_buffer_, "message",
+                              "left-margin", 10,
+                              nullptr);
+
+  gtk_container_add(GTK_CONTAINER(chat_scrolled_window_), chat_text_view_);
+  gtk_box_pack_start(GTK_BOX(sidebar_container_), chat_scrolled_window_, TRUE, TRUE, 0);
+
+  // Input box at bottom
+  chat_input_box_ = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+  gtk_widget_set_margin_start(chat_input_box_, 10);
+  gtk_widget_set_margin_end(chat_input_box_, 10);
+  gtk_widget_set_margin_top(chat_input_box_, 5);
+  gtk_widget_set_margin_bottom(chat_input_box_, 10);
+
+  chat_input_ = gtk_entry_new();
+  gtk_entry_set_placeholder_text(GTK_ENTRY(chat_input_), "Ask Claude anything...");
+
+  chat_send_button_ = gtk_button_new_with_label("➤");
+  gtk_widget_set_size_request(chat_send_button_, 40, -1);
+
+  gtk_box_pack_start(GTK_BOX(chat_input_box_), chat_input_, TRUE, TRUE, 0);
+  gtk_box_pack_start(GTK_BOX(chat_input_box_), chat_send_button_, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(sidebar_container_), chat_input_box_, FALSE, FALSE, 0);
+
+  // Connect close button to toggle
+  g_signal_connect_swapped(close_button, "clicked",
+                            G_CALLBACK(+[](GtkWindow* self) { self->ToggleSidebar(); }),
+                            this);
+
+  std::cout << "[GtkWindow] Sidebar created" << std::endl;
 }
 
 void GtkWindow::SetupEventHandlers() {
@@ -157,6 +273,9 @@ void GtkWindow::SetupEventHandlers() {
   callbacks::RegisterToolbarCallbacks(
     back_button_, forward_button_, reload_button_,
     stop_button_, address_entry_, new_tab_button_, this);
+
+  callbacks::RegisterSidebarCallbacks(
+    chat_input_, chat_send_button_, sidebar_toggle_button_, this);
 }
 
 utils::Result<void> GtkWindow::CreateBrowser(const std::string& url) {
@@ -350,12 +469,22 @@ void GtkWindow::OnRealize() {
 void GtkWindow::OnSizeAllocate(int width, int height) {
   config_.size = {width, height};
 
-  // Resize all tabs, not just the active one
+  // Get actual GL area size (which may be smaller than window due to sidebar)
+  GtkAllocation gl_allocation;
+  gtk_widget_get_allocation(gl_area_, &gl_allocation);
+  int gl_width = gl_allocation.width;
+  int gl_height = gl_allocation.height;
+
+  // Resize all tabs with GL area size, not window size
   {
     std::lock_guard<std::mutex> lock(tabs_mutex_);
     for (auto& tab : tabs_) {
       if (tab.cef_client) {
-        tab.cef_client->SetSize(width, height);
+        tab.cef_client->SetSize(gl_width, gl_height);
+      }
+      // Also update renderer view size
+      if (tab.renderer) {
+        tab.renderer->SetViewSize(gl_width, gl_height);
       }
     }
   }
@@ -521,6 +650,227 @@ void GtkWindow::HandleTabRenderInvalidated(
   if (should_render && gl_area_) {
     gtk_gl_area_queue_render(GTK_GL_AREA(gl_area_));
   }
+}
+
+// ============================================================================
+// Claude Chat Sidebar Methods
+// ============================================================================
+
+void GtkWindow::ToggleSidebar() {
+  sidebar_visible_ = !sidebar_visible_;
+
+  if (sidebar_visible_) {
+    // Show sidebar: adjust paned position to make room for sidebar (400px)
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(hpaned_, &allocation);
+    int new_position = allocation.width - 400;  // 400px sidebar width
+    gtk_paned_set_position(GTK_PANED(hpaned_), new_position);
+    gtk_widget_show(sidebar_container_);
+    gtk_widget_grab_focus(chat_input_);  // Focus input when opening
+    std::cout << "[GtkWindow] Sidebar opened" << std::endl;
+  } else {
+    // Hide sidebar: move paned position to far right
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(hpaned_, &allocation);
+    gtk_paned_set_position(GTK_PANED(hpaned_), allocation.width);
+    std::cout << "[GtkWindow] Sidebar closed" << std::endl;
+  }
+
+  // Force resize of GL area and browser after sidebar toggle
+  // This ensures the browser renders at the correct size
+  g_idle_add([](gpointer user_data) -> gboolean {
+    GtkWindow* self = static_cast<GtkWindow*>(user_data);
+
+    // Get new GL area size after paned position change
+    GtkAllocation gl_allocation;
+    gtk_widget_get_allocation(self->gl_area_, &gl_allocation);
+
+    // Notify CEF of the new size
+    {
+      std::lock_guard<std::mutex> lock(self->tabs_mutex_);
+      for (auto& tab : self->tabs_) {
+        if (tab.cef_client) {
+          tab.cef_client->SetSize(gl_allocation.width, gl_allocation.height);
+        }
+        if (tab.renderer) {
+          tab.renderer->SetViewSize(gl_allocation.width, gl_allocation.height);
+        }
+      }
+    }
+
+    // Queue a render to update the display
+    if (self->gl_area_) {
+      gtk_gl_area_queue_render(GTK_GL_AREA(self->gl_area_));
+    }
+
+    return G_SOURCE_REMOVE;
+  }, this);
+}
+
+void GtkWindow::SendClaudeMessage(const std::string& message) {
+  if (message.empty()) {
+    std::cerr << "[GtkWindow] Cannot send empty message" << std::endl;
+    return;
+  }
+
+  // Append user message to chat immediately
+  AppendChatMessage("user", message);
+
+  std::cout << "[GtkWindow] Sending message to Claude: " << message << std::endl;
+
+  // Check if node runtime is available
+  if (!node_runtime_ || !node_runtime_->IsReady()) {
+    std::cerr << "[GtkWindow] Node runtime not available" << std::endl;
+    AppendChatMessage("assistant", "[Error] Claude Agent is not available. Please ensure Node.js runtime is running.");
+    return;
+  }
+
+  // Build JSON request body (new Athena Agent format)
+  // Escape quotes in message for JSON
+  std::string escaped_message = message;
+  size_t pos = 0;
+  while ((pos = escaped_message.find("\"", pos)) != std::string::npos) {
+    escaped_message.replace(pos, 1, "\\\"");
+    pos += 2;
+  }
+  std::string json_body = "{\"message\":\"" + escaped_message + "\"}";
+
+  // Call the Athena Agent API (new endpoint)
+  auto response = node_runtime_->Call("POST", "/v1/chat/send", json_body);
+
+  if (!response.IsOk()) {
+    std::cerr << "[GtkWindow] Failed to get response from Claude: "
+              << response.GetError().Message() << std::endl;
+    AppendChatMessage("assistant", "[Error] Failed to communicate with Claude Agent: " + response.GetError().Message());
+    return;
+  }
+
+  // Parse the JSON response from Athena Agent
+  // New format: {"success": true/false, "response": "...", "error": "..."}
+  std::string response_body = response.Value();
+
+  std::cout << "[GtkWindow] Athena Agent response: " << response_body << std::endl;
+
+  // Check for success field
+  size_t success_pos = response_body.find("\"success\":");
+  bool success = false;
+  if (success_pos != std::string::npos) {
+    size_t true_pos = response_body.find("true", success_pos);
+    size_t false_pos = response_body.find("false", success_pos);
+    if (true_pos != std::string::npos && (false_pos == std::string::npos || true_pos < false_pos)) {
+      success = true;
+    }
+  }
+
+  if (!success) {
+    // Extract error message
+    size_t error_pos = response_body.find("\"error\":\"");
+    if (error_pos != std::string::npos) {
+      size_t start = error_pos + 9;
+      size_t end = response_body.find("\"", start);
+      std::string error_msg = response_body.substr(start, end - start);
+      AppendChatMessage("assistant", "[Error] " + error_msg);
+    } else {
+      AppendChatMessage("assistant", "[Error] Request failed with unknown error");
+    }
+    return;
+  }
+
+  // Extract response field
+  size_t response_pos = response_body.find("\"response\":\"");
+  if (response_pos == std::string::npos) {
+    AppendChatMessage("assistant", "[Error] Unexpected response format from Claude Agent");
+    return;
+  }
+
+  // Extract the response string
+  size_t start = response_pos + 12;  // Skip past "response":"
+  size_t end = start;
+  int escape_count = 0;
+
+  // Find the end of the string, accounting for escaped quotes
+  while (end < response_body.length()) {
+    if (response_body[end] == '\\') {
+      escape_count++;
+      end++;
+      continue;
+    }
+    if (response_body[end] == '\"' && escape_count % 2 == 0) {
+      break;
+    }
+    escape_count = 0;
+    end++;
+  }
+
+  std::string claude_response = response_body.substr(start, end - start);
+
+  // Unescape basic JSON escape sequences
+  pos = 0;
+  while ((pos = claude_response.find("\\n", pos)) != std::string::npos) {
+    claude_response.replace(pos, 2, "\n");
+    pos += 1;
+  }
+  pos = 0;
+  while ((pos = claude_response.find("\\\"", pos)) != std::string::npos) {
+    claude_response.replace(pos, 2, "\"");
+    pos += 1;
+  }
+
+  AppendChatMessage("assistant", claude_response);
+}
+
+void GtkWindow::AppendChatMessage(const std::string& role, const std::string& message) {
+  if (!chat_text_buffer_) {
+    std::cerr << "[GtkWindow] Chat text buffer not initialized" << std::endl;
+    return;
+  }
+
+  GtkTextIter end_iter;
+  gtk_text_buffer_get_end_iter(chat_text_buffer_, &end_iter);
+
+  // Add role prefix (User: or Claude:)
+  std::string prefix = (role == "user") ? "You" : "Claude";
+  std::string role_text = prefix + ":\n";
+
+  // Ensure we use the correct tag name (must match tags created in CreateSidebar)
+  const char* role_tag = (role == "user") ? "user" : "assistant";
+
+  gtk_text_buffer_insert_with_tags_by_name(chat_text_buffer_, &end_iter,
+                                            role_text.c_str(), -1,
+                                            role_tag, nullptr);
+
+  // Add message content
+  gtk_text_buffer_get_end_iter(chat_text_buffer_, &end_iter);
+  std::string message_with_newline = message + "\n\n";
+  gtk_text_buffer_insert_with_tags_by_name(chat_text_buffer_, &end_iter,
+                                            message_with_newline.c_str(), -1,
+                                            "message", nullptr);
+
+  // Auto-scroll to bottom
+  gtk_text_buffer_get_end_iter(chat_text_buffer_, &end_iter);
+  GtkTextMark* end_mark = gtk_text_buffer_create_mark(chat_text_buffer_, nullptr, &end_iter, FALSE);
+  gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(chat_text_view_), end_mark, 0.0, TRUE, 0.0, 1.0);
+  gtk_text_buffer_delete_mark(chat_text_buffer_, end_mark);
+
+  std::cout << "[GtkWindow] Appended chat message from " << role << std::endl;
+}
+
+void GtkWindow::OnChatInputActivate() {
+  const gchar* text = gtk_entry_get_text(GTK_ENTRY(chat_input_));
+  std::string message(text);
+
+  if (!message.empty()) {
+    SendClaudeMessage(message);
+    gtk_entry_set_text(GTK_ENTRY(chat_input_), "");  // Clear input
+  }
+}
+
+void GtkWindow::OnChatSendClicked() {
+  OnChatInputActivate();  // Reuse the same logic
+}
+
+void GtkWindow::OnSidebarToggleClicked() {
+  ToggleSidebar();
 }
 
 // ============================================================================

@@ -1,0 +1,1 @@
+cmd_Release/obj.target/browser_native.node := g++ -o Release/obj.target/browser_native.node -shared -pthread -rdynamic -m64  -Wl,-soname=browser_native.node -Wl,--start-group Release/obj.target/browser_native/../app/src/runtime/browser_bindings_simple.o Release/obj.target/node_modules/node-addon-api/nothing.a -Wl,--end-group 

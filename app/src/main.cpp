@@ -9,12 +9,56 @@
 #include "browser/cef_engine.h"
 #include "browser/app_handler.h"
 #include "platform/gtk_window.h"
+#include "runtime/node_runtime.h"
 #include "include/cef_app.h"
 #include <iostream>
 #include <cstdlib>
+#include <csignal>
+#include <filesystem>
+
+// ============================================================================
+// Signal Handling for Clean Shutdown
+// ============================================================================
+
+// Global application pointer for signal handlers
+static athena::core::Application* g_application = nullptr;
+
+/**
+ * Signal handler for graceful shutdown.
+ * Handles SIGINT (Ctrl+C), SIGTERM, and SIGABRT.
+ */
+void signal_handler(int signum) {
+  const char* signal_name = "UNKNOWN";
+  switch (signum) {
+    case SIGINT:  signal_name = "SIGINT";  break;
+    case SIGTERM: signal_name = "SIGTERM"; break;
+    case SIGABRT: signal_name = "SIGABRT"; break;
+  }
+
+  std::cout << "\n[Signal] Received " << signal_name << " (" << signum
+            << "), shutting down gracefully..." << std::endl;
+
+  if (g_application) {
+    g_application->Shutdown();
+  }
+
+  // Exit with signal number
+  exit(128 + signum);
+}
 
 int main(int argc, char* argv[]) {
   using namespace athena;
+
+  // ============================================================================
+  // Signal Handler Registration
+  // ============================================================================
+  // Register signal handlers for graceful shutdown on crashes/interrupts
+
+  std::signal(SIGINT, signal_handler);   // Ctrl+C
+  std::signal(SIGTERM, signal_handler);  // kill command
+  std::signal(SIGABRT, signal_handler);  // abort()
+
+  std::cout << "Signal handlers registered (SIGINT, SIGTERM, SIGABRT)" << std::endl;
 
   // ============================================================================
   // CEF Subprocess Handling
@@ -48,6 +92,39 @@ int main(int argc, char* argv[]) {
   }
 
   // ============================================================================
+  // Create Node Runtime (if enabled)
+  // ============================================================================
+
+  std::unique_ptr<runtime::NodeRuntime> node_runtime = nullptr;
+
+  if (config.enable_node_runtime) {
+    // Determine the path to the Athena Agent server script
+    // The script is at the project root: /path/to/project/athena-agent/dist/server.js
+    // The binary is at: /path/to/project/build/release/app/athena-browser
+    // So we need to go up 3 levels: app -> release -> build -> project
+    std::filesystem::path exe_path(argv[0]);
+    std::filesystem::path exe_dir = exe_path.parent_path();  // build/release/app
+    std::filesystem::path project_root = exe_dir.parent_path().parent_path().parent_path();
+    std::filesystem::path runtime_script = project_root / "athena-agent" / "dist" / "server.js";
+
+    // Check if the script exists
+    if (!std::filesystem::exists(runtime_script)) {
+      std::cerr << "WARNING: Athena Agent script not found at: " << runtime_script << std::endl;
+      std::cerr << "         Claude chat integration will not be available." << std::endl;
+      std::cerr << "         Run 'cd athena-agent && npm run build' to build the agent." << std::endl;
+    } else {
+      runtime::NodeRuntimeConfig runtime_config;
+      runtime_config.runtime_script_path = runtime_script.string();
+      runtime_config.node_executable = "node";
+      runtime_config.socket_path = "/tmp/athena-" + std::to_string(getuid()) + ".sock";
+
+      node_runtime = std::make_unique<runtime::NodeRuntime>(runtime_config);
+
+      std::cout << "Athena Agent will be initialized with script: " << runtime_script << std::endl;
+    }
+  }
+
+  // ============================================================================
   // Create Application
   // ============================================================================
 
@@ -57,7 +134,11 @@ int main(int argc, char* argv[]) {
   auto application = std::make_unique<core::Application>(
       config,
       std::move(browser_engine),
-      std::move(window_system));
+      std::move(window_system),
+      std::move(node_runtime));
+
+  // Set global pointer for signal handlers
+  g_application = application.get();
 
   // ============================================================================
   // Initialize Application
@@ -125,6 +206,9 @@ int main(int argc, char* argv[]) {
   std::cout << "Shutting down..." << std::endl;
   window.reset();  // Close window
   application->Shutdown();
+
+  // Clear global pointer
+  g_application = nullptr;
 
   std::cout << "Shutdown complete" << std::endl;
   return 0;

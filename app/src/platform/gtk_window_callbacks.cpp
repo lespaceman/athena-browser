@@ -107,6 +107,13 @@ static gboolean on_window_key_press(GtkWidget* widget, GdkEventKey* event,
 
   // Check for keyboard shortcuts with Ctrl modifier
   if (event->state & GDK_CONTROL_MASK) {
+    // Ctrl+Shift+C: Toggle Claude Chat Sidebar
+    if ((event->state & GDK_SHIFT_MASK) &&
+        (event->keyval == GDK_KEY_c || event->keyval == GDK_KEY_C)) {
+      window->ToggleSidebar();
+      return TRUE;  // Handled
+    }
+
     // Ctrl+T: New tab
     if (event->keyval == GDK_KEY_t || event->keyval == GDK_KEY_T) {
       window->OnNewTabClicked();
@@ -512,6 +519,34 @@ static void on_new_tab_clicked(GtkButton* button, gpointer user_data) {
   }
 }
 
+// ============================================================================
+// Claude Sidebar Callbacks
+// ============================================================================
+
+static void on_chat_input_activate(GtkEntry* entry, gpointer user_data) {
+  (void)entry;
+  GtkWindow* window = GetWindowFromUserData(user_data);
+  if (window) {
+    window->OnChatInputActivate();
+  }
+}
+
+static void on_chat_send_clicked(GtkButton* button, gpointer user_data) {
+  (void)button;
+  GtkWindow* window = GetWindowFromUserData(user_data);
+  if (window) {
+    window->OnChatSendClicked();
+  }
+}
+
+static void on_sidebar_toggle_clicked(GtkButton* button, gpointer user_data) {
+  (void)button;
+  GtkWindow* window = GetWindowFromUserData(user_data);
+  if (window) {
+    window->OnSidebarToggleClicked();
+  }
+}
+
 }  // anonymous namespace
 
 // ============================================================================
@@ -567,6 +602,15 @@ void RegisterToolbarCallbacks(GtkWidget* back_btn,
 
 void RegisterTabCallbacks(GtkWidget* notebook, GtkWindow* self) {
   g_signal_connect(notebook, "switch-page", G_CALLBACK(on_tab_switch), self);
+}
+
+void RegisterSidebarCallbacks(GtkWidget* chat_input,
+                               GtkWidget* send_btn,
+                               GtkWidget* toggle_btn,
+                               GtkWindow* self) {
+  g_signal_connect(chat_input, "activate", G_CALLBACK(on_chat_input_activate), self);
+  g_signal_connect(send_btn, "clicked", G_CALLBACK(on_chat_send_clicked), self);
+  g_signal_connect(toggle_btn, "clicked", G_CALLBACK(on_sidebar_toggle_clicked), self);
 }
 
 }  // namespace callbacks

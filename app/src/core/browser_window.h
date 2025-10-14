@@ -10,6 +10,12 @@
 #include "platform/window_system.h"
 
 namespace athena {
+
+// Forward declaration
+namespace runtime {
+  class NodeRuntime;
+}
+
 namespace core {
 
 /**
@@ -21,6 +27,7 @@ struct BrowserWindowConfig {
   std::string url = "about:blank";
   bool resizable = true;
   bool enable_input = true;
+  runtime::NodeRuntime* node_runtime = nullptr;  // Optional Node runtime for Claude chat
 };
 
 /**
