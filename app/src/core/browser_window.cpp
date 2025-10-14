@@ -259,6 +259,10 @@ platform::Window* BrowserWindow::GetWindow() const {
   return window_.get();
 }
 
+std::shared_ptr<platform::Window> BrowserWindow::GetWindowShared() const {
+  return window_;
+}
+
 // ============================================================================
 // Private Methods
 // ============================================================================
@@ -349,7 +353,7 @@ utils::Result<void> BrowserWindow::Initialize() {
                         window_result.GetError().Message());
   }
 
-  window_ = std::move(window_result.Value());
+  window_ = window_result.Value();
 
   // NOTE: Browser creation is deferred until Show() is called.
   // This is because the GLRenderer is only available after the window is realized,

@@ -434,7 +434,7 @@ class GtkWindowSystem : public WindowSystem {
   // Window Management
   // ============================================================================
 
-  utils::Result<std::unique_ptr<Window>> CreateWindow(
+  utils::Result<std::shared_ptr<Window>> CreateWindow(
       const WindowConfig& config,
       const WindowCallbacks& callbacks) override;
 

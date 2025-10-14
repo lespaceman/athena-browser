@@ -111,7 +111,7 @@ class WindowSystem {
    * @param callbacks Event callbacks
    * @return Window instance on success, error on failure
    */
-  virtual utils::Result<std::unique_ptr<Window>> CreateWindow(
+  virtual utils::Result<std::shared_ptr<Window>> CreateWindow(
       const WindowConfig& config,
       const WindowCallbacks& callbacks) = 0;
 

@@ -75,7 +75,6 @@ struct ClientConnection {
 BrowserControlServer::BrowserControlServer(
     const BrowserControlServerConfig& config)
     : config_(config),
-      window_(nullptr),
       server_fd_(-1),
       server_watch_id_(0),
       running_(false) {
@@ -90,9 +89,13 @@ BrowserControlServer::~BrowserControlServer() {
 // Public Methods
 // ============================================================================
 
-void BrowserControlServer::SetBrowserWindow(platform::GtkWindow* window) {
+void BrowserControlServer::SetBrowserWindow(const std::shared_ptr<platform::GtkWindow>& window) {
+  if (window) {
+    logger.Debug("Browser window registered with control server");
+  } else {
+    logger.Debug("Browser window cleared from control server");
+  }
   window_ = window;
-  logger.Debug("Browser window registered with control server");
 }
 
 utils::Result<void> BrowserControlServer::Initialize() {
@@ -100,7 +103,7 @@ utils::Result<void> BrowserControlServer::Initialize() {
     return utils::Error("Server already running");
   }
 
-  if (!window_) {
+  if (window_.expired()) {
     return utils::Error("Browser window not set");
   }
 
@@ -201,6 +204,8 @@ void BrowserControlServer::Shutdown() {
       logger.Warn("Failed to remove socket file");
     }
   }
+
+  window_.reset();
 
   running_ = false;
   logger.Info("Browser control server shut down");
@@ -429,17 +434,18 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
 std::string BrowserControlServer::HandleOpenUrl(const std::string& url) {
   logger.Info("Opening URL: " + url);
 
-  if (!running_ || !window_) {
+  auto window = window_.lock();
+  if (!running_ || !window) {
     return R"({"success":false,"error":"Server is shutting down"})";
   }
 
   try {
     // Check tab count to decide whether to create tab or navigate
-    size_t tab_count = window_->GetTabCount();
+    size_t tab_count = window->GetTabCount();
 
     if (tab_count == 0) {
       // Create new tab
-      int tab_index = window_->CreateTab(url);
+      int tab_index = window->CreateTab(url);
       if (tab_index < 0) {
         return R"({"success":false,"error":"Failed to create tab"})";
       }
@@ -451,11 +457,11 @@ std::string BrowserControlServer::HandleOpenUrl(const std::string& url) {
 
     } else {
       // Navigate active tab
-      window_->LoadURL(url);
+      window->LoadURL(url);
 
       std::ostringstream response;
       response << R"({"success":true,"message":"Navigated to )" << url << R"(")"
-               << R"(,"tabIndex":)" << window_->GetActiveTabIndex() << "}";
+               << R"(,"tabIndex":)" << window->GetActiveTabIndex() << "}";
       return response.str();
     }
 
@@ -467,12 +473,13 @@ std::string BrowserControlServer::HandleOpenUrl(const std::string& url) {
 }
 
 std::string BrowserControlServer::HandleGetUrl() {
-  if (!running_ || !window_) {
+  auto window = window_.lock();
+  if (!running_ || !window) {
     return R"({"success":false,"error":"Server is shutting down"})";
   }
 
   try {
-    auto* tab = window_->GetActiveTab();
+    auto* tab = window->GetActiveTab();
     if (!tab) {
       return R"({"success":false,"error":"No active tab"})";
     }
@@ -489,12 +496,13 @@ std::string BrowserControlServer::HandleGetUrl() {
 }
 
 std::string BrowserControlServer::HandleGetTabCount() {
-  if (!running_ || !window_) {
+  auto window = window_.lock();
+  if (!running_ || !window) {
     return R"({"success":false,"error":"Server is shutting down"})";
   }
 
   try {
-    size_t count = window_->GetTabCount();
+    size_t count = window->GetTabCount();
     std::ostringstream response;
     response << R"({"success":true,"count":)" << count << "}";
     return response.str();

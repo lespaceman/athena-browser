@@ -75,9 +75,9 @@ class BrowserControlServer {
    * Set the browser window to control.
    * Must be called before Initialize().
    *
-   * @param window GtkWindow instance (not owned, must outlive this server)
+   * @param window Shared pointer to GtkWindow (server stores a weak reference)
    */
-  void SetBrowserWindow(platform::GtkWindow* window);
+  void SetBrowserWindow(const std::shared_ptr<platform::GtkWindow>& window);
 
   /**
    * Initialize the server and start listening.
@@ -106,8 +106,8 @@ class BrowserControlServer {
   // Configuration
   BrowserControlServerConfig config_;
 
-  // Browser window (not owned)
-  platform::GtkWindow* window_;
+  // Browser window (weak reference, does not own)
+  std::weak_ptr<platform::GtkWindow> window_;
 
   // Socket file descriptor
   int server_fd_;

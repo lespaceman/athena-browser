@@ -375,13 +375,13 @@ utils::Result<void> Application::InitializeBrowserControlServer() {
     return utils::Error("First window is null");
   }
 
-  auto* native_window = first_window->GetWindow();
-  if (!native_window) {
+  auto window_shared = first_window->GetWindowShared();
+  if (!window_shared) {
     return utils::Error("First window's native window is null");
   }
 
   // Cast to GtkWindow (we know it's GTK from window_system)
-  auto* gtk_window = dynamic_cast<platform::GtkWindow*>(native_window);
+  auto gtk_window = std::dynamic_pointer_cast<platform::GtkWindow>(window_shared);
   if (!gtk_window) {
     return utils::Error("Native window is not a GtkWindow");
   }
