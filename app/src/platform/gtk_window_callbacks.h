@@ -70,6 +70,17 @@ void RegisterToolbarCallbacks(GtkWidget* back_btn,
  */
 void RegisterTabCallbacks(GtkWidget* notebook, GtkWindow* self);
 
+/**
+ * Register sidebar callbacks.
+ * - chat input activation (Enter key)
+ * - send button clicked
+ * - sidebar toggle button clicked
+ */
+void RegisterSidebarCallbacks(GtkWidget* chat_input,
+                               GtkWidget* send_btn,
+                               GtkWidget* toggle_btn,
+                               GtkWindow* self);
+
 }  // namespace callbacks
 }  // namespace platform
 }  // namespace athena

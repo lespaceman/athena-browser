@@ -17,6 +17,10 @@ namespace browser {
   class BrowserEngine;
 }
 
+namespace runtime {
+  class NodeRuntime;
+}
+
 namespace platform {
 
 /**
@@ -261,15 +265,74 @@ class GtkWindow : public Window {
    */
   void OnCloseTabClicked(size_t tab_index);
 
+  // ============================================================================
+  // Claude Chat Sidebar
+  // ============================================================================
+
+  /**
+   * Toggle the Claude chat sidebar visibility.
+   */
+  void ToggleSidebar();
+
+  /**
+   * Send a message to Claude via Node runtime.
+   * @param message User message to send
+   */
+  void SendClaudeMessage(const std::string& message);
+
+  /**
+   * Append a message to the chat history UI.
+   * @param role "user" or "assistant"
+   * @param message Message text
+   */
+  void AppendChatMessage(const std::string& role, const std::string& message);
+
+  /**
+   * Replace the last assistant message in the chat history.
+   * Used to update placeholder messages with actual responses.
+   * Thread-safe: can be called from any thread.
+   * @param role "user" or "assistant"
+   * @param message New message text
+   */
+  void ReplaceLastChatMessage(const std::string& role, const std::string& message);
+
+  /**
+   * Clear all chat history.
+   */
+  void ClearChatHistory();
+
+  /**
+   * Trim chat history to maximum number of messages.
+   * Removes oldest messages if count exceeds limit.
+   */
+  void TrimChatHistory();
+
+  /**
+   * Called when the chat input is activated (Enter key).
+   */
+  void OnChatInputActivate();
+
+  /**
+   * Called when the send button is clicked.
+   */
+  void OnChatSendClicked();
+
+  /**
+   * Called when the sidebar toggle button is clicked.
+   */
+  void OnSidebarToggleClicked();
+
   // Friend functions for GTK idle callbacks
   friend gboolean update_address_bar_idle(gpointer user_data);
   friend gboolean update_navigation_buttons_idle(gpointer user_data);
+  friend gboolean replace_last_chat_message_idle(gpointer user_data);
 
  private:
   // Window configuration and state
   WindowConfig config_;
   WindowCallbacks callbacks_;
   browser::BrowserEngine* engine_;  // Non-owning
+  runtime::NodeRuntime* node_runtime_;  // Non-owning
   bool closed_;
   bool visible_;
   bool has_focus_;
@@ -285,12 +348,29 @@ class GtkWindow : public Window {
   GtkWidget* address_entry_;  // URL input field
   GtkWidget* notebook_;    // GtkNotebook (tab container)
   GtkWidget* new_tab_button_;  // New tab button
+  GtkWidget* hpaned_;      // Horizontal split container (browser | sidebar)
   GtkWidget* gl_area_;     // GtkGLArea (rendering widget) - shared across tabs
+
+  // Claude Chat Sidebar widgets
+  GtkWidget* sidebar_container_;      // Main sidebar VBox
+  GtkWidget* sidebar_header_;         // Header box with title and close button
+  GtkWidget* sidebar_toggle_button_;  // Toggle button in toolbar
+  GtkWidget* sidebar_clear_button_;   // Clear chat history button
+  GtkWidget* chat_scrolled_window_;   // Scrollable chat history
+  GtkWidget* chat_text_view_;         // Text view for chat history
+  GtkTextBuffer* chat_text_buffer_;   // Text buffer for chat
+  GtkWidget* chat_input_box_;         // Input area container
+  GtkWidget* chat_input_;             // User input entry
+  GtkWidget* chat_send_button_;       // Send button
 
   // Tab management
   std::vector<Tab> tabs_;         // All open tabs
   size_t active_tab_index_;       // Index of currently active tab
   mutable std::mutex tabs_mutex_; // Protects tabs_ and active_tab_index_
+
+  // Claude Chat Sidebar state
+  bool sidebar_visible_;          // Track sidebar visibility
+  std::string current_session_id_; // Claude conversation session ID
 
   /**
    * Initialize the GTK window and widgets.
@@ -301,6 +381,11 @@ class GtkWindow : public Window {
    * Create the toolbar with navigation controls and address bar.
    */
   void CreateToolbar();
+
+  /**
+   * Create the Claude chat sidebar UI.
+   */
+  void CreateSidebar();
 
   /**
    * Setup GTK event signals.
@@ -349,7 +434,7 @@ class GtkWindowSystem : public WindowSystem {
   // Window Management
   // ============================================================================
 
-  utils::Result<std::unique_ptr<Window>> CreateWindow(
+  utils::Result<std::shared_ptr<Window>> CreateWindow(
       const WindowConfig& config,
       const WindowCallbacks& callbacks) override;
 

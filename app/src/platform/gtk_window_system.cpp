@@ -69,15 +69,15 @@ bool GtkWindowSystem::IsInitialized() const {
   return initialized_;
 }
 
-utils::Result<std::unique_ptr<Window>> GtkWindowSystem::CreateWindow(
+utils::Result<std::shared_ptr<Window>> GtkWindowSystem::CreateWindow(
     const WindowConfig& config,
     const WindowCallbacks& callbacks) {
   if (!initialized_) {
     return utils::Error("WindowSystem not initialized");
   }
 
-  auto window = std::make_unique<GtkWindow>(config, callbacks, engine_);
-  return std::unique_ptr<Window>(std::move(window));
+  auto window = std::make_shared<GtkWindow>(config, callbacks, engine_);
+  return std::static_pointer_cast<Window>(window);
 }
 
 void GtkWindowSystem::Run() {

@@ -4,12 +4,14 @@
 #include "browser/cef_engine.h"
 #include "browser/cef_client.h"
 #include "rendering/gl_renderer.h"
+#include "runtime/node_runtime.h"
 
 #include "include/cef_browser.h"
 #include "include/cef_app.h"
 
 #include <GL/gl.h>
 #include <iostream>
+#include <thread>
 
 namespace athena {
 namespace platform {
@@ -24,6 +26,7 @@ GtkWindow::GtkWindow(const WindowConfig& config,
     : config_(config),
       callbacks_(callbacks),
       engine_(engine),
+      node_runtime_(config.node_runtime),
       closed_(false),
       visible_(false),
       has_focus_(false),
@@ -37,14 +40,41 @@ GtkWindow::GtkWindow(const WindowConfig& config,
       address_entry_(nullptr),
       notebook_(nullptr),
       new_tab_button_(nullptr),
+      hpaned_(nullptr),
       gl_area_(nullptr),
-      active_tab_index_(0) {
+      sidebar_container_(nullptr),
+      sidebar_header_(nullptr),
+      sidebar_toggle_button_(nullptr),
+      sidebar_clear_button_(nullptr),
+      chat_scrolled_window_(nullptr),
+      chat_text_view_(nullptr),
+      chat_text_buffer_(nullptr),
+      chat_input_box_(nullptr),
+      chat_input_(nullptr),
+      chat_send_button_(nullptr),
+      active_tab_index_(0),
+      sidebar_visible_(false) {
   InitializeWindow();
   SetupEventHandlers();
 }
 
 GtkWindow::~GtkWindow() {
-  if (window_ && !closed_) {
+  // Set closed flag immediately to prevent idle callbacks from running
+  closed_ = true;
+
+  // Clean up tabs before destroying the window
+  // This ensures renderers are cleaned up while gl_area_ is still valid
+  {
+    std::lock_guard<std::mutex> lock(tabs_mutex_);
+    for (auto& tab : tabs_) {
+      // Reset the renderer unique_ptr, which calls ~GLRenderer() -> Cleanup()
+      // while gl_area_ is still valid
+      tab.renderer.reset();
+    }
+    tabs_.clear();
+  }
+
+  if (window_) {
     gtk_widget_destroy(window_);
   }
 }
@@ -83,13 +113,22 @@ void GtkWindow::InitializeWindow() {
   gtk_widget_set_size_request(notebook_, -1, 30);  // Minimum height for tab visibility
   gtk_box_pack_start(GTK_BOX(vbox_), notebook_, FALSE, TRUE, 0);
 
-  // Create GL area for hardware-accelerated rendering
+  // Create horizontal paned container for browser and sidebar
+  hpaned_ = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+  gtk_box_pack_start(GTK_BOX(vbox_), hpaned_, TRUE, TRUE, 0);
+
+  // Create GL area for hardware-accelerated rendering (left pane)
   gl_area_ = gtk_gl_area_new();
-  gtk_box_pack_start(GTK_BOX(vbox_), gl_area_, TRUE, TRUE, 0);
+  gtk_paned_pack1(GTK_PANED(hpaned_), gl_area_, TRUE, FALSE);  // Resizable, not shrinkable
 
   // Configure GL area
   gtk_gl_area_set_auto_render(GTK_GL_AREA(gl_area_), FALSE);  // Manual rendering
   gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(gl_area_), FALSE);
+
+  // Create sidebar (right pane)
+  CreateSidebar();
+  gtk_paned_pack2(GTK_PANED(hpaned_), sidebar_container_, FALSE, TRUE);  // Not resizable, shrinkable
+  gtk_paned_set_position(GTK_PANED(hpaned_), config_.size.width);  // Initially hide sidebar (position at far right)
 
   if (config_.enable_input) {
     // Enable focus for keyboard events
@@ -130,6 +169,10 @@ void GtkWindow::CreateToolbar() {
   new_tab_button_ = gtk_button_new_with_label("+");
   gtk_widget_set_tooltip_text(new_tab_button_, "New Tab");
 
+  // Create sidebar toggle button
+  sidebar_toggle_button_ = gtk_button_new_with_label("💬");
+  gtk_widget_set_tooltip_text(sidebar_toggle_button_, "Toggle Claude Chat (Ctrl+Shift+C)");
+
   // Pack widgets into toolbar
   gtk_box_pack_start(GTK_BOX(toolbar_), back_button_, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(toolbar_), forward_button_, FALSE, FALSE, 0);
@@ -137,12 +180,111 @@ void GtkWindow::CreateToolbar() {
   gtk_box_pack_start(GTK_BOX(toolbar_), stop_button_, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(toolbar_), address_entry_, TRUE, TRUE, 0);
   gtk_box_pack_start(GTK_BOX(toolbar_), new_tab_button_, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(toolbar_), sidebar_toggle_button_, FALSE, FALSE, 0);
 
   // Initially disable navigation buttons (will be enabled when browser loads)
   gtk_widget_set_sensitive(back_button_, FALSE);
   gtk_widget_set_sensitive(forward_button_, FALSE);
   gtk_widget_set_sensitive(reload_button_, FALSE);
   gtk_widget_set_sensitive(stop_button_, FALSE);
+}
+
+void GtkWindow::CreateSidebar() {
+  // Main sidebar container (300px width)
+  sidebar_container_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_set_size_request(sidebar_container_, 400, -1);
+
+  // Header with title and close button
+  sidebar_header_ = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+  gtk_widget_set_margin_start(sidebar_header_, 10);
+  gtk_widget_set_margin_end(sidebar_header_, 10);
+  gtk_widget_set_margin_top(sidebar_header_, 10);
+  gtk_widget_set_margin_bottom(sidebar_header_, 10);
+
+  GtkWidget* title_label = gtk_label_new("Claude Chat");
+  gtk_widget_set_halign(title_label, GTK_ALIGN_START);
+  PangoAttrList* attrs = pango_attr_list_new();
+  pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+  pango_attr_list_insert(attrs, pango_attr_scale_new(1.2));
+  gtk_label_set_attributes(GTK_LABEL(title_label), attrs);
+  pango_attr_list_unref(attrs);
+
+  sidebar_clear_button_ = gtk_button_new_with_label("🗑");
+  gtk_widget_set_tooltip_text(sidebar_clear_button_, "Clear Chat History");
+
+  GtkWidget* close_button = gtk_button_new_with_label("✕");
+  gtk_widget_set_halign(close_button, GTK_ALIGN_END);
+
+  gtk_box_pack_start(GTK_BOX(sidebar_header_), title_label, TRUE, TRUE, 0);
+  gtk_box_pack_start(GTK_BOX(sidebar_header_), sidebar_clear_button_, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(sidebar_header_), close_button, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(sidebar_container_), sidebar_header_, FALSE, FALSE, 0);
+
+  // Separator
+  GtkWidget* separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+  gtk_box_pack_start(GTK_BOX(sidebar_container_), separator, FALSE, FALSE, 0);
+
+  // Chat history (scrollable text view)
+  chat_scrolled_window_ = gtk_scrolled_window_new(nullptr, nullptr);
+  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(chat_scrolled_window_),
+                                  GTK_POLICY_AUTOMATIC,
+                                  GTK_POLICY_AUTOMATIC);
+
+  chat_text_view_ = gtk_text_view_new();
+  gtk_text_view_set_editable(GTK_TEXT_VIEW(chat_text_view_), FALSE);
+  gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(chat_text_view_), FALSE);
+  gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(chat_text_view_), GTK_WRAP_WORD_CHAR);
+  gtk_widget_set_margin_start(chat_text_view_, 10);
+  gtk_widget_set_margin_end(chat_text_view_, 10);
+  gtk_widget_set_margin_top(chat_text_view_, 10);
+  gtk_widget_set_margin_bottom(chat_text_view_, 10);
+
+  chat_text_buffer_ = gtk_text_view_get_buffer(GTK_TEXT_VIEW(chat_text_view_));
+
+  // Create text tags for styling
+  gtk_text_buffer_create_tag(chat_text_buffer_, "user",
+                              "weight", PANGO_WEIGHT_BOLD,
+                              "foreground", "#2563eb",
+                              nullptr);
+  gtk_text_buffer_create_tag(chat_text_buffer_, "assistant",
+                              "weight", PANGO_WEIGHT_BOLD,
+                              "foreground", "#16a34a",
+                              nullptr);
+  gtk_text_buffer_create_tag(chat_text_buffer_, "message",
+                              "left-margin", 10,
+                              nullptr);
+
+  gtk_container_add(GTK_CONTAINER(chat_scrolled_window_), chat_text_view_);
+  gtk_box_pack_start(GTK_BOX(sidebar_container_), chat_scrolled_window_, TRUE, TRUE, 0);
+
+  // Input box at bottom
+  chat_input_box_ = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+  gtk_widget_set_margin_start(chat_input_box_, 10);
+  gtk_widget_set_margin_end(chat_input_box_, 10);
+  gtk_widget_set_margin_top(chat_input_box_, 5);
+  gtk_widget_set_margin_bottom(chat_input_box_, 10);
+
+  chat_input_ = gtk_entry_new();
+  gtk_entry_set_placeholder_text(GTK_ENTRY(chat_input_), "Ask Claude anything...");
+
+  chat_send_button_ = gtk_button_new_with_label("➤");
+  gtk_widget_set_size_request(chat_send_button_, 40, -1);
+
+  gtk_box_pack_start(GTK_BOX(chat_input_box_), chat_input_, TRUE, TRUE, 0);
+  gtk_box_pack_start(GTK_BOX(chat_input_box_), chat_send_button_, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(sidebar_container_), chat_input_box_, FALSE, FALSE, 0);
+
+  // Connect close button to toggle
+  g_signal_connect_swapped(close_button, "clicked",
+                            G_CALLBACK(+[](GtkWindow* self) { self->ToggleSidebar(); }),
+                            this);
+
+  // Connect clear button to ClearChatHistory
+  g_signal_connect_swapped(sidebar_clear_button_, "clicked",
+                            G_CALLBACK(+[](GtkWindow* self) { self->ClearChatHistory(); }),
+                            this);
+
+  std::cout << "[GtkWindow] Sidebar created" << std::endl;
 }
 
 void GtkWindow::SetupEventHandlers() {
@@ -157,6 +299,9 @@ void GtkWindow::SetupEventHandlers() {
   callbacks::RegisterToolbarCallbacks(
     back_button_, forward_button_, reload_button_,
     stop_button_, address_entry_, new_tab_button_, this);
+
+  callbacks::RegisterSidebarCallbacks(
+    chat_input_, chat_send_button_, sidebar_toggle_button_, this);
 }
 
 utils::Result<void> GtkWindow::CreateBrowser(const std::string& url) {
@@ -350,12 +495,22 @@ void GtkWindow::OnRealize() {
 void GtkWindow::OnSizeAllocate(int width, int height) {
   config_.size = {width, height};
 
-  // Resize all tabs, not just the active one
+  // Get actual GL area size (which may be smaller than window due to sidebar)
+  GtkAllocation gl_allocation;
+  gtk_widget_get_allocation(gl_area_, &gl_allocation);
+  int gl_width = gl_allocation.width;
+  int gl_height = gl_allocation.height;
+
+  // Resize all tabs with GL area size, not window size
   {
     std::lock_guard<std::mutex> lock(tabs_mutex_);
     for (auto& tab : tabs_) {
       if (tab.cef_client) {
-        tab.cef_client->SetSize(width, height);
+        tab.cef_client->SetSize(gl_width, gl_height);
+      }
+      // Also update renderer view size
+      if (tab.renderer) {
+        tab.renderer->SetViewSize(gl_width, gl_height);
       }
     }
   }
@@ -461,7 +616,8 @@ struct NavigationButtonsUpdateData {
 // GTK idle callback to update address bar on main thread
 gboolean update_address_bar_idle(gpointer user_data) {
   auto* data = static_cast<AddressBarUpdateData*>(user_data);
-  if (data && data->window && data->window->address_entry_) {
+  if (data && data->window && !data->window->IsClosed() &&
+      data->window->address_entry_ && GTK_IS_WIDGET(data->window->address_entry_)) {
     gtk_entry_set_text(GTK_ENTRY(data->window->address_entry_), data->url.c_str());
   }
   delete data;
@@ -471,20 +627,20 @@ gboolean update_address_bar_idle(gpointer user_data) {
 // GTK idle callback to update navigation buttons on main thread
 gboolean update_navigation_buttons_idle(gpointer user_data) {
   auto* data = static_cast<NavigationButtonsUpdateData*>(user_data);
-  if (data && data->window) {
+  if (data && data->window && !data->window->IsClosed()) {
     // Update back/forward buttons based on history state
-    if (data->window->back_button_) {
+    if (data->window->back_button_ && GTK_IS_WIDGET(data->window->back_button_)) {
       gtk_widget_set_sensitive(data->window->back_button_, data->can_go_back);
     }
-    if (data->window->forward_button_) {
+    if (data->window->forward_button_ && GTK_IS_WIDGET(data->window->forward_button_)) {
       gtk_widget_set_sensitive(data->window->forward_button_, data->can_go_forward);
     }
 
     // Update reload/stop buttons based on loading state
-    if (data->window->reload_button_) {
+    if (data->window->reload_button_ && GTK_IS_WIDGET(data->window->reload_button_)) {
       gtk_widget_set_sensitive(data->window->reload_button_, !data->is_loading);
     }
-    if (data->window->stop_button_) {
+    if (data->window->stop_button_ && GTK_IS_WIDGET(data->window->stop_button_)) {
       gtk_widget_set_sensitive(data->window->stop_button_, data->is_loading);
     }
   }
@@ -522,6 +678,12 @@ void GtkWindow::HandleTabRenderInvalidated(
     gtk_gl_area_queue_render(GTK_GL_AREA(gl_area_));
   }
 }
+
+// ============================================================================
+// Claude Chat Sidebar Methods
+// ============================================================================
+
+// Sidebar methods are implemented in gtk_window_sidebar.cpp
 
 // ============================================================================
 // Tab Management Methods

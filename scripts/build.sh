@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Default values
 BUILD_TYPE="release"
+BUILD_AGENT=true
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -17,17 +18,23 @@ while [[ $# -gt 0 ]]; do
             BUILD_TYPE="release"
             shift
             ;;
+        --skip-agent)
+            BUILD_AGENT=false
+            shift
+            ;;
         --help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  --debug              Build in debug mode"
             echo "  --release            Build in release mode (default)"
+            echo "  --skip-agent         Skip building athena-agent (Claude integration)"
             echo "  --help               Show this help message"
             echo ""
             echo "Examples:"
-            echo "  $0                   # Build in release mode"
-            echo "  $0 --debug           # Build in debug mode"
+            echo "  $0                   # Build browser + agent in release mode"
+            echo "  $0 --debug           # Build browser + agent in debug mode"
+            echo "  $0 --skip-agent      # Build only browser (skip agent)"
             echo ""
             echo "To run after building:"
             echo "  ./scripts/run.sh     # Run with Google as homepage"
@@ -44,16 +51,69 @@ done
 
 BUILD_DIR="$ROOT_DIR/build/$BUILD_TYPE"
 
+# ============================================================================
+# Build Athena Agent (if requested)
+# ============================================================================
+
+if [ "$BUILD_AGENT" = true ]; then
+    AGENT_DIR="$ROOT_DIR/athena-agent"
+
+    if [ -d "$AGENT_DIR" ]; then
+        echo "======================================"
+        echo "Building Athena Agent..."
+        echo "======================================"
+
+        cd "$AGENT_DIR"
+
+        # Check if node_modules exists, if not install dependencies
+        if [ ! -d "node_modules" ]; then
+            echo "Installing athena-agent dependencies..."
+            npm install
+        fi
+
+        # Build the agent
+        echo "Compiling TypeScript..."
+        npm run build
+
+        echo "✅ Athena Agent built successfully"
+        echo ""
+
+        cd "$ROOT_DIR"
+    else
+        echo "⚠️  Warning: athena-agent directory not found, skipping agent build"
+        echo ""
+    fi
+fi
+
+# ============================================================================
+# Build Browser
+# ============================================================================
+
+echo "======================================"
+echo "Building Athena Browser ($BUILD_TYPE)..."
+echo "======================================"
+
 echo "Configuring CMake ($BUILD_TYPE)..."
 cmake --preset "$BUILD_TYPE" "$ROOT_DIR"
 
 echo "Building athena-browser ($BUILD_TYPE)..."
 cmake --build --preset "$BUILD_TYPE" -j
 
+# ============================================================================
+# Build Summary
+# ============================================================================
+
 echo ""
-echo "✅ Build complete!"
+echo "======================================"
+echo "✅ Build Complete!"
+echo "======================================"
 echo ""
-echo "Built binary: $BUILD_DIR/app/athena-browser"
+echo "Browser binary: $BUILD_DIR/app/athena-browser"
+
+if [ "$BUILD_AGENT" = true ] && [ -d "$ROOT_DIR/athena-agent/dist" ]; then
+    echo "Agent script:   $ROOT_DIR/athena-agent/dist/server.js"
+fi
+
 echo ""
 echo "To run:"
 echo "  ./scripts/run.sh                              # Run with default homepage"

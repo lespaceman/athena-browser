@@ -16,11 +16,13 @@ add_executable(athena-browser
   src/platform/gtk_window_callbacks.cpp
   src/platform/gtk_window_system.cpp
   src/platform/gtk_window_tabs.cpp
+  src/platform/gtk_window_sidebar.cpp
   # Phase 5: Application Layer
   src/core/browser_window.cpp
   src/core/application.cpp
   # Phase 6: Runtime Layer
   src/runtime/node_runtime.cpp
+  src/runtime/browser_control_server.cpp
   # Resources
   src/resources/scheme_handler.cpp
   # CEF's official OpenGL renderer
@@ -38,6 +40,7 @@ if(CEF_FOUND)
     libcef_dll_wrapper
     ${CEF_ROOT}/Release/libcef.so
     ${CEF_STANDARD_LIBS}
+    nlohmann_json::nlohmann_json
   )
 
   if(UNIX AND NOT APPLE)

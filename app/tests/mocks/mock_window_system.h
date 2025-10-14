@@ -175,18 +175,18 @@ class MockWindowSystem : public WindowSystem {
   bool IsInitialized() const override { return initialized_; }
 
   // Window Management
-  utils::Result<std::unique_ptr<Window>> CreateWindow(
+  utils::Result<std::shared_ptr<Window>> CreateWindow(
       const WindowConfig& config,
       const WindowCallbacks& callbacks) override {
     if (!initialized_) {
       return utils::Error("WindowSystem not initialized");
     }
 
-    auto window = std::make_unique<MockWindow>(config, callbacks, engine_);
+    auto window = std::make_shared<MockWindow>(config, callbacks, engine_);
     auto* window_ptr = window.get();
     windows_[window_ptr] = window_ptr;
 
-    return std::unique_ptr<Window>(std::move(window));
+    return std::static_pointer_cast<Window>(window);
   }
 
   // Event Loop

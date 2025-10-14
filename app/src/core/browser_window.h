@@ -10,6 +10,12 @@
 #include "platform/window_system.h"
 
 namespace athena {
+
+// Forward declaration
+namespace runtime {
+  class NodeRuntime;
+}
+
 namespace core {
 
 /**
@@ -21,6 +27,7 @@ struct BrowserWindowConfig {
   std::string url = "about:blank";
   bool resizable = true;
   bool enable_input = true;
+  runtime::NodeRuntime* node_runtime = nullptr;  // Optional Node runtime for Claude chat
 };
 
 /**
@@ -237,6 +244,7 @@ class BrowserWindow {
    * @return Non-owning pointer to the window
    */
   platform::Window* GetWindow() const;
+  std::shared_ptr<platform::Window> GetWindowShared() const;
 
  private:
   // Configuration
@@ -248,7 +256,7 @@ class BrowserWindow {
   browser::BrowserEngine* browser_engine_;
 
   // Owned resources
-  std::unique_ptr<platform::Window> window_;
+  std::shared_ptr<platform::Window> window_;
   // Note: browser_id is no longer tracked here - we delegate to the window's active tab
 
   // State

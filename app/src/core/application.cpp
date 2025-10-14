@@ -91,18 +91,9 @@ utils::Result<void> Application::Initialize(int argc, char* argv[]) {
 
   logger.Debug("Application::Initialize - Browser engine initialized");
 
-  // Initialize Node runtime if enabled and provided
-  if (config_.enable_node_runtime && node_runtime_) {
-    auto node_result = node_runtime_->Initialize();
-    if (!node_result) {
-      logger.Warn("Failed to initialize Node runtime: " +
-                  node_result.GetError().Message());
-      // Don't fail application startup if Node runtime fails
-      // Just log and continue without it
-    } else {
-      logger.Debug("Application::Initialize - Node runtime initialized");
-    }
-  }
+  // NOTE: Node runtime initialization is deferred until Run() is called.
+  // This ensures the runtime starts right before the event loop begins,
+  // providing better timing and guaranteed cleanup on exit.
 
   initialized_ = true;
   logger.Info("Application initialized successfully");
@@ -122,9 +113,31 @@ void Application::Run() {
     return;
   }
 
+  // Initialize browser control server FIRST (before Node runtime)
+  // This ensures the server is listening before Node tries to connect
+  auto server_result = InitializeBrowserControlServer();
+  if (!server_result) {
+    logger.Warn("Application::Run - Browser control server initialization failed: " +
+                server_result.GetError().Message());
+    // Continue without server (non-fatal)
+  }
+
+  // Initialize Node runtime right before event loop starts
+  // Node will connect to browser control server during MCP initialization
+  auto runtime_result = InitializeRuntime();
+  if (!runtime_result) {
+    logger.Warn("Application::Run - Node runtime initialization failed: " +
+                runtime_result.GetError().Message());
+    // Continue without runtime (non-fatal)
+  }
+
   logger.Info("Application::Run - Entering main event loop");
   window_system_->Run();
   logger.Info("Application::Run - Exited main event loop");
+
+  // Shutdown servers immediately after event loop exits
+  ShutdownBrowserControlServer();
+  ShutdownRuntime();
 }
 
 void Application::Quit() {
@@ -138,6 +151,7 @@ void Application::Quit() {
 }
 
 void Application::Shutdown() {
+  // Idempotency check: safe to call multiple times (e.g., from signal handler + main cleanup)
   if (!initialized_) {
     return;
   }
@@ -149,12 +163,11 @@ void Application::Shutdown() {
   // Close all windows
   CloseAllWindows(true);
 
-  // Shutdown in reverse order
-  if (node_runtime_) {
-    node_runtime_->Shutdown();
-    logger.Debug("Application::Shutdown - Node runtime shutdown");
-  }
+  // Shutdown servers (if not already done in Run())
+  ShutdownBrowserControlServer();
+  ShutdownRuntime();
 
+  // Shutdown in reverse order
   if (browser_engine_) {
     browser_engine_->Shutdown();
     logger.Debug("Application::Shutdown - Browser engine shutdown");
@@ -194,13 +207,19 @@ utils::Result<std::unique_ptr<BrowserWindow>> Application::CreateWindow(
 
   logger.Debug("Application::CreateWindow - Creating browser window");
 
+  // Make a copy of config to inject node_runtime
+  BrowserWindowConfig window_config = config;
+  if (node_runtime_) {
+    window_config.node_runtime = node_runtime_.get();
+  }
+
   // Make a copy of callbacks to add our own handlers
   BrowserWindowCallbacks window_callbacks = callbacks;
   SetupDefaultCallbacks(window_callbacks);
 
   // Create the browser window
   auto window = std::make_unique<BrowserWindow>(
-      config,
+      window_config,
       window_callbacks,
       window_system_.get(),
       browser_engine_.get());
@@ -292,6 +311,114 @@ void Application::OnWindowDestroyed(BrowserWindow* window) {
     logger.Debug("Application - All windows destroyed, quitting");
     Quit();
   }
+}
+
+// ============================================================================
+// Runtime Lifecycle Helpers
+// ============================================================================
+
+utils::Result<void> Application::InitializeRuntime() {
+  if (!config_.enable_node_runtime || !node_runtime_) {
+    logger.Debug("Application::InitializeRuntime - Node runtime disabled or not provided");
+    return utils::Ok();
+  }
+
+  logger.Info("Application::InitializeRuntime - Starting Node runtime");
+
+  auto result = node_runtime_->Initialize();
+  if (!result) {
+    return utils::Error("Failed to initialize Node runtime: " +
+                       result.GetError().Message());
+  }
+
+  // Start health monitoring with automatic restart on failure
+  node_runtime_->StartHealthMonitoring();
+
+  logger.Info("Application::InitializeRuntime - Node runtime started successfully with health monitoring");
+  return utils::Ok();
+}
+
+void Application::ShutdownRuntime() {
+  if (!node_runtime_) {
+    return;
+  }
+
+  // Check if already shut down
+  if (node_runtime_->GetState() == runtime::RuntimeState::STOPPED) {
+    return;
+  }
+
+  logger.Info("Application::ShutdownRuntime - Stopping Node runtime");
+  node_runtime_->Shutdown();
+  logger.Info("Application::ShutdownRuntime - Node runtime stopped");
+}
+
+// ============================================================================
+// Browser Control Server Lifecycle Helpers
+// ============================================================================
+
+utils::Result<void> Application::InitializeBrowserControlServer() {
+  if (!config_.enable_node_runtime || !node_runtime_) {
+    logger.Debug("Application::InitializeBrowserControlServer - Node runtime disabled, skipping server");
+    return utils::Ok();
+  }
+
+  if (windows_.empty()) {
+    logger.Debug("Application::InitializeBrowserControlServer - No windows yet, skipping server");
+    return utils::Ok();
+  }
+
+  logger.Info("Application::InitializeBrowserControlServer - Starting browser control server");
+
+  // Get the first window's native window (GtkWindow)
+  auto* first_window = windows_[0];
+  if (!first_window) {
+    return utils::Error("First window is null");
+  }
+
+  auto window_shared = first_window->GetWindowShared();
+  if (!window_shared) {
+    return utils::Error("First window's native window is null");
+  }
+
+  // Cast to GtkWindow (we know it's GTK from window_system)
+  auto gtk_window = std::dynamic_pointer_cast<platform::GtkWindow>(window_shared);
+  if (!gtk_window) {
+    return utils::Error("Native window is not a GtkWindow");
+  }
+
+  // Create server config
+  runtime::BrowserControlServerConfig server_config;
+  server_config.socket_path = "/tmp/athena-" + std::to_string(getuid()) + "-control.sock";
+
+  // Create and initialize server
+  browser_control_server_ = std::make_unique<runtime::BrowserControlServer>(server_config);
+  browser_control_server_->SetBrowserWindow(gtk_window);
+
+  auto result = browser_control_server_->Initialize();
+  if (!result) {
+    browser_control_server_.reset();
+    return utils::Error("Failed to initialize browser control server: " +
+                       result.GetError().Message());
+  }
+
+  logger.Info("Application::InitializeBrowserControlServer - Server started successfully");
+  return utils::Ok();
+}
+
+void Application::ShutdownBrowserControlServer() {
+  if (!browser_control_server_) {
+    return;
+  }
+
+  if (!browser_control_server_->IsRunning()) {
+    return;
+  }
+
+  logger.Info("Application::ShutdownBrowserControlServer - Stopping browser control server");
+  browser_control_server_->Shutdown();
+  browser_control_server_.reset();
+  logger.Info("Application::ShutdownBrowserControlServer - Server stopped");
 }
 
 }  // namespace core

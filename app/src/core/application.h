@@ -8,6 +8,7 @@
 #include "browser/browser_engine.h"
 #include "platform/window_system.h"
 #include "runtime/node_runtime.h"
+#include "runtime/browser_control_server.h"
 #include "utils/error.h"
 
 namespace athena {
@@ -201,6 +202,7 @@ class Application {
   std::unique_ptr<browser::BrowserEngine> browser_engine_;
   std::unique_ptr<platform::WindowSystem> window_system_;
   std::unique_ptr<runtime::NodeRuntime> node_runtime_;
+  std::unique_ptr<runtime::BrowserControlServer> browser_control_server_;
 
   // Window tracking (weak pointers - windows are owned by callers)
   std::vector<BrowserWindow*> windows_;
@@ -212,6 +214,14 @@ class Application {
   // Internal helpers
   void SetupDefaultCallbacks(BrowserWindowCallbacks& callbacks);
   void OnWindowDestroyed(BrowserWindow* window);
+
+  // Runtime lifecycle helpers
+  utils::Result<void> InitializeRuntime();
+  void ShutdownRuntime();
+
+  // Browser control server lifecycle helpers
+  utils::Result<void> InitializeBrowserControlServer();
+  void ShutdownBrowserControlServer();
 };
 
 }  // namespace core

@@ -34,6 +34,15 @@ if(NOT GTest_FOUND)
   FetchContent_MakeAvailable(googletest)
 endif()
 
+# Fetch nlohmann/json for JSON parsing
+include(FetchContent)
+FetchContent_Declare(
+  nlohmann_json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG v3.11.3
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 add_subdirectory(app)
 
 # Optionally: copy frontend production bundle to resources/web (handled by scripts/build)
