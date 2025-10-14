@@ -7,7 +7,7 @@
  */
 
 import express from 'express';
-import { unlinkSync, existsSync, chmodSync, mkdirSync } from 'fs';
+import { unlinkSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { Logger } from './logger.js';
 import { config, validateConfig } from './config.js';
