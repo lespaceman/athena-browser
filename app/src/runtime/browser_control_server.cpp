@@ -2,6 +2,7 @@
  * Browser Control Server Implementation
  *
  * Internal HTTP server for browser control via Unix socket.
+ * Runs entirely on GTK main thread using non-blocking I/O.
  */
 
 #include "runtime/browser_control_server.h"
@@ -25,184 +26,47 @@ static utils::Logger logger("BrowserControlServer");
 static constexpr size_t MAX_REQUEST_SIZE = 1024 * 1024;
 
 // ============================================================================
-// Request Context for Background Processing
+// Client Connection Context
 // ============================================================================
 
-struct RequestContext {
+struct ClientConnection {
   BrowserControlServer* server;
-  int client_fd;
-};
+  int fd;
+  GIOChannel* channel;
+  guint watch_id;
+  std::string buffer;
+  bool headers_complete;
+  size_t content_length;
 
-// Worker function that runs in background thread
-// Note: Not static because it's declared as friend in header
-void handle_request_worker(gpointer data, gpointer user_data) {
-  auto* context = static_cast<RequestContext*>(data);
+  ClientConnection(BrowserControlServer* s, int client_fd)
+      : server(s),
+        fd(client_fd),
+        channel(nullptr),
+        watch_id(0),
+        headers_complete(false),
+        content_length(0) {
+    // Set non-blocking
+    int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
-  // Process request in background thread (THIS NOW RUNS OFF GTK MAIN THREAD)
-  bool success = context->server->HandleRequest(context->client_fd);
-
-  if (!success) {
-    logger.Warn("Request handling failed");
+    // Create GLib I/O watch for this client
+    channel = g_io_channel_unix_new(fd);
+    g_io_channel_set_encoding(channel, nullptr, nullptr);  // Binary mode
+    g_io_channel_set_buffered(channel, FALSE);
   }
 
-  // Close connection
-  close(context->client_fd);
-
-  // Clean up context
-  delete context;
-}
-
-// ============================================================================
-// Main Thread Marshaling Contexts
-// ============================================================================
-
-// Context for marshaling LoadURL to main thread
-struct LoadURLContext {
-  platform::GtkWindow* window;
-  std::string url;
-  std::string* result_json;  // Output parameter
-  GMutex mutex;
-  GCond cond;
-  bool done;
-};
-
-// Context for marshaling CreateTab to main thread
-struct CreateTabContext {
-  platform::GtkWindow* window;
-  std::string url;
-  int* tab_index;  // Output parameter
-  std::string* result_json;  // Output parameter
-  GMutex mutex;
-  GCond cond;
-  bool done;
-};
-
-// Context for marshaling GetActiveTab to main thread
-struct GetActiveTabContext {
-  platform::GtkWindow* window;
-  std::string* result_json;  // Output parameter
-  GMutex mutex;
-  GCond cond;
-  bool done;
-};
-
-// Context for marshaling GetTabCount to main thread
-struct GetTabCountContext {
-  platform::GtkWindow* window;
-  std::string* result_json;  // Output parameter
-  GMutex mutex;
-  GCond cond;
-  bool done;
-};
-
-// Idle callbacks for main thread operations
-static gboolean load_url_idle(gpointer data) {
-  auto* ctx = static_cast<LoadURLContext*>(data);
-
-  try {
-    // NOW on main thread - safe to call GTK methods
-    ctx->window->LoadURL(ctx->url);
-    std::ostringstream response;
-    response << R"({"success":true,"message":"Navigated to )" << ctx->url << R"(")"
-             << R"(,"tabIndex":)" << ctx->window->GetActiveTabIndex() << "}";
-    *ctx->result_json = response.str();
-  } catch (const std::exception& e) {
-    std::ostringstream response;
-    response << R"({"success":false,"error":")" << e.what() << R"("})";
-    *ctx->result_json = response.str();
-  }
-
-  // Signal completion
-  g_mutex_lock(&ctx->mutex);
-  ctx->done = true;
-  g_cond_signal(&ctx->cond);
-  g_mutex_unlock(&ctx->mutex);
-
-  return G_SOURCE_REMOVE;
-}
-
-static gboolean create_tab_idle(gpointer data) {
-  auto* ctx = static_cast<CreateTabContext*>(data);
-
-  try {
-    // NOW on main thread - safe to call GTK methods
-    int tab_index = ctx->window->CreateTab(ctx->url);
-    *ctx->tab_index = tab_index;
-
-    if (tab_index < 0) {
-      *ctx->result_json = R"({"success":false,"error":"Failed to create tab"})";
-    } else {
-      std::ostringstream response;
-      response << R"({"success":true,"message":"Created tab and navigated to )"
-               << ctx->url << R"(","tabIndex":)" << tab_index << "}";
-      *ctx->result_json = response.str();
+  ~ClientConnection() {
+    if (watch_id > 0) {
+      g_source_remove(watch_id);
     }
-  } catch (const std::exception& e) {
-    std::ostringstream response;
-    response << R"({"success":false,"error":")" << e.what() << R"("})";
-    *ctx->result_json = response.str();
-  }
-
-  // Signal completion
-  g_mutex_lock(&ctx->mutex);
-  ctx->done = true;
-  g_cond_signal(&ctx->cond);
-  g_mutex_unlock(&ctx->mutex);
-
-  return G_SOURCE_REMOVE;
-}
-
-static gboolean get_active_tab_idle(gpointer data) {
-  auto* ctx = static_cast<GetActiveTabContext*>(data);
-
-  try {
-    // NOW on main thread - safe to call GTK methods
-    auto* tab = ctx->window->GetActiveTab();
-    if (!tab) {
-      *ctx->result_json = R"({"success":false,"error":"No active tab"})";
-    } else {
-      std::ostringstream response;
-      response << R"({"success":true,"url":")" << tab->url << R"("})";
-      *ctx->result_json = response.str();
+    if (channel) {
+      g_io_channel_unref(channel);
     }
-  } catch (const std::exception& e) {
-    std::ostringstream response;
-    response << R"({"success":false,"error":")" << e.what() << R"("})";
-    *ctx->result_json = response.str();
+    if (fd >= 0) {
+      close(fd);
+    }
   }
-
-  // Signal completion
-  g_mutex_lock(&ctx->mutex);
-  ctx->done = true;
-  g_cond_signal(&ctx->cond);
-  g_mutex_unlock(&ctx->mutex);
-
-  return G_SOURCE_REMOVE;
-}
-
-static gboolean get_tab_count_idle(gpointer data) {
-  auto* ctx = static_cast<GetTabCountContext*>(data);
-
-  try {
-    // NOW on main thread - safe to call GTK methods
-    size_t count = ctx->window->GetTabCount();
-    std::ostringstream response;
-    response << R"({"success":true,"count":)" << count << "}";
-    *ctx->result_json = response.str();
-  } catch (const std::exception& e) {
-    std::ostringstream response;
-    response << R"({"success":false,"error":")" << e.what() << R"("})";
-    *ctx->result_json = response.str();
-  }
-
-  // Signal completion
-  g_mutex_lock(&ctx->mutex);
-  ctx->done = true;
-  g_cond_signal(&ctx->cond);
-  g_mutex_unlock(&ctx->mutex);
-
-  return G_SOURCE_REMOVE;
-}
+};
 
 // ============================================================================
 // Constructor / Destructor
@@ -214,7 +78,6 @@ BrowserControlServer::BrowserControlServer(
       window_(nullptr),
       server_fd_(-1),
       server_watch_id_(0),
-      thread_pool_(nullptr),
       running_(false) {
   logger.Debug("BrowserControlServer created");
 }
@@ -295,28 +158,9 @@ utils::Result<void> BrowserControlServer::Initialize() {
                                     this);
   g_io_channel_unref(channel);
 
-  // Create thread pool for async request handling
-  // Use 4 worker threads, non-exclusive mode
-  GError* error = nullptr;
-  thread_pool_ = g_thread_pool_new(
-      handle_request_worker,  // Worker function
-      this,                   // User data passed to worker
-      4,                      // Max threads
-      FALSE,                  // Non-exclusive
-      &error);
-
-  if (error) {
-    logger.Error("Failed to create thread pool: " + std::string(error->message));
-    g_error_free(error);
-    close(server_fd_);
-    server_fd_ = -1;
-    std::filesystem::remove(config_.socket_path);
-    return utils::Error("Failed to create thread pool");
-  }
-
   running_ = true;
 
-  logger.Info("Browser control server listening with thread pool (4 workers)");
+  logger.Info("Browser control server listening on main thread");
 
   return utils::Ok();
 }
@@ -334,13 +178,12 @@ void BrowserControlServer::Shutdown() {
     server_watch_id_ = 0;
   }
 
-  // Shutdown thread pool (wait for pending tasks to complete)
-  if (thread_pool_) {
-    logger.Debug("Waiting for thread pool to finish pending requests...");
-    g_thread_pool_free(thread_pool_, FALSE, TRUE);  // FALSE = wait for completion
-    thread_pool_ = nullptr;
-    logger.Debug("Thread pool shut down");
+  // Close all client connections
+  for (auto* client_ptr : active_clients_) {
+    auto* client = static_cast<ClientConnection*>(client_ptr);
+    delete client;
   }
+  active_clients_.clear();
 
   // Close socket
   if (server_fd_ >= 0) {
@@ -386,8 +229,29 @@ gboolean BrowserControlServer::OnServerReadable(GIOChannel* source,
   }
 
   if (condition & G_IO_IN) {
-    if (!server->AcceptConnection()) {
-      logger.Warn("Failed to accept connection");
+    server->AcceptConnection();
+  }
+
+  return G_SOURCE_CONTINUE;
+}
+
+gboolean BrowserControlServer::OnClientReadable(GIOChannel* source,
+                                                GIOCondition condition,
+                                                gpointer user_data) {
+  auto* client = static_cast<ClientConnection*>(user_data);
+  auto* server = client->server;
+
+  if (condition & (G_IO_ERR | G_IO_HUP)) {
+    logger.Debug("Client disconnected");
+    server->CloseClient(client);
+    return G_SOURCE_REMOVE;
+  }
+
+  if (condition & G_IO_IN) {
+    if (!server->HandleClientData(client)) {
+      // Error or request complete - close connection
+      server->CloseClient(client);
+      return G_SOURCE_REMOVE;
     }
   }
 
@@ -398,94 +262,125 @@ gboolean BrowserControlServer::OnServerReadable(GIOChannel* source,
 // Connection Handling
 // ============================================================================
 
-bool BrowserControlServer::AcceptConnection() {
-  // Accept connection (fast - runs on GTK main thread)
+void BrowserControlServer::AcceptConnection() {
   int client_fd = accept(server_fd_, nullptr, nullptr);
   if (client_fd < 0) {
-    if (errno == EWOULDBLOCK || errno == EAGAIN) {
-      return true;  // No connections pending
+    if (errno != EWOULDBLOCK && errno != EAGAIN) {
+      logger.Error("Accept failed: " + std::string(strerror(errno)));
     }
-    logger.Error("Accept failed");
-    return false;
+    return;
   }
 
-  logger.Debug("Client connected, offloading to thread pool");
+  logger.Debug("Client connected");
 
-  // Offload request handling to background thread pool
-  // This prevents blocking the GTK main thread during HTTP processing
-  auto* context = new RequestContext{this, client_fd};
+  // Create client connection context
+  auto* client = new ClientConnection(this, client_fd);
 
-  GError* error = nullptr;
-  g_thread_pool_push(thread_pool_, context, &error);
+  // Set up watch for client data
+  client->watch_id = g_io_add_watch(client->channel,
+                                     (GIOCondition)(G_IO_IN | G_IO_ERR | G_IO_HUP),
+                                     OnClientReadable,
+                                     client);
 
-  if (error) {
-    logger.Error("Failed to push request to thread pool: " +
-                 std::string(error->message));
-    g_error_free(error);
-    close(client_fd);
-    delete context;
-    return false;
-  }
-
-  return true;
+  active_clients_.push_back(client);
 }
 
-bool BrowserControlServer::HandleRequest(int client_fd) {
-  // Read HTTP request
-  std::string request;
+bool BrowserControlServer::HandleClientData(void* client_ptr) {
+  auto* client = static_cast<ClientConnection*>(client_ptr);
   char buffer[4096];
-  ssize_t bytes_read;
+  ssize_t bytes_read = recv(client->fd, buffer, sizeof(buffer) - 1, 0);
 
-  // Read until we have headers
-  while ((bytes_read = recv(client_fd, buffer, sizeof(buffer) - 1, 0)) > 0) {
-    buffer[bytes_read] = '\0';
-    request += buffer;
-
-    // Check request size limit to prevent DoS attacks
-    if (request.size() > MAX_REQUEST_SIZE) {
-      logger.Error("Request size exceeds maximum allowed (" +
-                   std::to_string(MAX_REQUEST_SIZE) + " bytes)");
-      std::string error_response = BuildHttpResponse(413, "Payload Too Large",
-                                                     R"({"success":false,"error":"Request too large"})");
-      send(client_fd, error_response.c_str(), error_response.size(), 0);
-      return false;
+  if (bytes_read <= 0) {
+    if (bytes_read < 0 && (errno == EWOULDBLOCK || errno == EAGAIN)) {
+      return true;  // No data available, keep connection
     }
-
-    // Check for end of headers
-    if (request.find("\r\n\r\n") != std::string::npos) {
-      break;
-    }
+    return false;  // Error or EOF
   }
 
-  if (bytes_read < 0) {
-    logger.Error("Failed to read request");
+  buffer[bytes_read] = '\0';
+  client->buffer.append(buffer, bytes_read);
+
+  // Enforce size limit while reading
+  if (client->buffer.size() > MAX_REQUEST_SIZE) {
+    logger.Error("Request size exceeds maximum allowed");
+    std::string error_response = BuildHttpResponse(413, "Payload Too Large",
+                                                   R"({"success":false,"error":"Request too large"})");
+    send(client->fd, error_response.c_str(), error_response.size(), 0);
     return false;
   }
 
-  if (request.empty()) {
-    logger.Warn("Empty request received");
-    return false;
+  // Check if we have complete headers
+  if (!client->headers_complete) {
+    size_t header_end = client->buffer.find("\r\n\r\n");
+    if (header_end != std::string::npos) {
+      client->headers_complete = true;
+
+      // Parse Content-Length
+      size_t cl_pos = client->buffer.find("Content-Length:");
+      if (cl_pos != std::string::npos && cl_pos < header_end) {
+        size_t cl_start = cl_pos + 15;
+        size_t cl_end = client->buffer.find("\r\n", cl_start);
+        if (cl_end != std::string::npos) {
+          std::string cl_str = client->buffer.substr(cl_start, cl_end - cl_start);
+          // Trim whitespace
+          size_t first = cl_str.find_first_not_of(" \t");
+          size_t last = cl_str.find_last_not_of(" \t");
+          if (first != std::string::npos && last != std::string::npos) {
+            cl_str = cl_str.substr(first, last - first + 1);
+            try {
+              client->content_length = std::stoull(cl_str);
+            } catch (...) {
+              client->content_length = 0;
+            }
+          }
+        }
+      }
+    } else {
+      // Headers not complete yet, keep reading
+      return true;
+    }
   }
 
-  logger.Debug("Received request");
+  // Check if we have complete body
+  size_t header_end = client->buffer.find("\r\n\r\n");
+  if (header_end == std::string::npos) {
+    return true;  // Should not happen, but be safe
+  }
 
-  // Process request and generate response
-  std::string response = ProcessRequest(request);
+  size_t body_start = header_end + 4;
+  size_t body_received = client->buffer.size() - body_start;
+
+  if (client->content_length > 0 && body_received < client->content_length) {
+    // Body not complete yet, keep reading
+    return true;
+  }
+
+  // We have a complete request - process it on main thread (we're already on it!)
+  std::string response = ProcessRequest(client->buffer);
 
   // Send response
-  ssize_t bytes_sent = send(client_fd, response.c_str(), response.size(), 0);
+  ssize_t bytes_sent = send(client->fd, response.c_str(), response.size(), 0);
   if (bytes_sent < 0) {
     logger.Error("Failed to send response");
-    return false;
+  } else {
+    logger.Debug("Response sent (" + std::to_string(bytes_sent) + " bytes)");
   }
 
-  logger.Debug("Response sent");
+  return false;  // Close connection after response
+}
 
-  return true;
+void BrowserControlServer::CloseClient(void* client_ptr) {
+  auto* client = static_cast<ClientConnection*>(client_ptr);
+  auto it = std::find(active_clients_.begin(), active_clients_.end(), client_ptr);
+  if (it != active_clients_.end()) {
+    active_clients_.erase(it);
+  }
+  delete client;
+  logger.Debug("Client connection closed");
 }
 
 // ============================================================================
-// Request Processing
+// Request Processing (runs on GTK main thread)
 // ============================================================================
 
 std::string BrowserControlServer::ProcessRequest(const std::string& request) {
@@ -493,11 +388,10 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
   std::string path = ParseHttpPath(request);
   std::string body = ParseHttpBody(request);
 
-  logger.Debug("Processing request");
+  logger.Debug("Processing " + method + " " + path);
 
-  // Route to handlers
+  // Route to handlers - all run synchronously on main thread
   if (method == "POST" && path == "/internal/open_url") {
-    // Parse JSON body using nlohmann/json
     try {
       auto json = nlohmann::json::parse(body);
 
@@ -522,228 +416,94 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
     return BuildHttpResponse(200, "OK", HandleGetTabCount());
 
   } else {
-    logger.Warn("Unknown endpoint");
+    logger.Warn("Unknown endpoint: " + path);
     return BuildHttpResponse(404, "Not Found",
                             R"({"success":false,"error":"Endpoint not found"})");
   }
 }
 
 // ============================================================================
-// Request Handlers
+// Request Handlers (run synchronously on GTK main thread)
 // ============================================================================
 
 std::string BrowserControlServer::HandleOpenUrl(const std::string& url) {
-  logger.Info("Opening URL (from background thread)");
+  logger.Info("Opening URL: " + url);
 
-  // Check if server is still running and window is available
   if (!running_ || !window_) {
     return R"({"success":false,"error":"Server is shutting down"})";
   }
 
-  // THREAD SAFETY: We're in a background thread, so marshal to main thread
-
-  // First, check tab count to decide whether to create tab or navigate
-  GetTabCountContext count_ctx = {
-    window_,
-    new std::string(),
-    {},  // mutex - will be initialized below
-    {},  // cond - will be initialized below
-    false
-  };
-  g_mutex_init(&count_ctx.mutex);
-  g_cond_init(&count_ctx.cond);
-
-  guint source_id = g_idle_add(get_tab_count_idle, &count_ctx);
-  if (source_id == 0) {
-    // Main loop is shutting down or failed
-    logger.Error("Failed to schedule get_tab_count on main thread");
-    delete count_ctx.result_json;
-    g_mutex_clear(&count_ctx.mutex);
-    g_cond_clear(&count_ctx.cond);
-    return R"({"success":false,"error":"Server is shutting down"})";
-  }
-
-  // Wait for completion
-  g_mutex_lock(&count_ctx.mutex);
-  while (!count_ctx.done) {
-    g_cond_wait(&count_ctx.cond, &count_ctx.mutex);
-  }
-  g_mutex_unlock(&count_ctx.mutex);
-
-  std::string count_result = *count_ctx.result_json;
-  delete count_ctx.result_json;
-  g_mutex_clear(&count_ctx.mutex);
-  g_cond_clear(&count_ctx.cond);
-
-  // Parse count from JSON using nlohmann/json
-  size_t tab_count = 0;
   try {
-    auto json = nlohmann::json::parse(count_result);
-    if (json.contains("count")) {
-      tab_count = json["count"].get<size_t>();
+    // Check tab count to decide whether to create tab or navigate
+    size_t tab_count = window_->GetTabCount();
+
+    if (tab_count == 0) {
+      // Create new tab
+      int tab_index = window_->CreateTab(url);
+      if (tab_index < 0) {
+        return R"({"success":false,"error":"Failed to create tab"})";
+      }
+
+      std::ostringstream response;
+      response << R"({"success":true,"message":"Created tab and navigated to )"
+               << url << R"(","tabIndex":)" << tab_index << "}";
+      return response.str();
+
+    } else {
+      // Navigate active tab
+      window_->LoadURL(url);
+
+      std::ostringstream response;
+      response << R"({"success":true,"message":"Navigated to )" << url << R"(")"
+               << R"(,"tabIndex":)" << window_->GetActiveTabIndex() << "}";
+      return response.str();
     }
-  } catch (const nlohmann::json::exception& e) {
-    logger.Error("Failed to parse tab count: " + std::string(e.what()));
-    return R"({"success":false,"error":"Failed to get tab count"})";
+
+  } catch (const std::exception& e) {
+    std::ostringstream response;
+    response << R"({"success":false,"error":")" << e.what() << R"("})";
+    return response.str();
   }
-
-  // Now either create tab or navigate based on count
-  std::string result;
-
-  if (tab_count == 0) {
-    // Create new tab (marshal to main thread)
-    int tab_index = -1;
-    CreateTabContext create_ctx = {
-      window_,
-      url,
-      &tab_index,
-      new std::string(),
-      {},  // mutex - will be initialized below
-      {},  // cond - will be initialized below
-      false
-    };
-    g_mutex_init(&create_ctx.mutex);
-    g_cond_init(&create_ctx.cond);
-
-    source_id = g_idle_add(create_tab_idle, &create_ctx);
-    if (source_id == 0) {
-      logger.Error("Failed to schedule create_tab on main thread");
-      delete create_ctx.result_json;
-      g_mutex_clear(&create_ctx.mutex);
-      g_cond_clear(&create_ctx.cond);
-      return R"({"success":false,"error":"Server is shutting down"})";
-    }
-
-    // Wait for completion
-    g_mutex_lock(&create_ctx.mutex);
-    while (!create_ctx.done) {
-      g_cond_wait(&create_ctx.cond, &create_ctx.mutex);
-    }
-    g_mutex_unlock(&create_ctx.mutex);
-
-    result = *create_ctx.result_json;
-    delete create_ctx.result_json;
-    g_mutex_clear(&create_ctx.mutex);
-    g_cond_clear(&create_ctx.cond);
-
-  } else {
-    // Navigate active tab (marshal to main thread)
-    LoadURLContext load_ctx = {
-      window_,
-      url,
-      new std::string(),
-      {},  // mutex - will be initialized below
-      {},  // cond - will be initialized below
-      false
-    };
-    g_mutex_init(&load_ctx.mutex);
-    g_cond_init(&load_ctx.cond);
-
-    source_id = g_idle_add(load_url_idle, &load_ctx);
-    if (source_id == 0) {
-      logger.Error("Failed to schedule load_url on main thread");
-      delete load_ctx.result_json;
-      g_mutex_clear(&load_ctx.mutex);
-      g_cond_clear(&load_ctx.cond);
-      return R"({"success":false,"error":"Server is shutting down"})";
-    }
-
-    // Wait for completion
-    g_mutex_lock(&load_ctx.mutex);
-    while (!load_ctx.done) {
-      g_cond_wait(&load_ctx.cond, &load_ctx.mutex);
-    }
-    g_mutex_unlock(&load_ctx.mutex);
-
-    result = *load_ctx.result_json;
-    delete load_ctx.result_json;
-    g_mutex_clear(&load_ctx.mutex);
-    g_cond_clear(&load_ctx.cond);
-  }
-
-  return result;
 }
 
 std::string BrowserControlServer::HandleGetUrl() {
-  // Check if server is still running and window is available
   if (!running_ || !window_) {
     return R"({"success":false,"error":"Server is shutting down"})";
   }
 
-  // THREAD SAFETY: We're in a background thread, so marshal to main thread
-  GetActiveTabContext ctx = {
-    window_,
-    new std::string(),
-    {},  // mutex - will be initialized below
-    {},  // cond - will be initialized below
-    false
-  };
-  g_mutex_init(&ctx.mutex);
-  g_cond_init(&ctx.cond);
+  try {
+    auto* tab = window_->GetActiveTab();
+    if (!tab) {
+      return R"({"success":false,"error":"No active tab"})";
+    }
 
-  guint source_id = g_idle_add(get_active_tab_idle, &ctx);
-  if (source_id == 0) {
-    logger.Error("Failed to schedule get_active_tab on main thread");
-    delete ctx.result_json;
-    g_mutex_clear(&ctx.mutex);
-    g_cond_clear(&ctx.cond);
-    return R"({"success":false,"error":"Server is shutting down"})";
+    std::ostringstream response;
+    response << R"({"success":true,"url":")" << tab->url << R"("})";
+    return response.str();
+
+  } catch (const std::exception& e) {
+    std::ostringstream response;
+    response << R"({"success":false,"error":")" << e.what() << R"("})";
+    return response.str();
   }
-
-  // Wait for completion
-  g_mutex_lock(&ctx.mutex);
-  while (!ctx.done) {
-    g_cond_wait(&ctx.cond, &ctx.mutex);
-  }
-  g_mutex_unlock(&ctx.mutex);
-
-  std::string result = *ctx.result_json;
-  delete ctx.result_json;
-  g_mutex_clear(&ctx.mutex);
-  g_cond_clear(&ctx.cond);
-
-  return result;
 }
 
 std::string BrowserControlServer::HandleGetTabCount() {
-  // Check if server is still running and window is available
   if (!running_ || !window_) {
     return R"({"success":false,"error":"Server is shutting down"})";
   }
 
-  // THREAD SAFETY: We're in a background thread, so marshal to main thread
-  GetTabCountContext ctx = {
-    window_,
-    new std::string(),
-    {},  // mutex - will be initialized below
-    {},  // cond - will be initialized below
-    false
-  };
-  g_mutex_init(&ctx.mutex);
-  g_cond_init(&ctx.cond);
+  try {
+    size_t count = window_->GetTabCount();
+    std::ostringstream response;
+    response << R"({"success":true,"count":)" << count << "}";
+    return response.str();
 
-  guint source_id = g_idle_add(get_tab_count_idle, &ctx);
-  if (source_id == 0) {
-    logger.Error("Failed to schedule get_tab_count on main thread");
-    delete ctx.result_json;
-    g_mutex_clear(&ctx.mutex);
-    g_cond_clear(&ctx.cond);
-    return R"({"success":false,"error":"Server is shutting down"})";
+  } catch (const std::exception& e) {
+    std::ostringstream response;
+    response << R"({"success":false,"error":")" << e.what() << R"("})";
+    return response.str();
   }
-
-  // Wait for completion
-  g_mutex_lock(&ctx.mutex);
-  while (!ctx.done) {
-    g_cond_wait(&ctx.cond, &ctx.mutex);
-  }
-  g_mutex_unlock(&ctx.mutex);
-
-  std::string result = *ctx.result_json;
-  delete ctx.result_json;
-  g_mutex_clear(&ctx.mutex);
-  g_cond_clear(&ctx.cond);
-
-  return result;
 }
 
 // ============================================================================

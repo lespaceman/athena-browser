@@ -12,6 +12,7 @@
 #define ATHENA_RUNTIME_BROWSER_CONTROL_SERVER_H_
 
 #include <string>
+#include <vector>
 #include <functional>
 #include <memory>
 #include "utils/error.h"
@@ -33,21 +34,22 @@ struct BrowserControlServerConfig {
  * Lightweight HTTP server that:
  * - Listens on Unix socket
  * - Accepts HTTP requests from Node.js agent
- * - Calls browser control methods (via function callbacks)
+ * - Calls browser control methods directly (on GTK main thread)
  * - Returns HTTP responses
  *
- * Runs in GTK main thread using GLib I/O watches (no threading needed).
+ * Runs entirely on GTK main thread using non-blocking I/O.
  *
  * Lifecycle:
  * 1. Create server with config
  * 2. SetBrowserWindow() to register browser instance
  * 3. Initialize() to start listening
- * 4. GTK main loop handles requests
+ * 4. GTK main loop handles requests via GLib I/O watches
  * 5. Shutdown() to stop server
  *
  * Thread Safety:
  * - All methods must be called from GTK main thread
- * - I/O callbacks run in GTK main thread (via g_io_add_watch)
+ * - No threading - all operations run synchronously on main thread
+ * - Non-blocking I/O prevents stalling the event loop
  */
 class BrowserControlServer {
  public:
@@ -113,21 +115,19 @@ class BrowserControlServer {
   // GLib I/O watch source IDs
   guint server_watch_id_;
 
-  // Thread pool for async request handling
-  GThreadPool* thread_pool_;
+  // Active client connections (opaque pointer - implementation detail)
+  std::vector<void*> active_clients_;
 
   // State
   bool running_;
 
   // Internal methods
-  bool AcceptConnection();
-  bool HandleRequest(int client_fd);
+  void AcceptConnection();
+  bool HandleClientData(void* client);
+  void CloseClient(void* client);
   std::string ProcessRequest(const std::string& request);
 
-  // Friend function to access HandleRequest from worker thread
-  friend void handle_request_worker(gpointer data, gpointer user_data);
-
-  // Request handlers
+  // Request handlers (run synchronously on GTK main thread)
   std::string HandleOpenUrl(const std::string& url);
   std::string HandleGetUrl();
   std::string HandleGetTabCount();
@@ -142,6 +142,9 @@ class BrowserControlServer {
 
   // GLib callbacks (static, use user_data for 'this' pointer)
   static gboolean OnServerReadable(GIOChannel* source,
+                                   GIOCondition condition,
+                                   gpointer user_data);
+  static gboolean OnClientReadable(GIOChannel* source,
                                    GIOCondition condition,
                                    gpointer user_data);
 };
