@@ -297,6 +297,17 @@ class GtkWindow : public Window {
   void ReplaceLastChatMessage(const std::string& role, const std::string& message);
 
   /**
+   * Clear all chat history.
+   */
+  void ClearChatHistory();
+
+  /**
+   * Trim chat history to maximum number of messages.
+   * Removes oldest messages if count exceeds limit.
+   */
+  void TrimChatHistory();
+
+  /**
    * Called when the chat input is activated (Enter key).
    */
   void OnChatInputActivate();
@@ -344,6 +355,7 @@ class GtkWindow : public Window {
   GtkWidget* sidebar_container_;      // Main sidebar VBox
   GtkWidget* sidebar_header_;         // Header box with title and close button
   GtkWidget* sidebar_toggle_button_;  // Toggle button in toolbar
+  GtkWidget* sidebar_clear_button_;   // Clear chat history button
   GtkWidget* chat_scrolled_window_;   // Scrollable chat history
   GtkWidget* chat_text_view_;         // Text view for chat history
   GtkTextBuffer* chat_text_buffer_;   // Text buffer for chat

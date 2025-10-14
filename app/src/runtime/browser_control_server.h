@@ -113,6 +113,9 @@ class BrowserControlServer {
   // GLib I/O watch source IDs
   guint server_watch_id_;
 
+  // Thread pool for async request handling
+  GThreadPool* thread_pool_;
+
   // State
   bool running_;
 
@@ -120,6 +123,9 @@ class BrowserControlServer {
   bool AcceptConnection();
   bool HandleRequest(int client_fd);
   std::string ProcessRequest(const std::string& request);
+
+  // Friend function to access HandleRequest from worker thread
+  friend void handle_request_worker(gpointer data, gpointer user_data);
 
   // Request handlers
   std::string HandleOpenUrl(const std::string& url);

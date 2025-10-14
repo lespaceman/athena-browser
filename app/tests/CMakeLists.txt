@@ -20,6 +20,7 @@ function(add_athena_test test_name)
     GTest::gtest
     GTest::gtest_main
     GTest::gmock
+    nlohmann_json::nlohmann_json
   )
 
   # Add CEF and GTK if needed for integration tests

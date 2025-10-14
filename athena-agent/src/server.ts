@@ -224,21 +224,21 @@ function startServer(app: express.Application): Promise<void> {
       mkdirSync(socketDir, { recursive: true, mode: 0o700 });
     }
 
+    // Set umask to ensure socket is created with secure permissions (0600)
+    // This prevents a race condition where the socket could be accessed
+    // before chmodSync() is called
+    const oldMask = process.umask(0o077);  // 0o077 → files created with 0o600
+
     // Start listening on Unix socket
     const server = app.listen(config.socketPath, () => {
-      // Set socket permissions to user-only (0600)
-      try {
-        chmodSync(config.socketPath, 0o600);
-      } catch (error) {
-        logger.warn('Failed to set socket permissions', {
-          error: error instanceof Error ? error.message : 'Unknown error'
-        });
-      }
+      // Restore original umask
+      process.umask(oldMask);
 
       logger.info('Server ready', {
         socket: config.socketPath,
         version: '1.0.0',
-        pid: process.pid
+        pid: process.pid,
+        socketPermissions: '0600'
       });
 
       // Print READY line for C++ to consume

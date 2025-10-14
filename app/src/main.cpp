@@ -11,39 +11,36 @@
 #include "platform/gtk_window.h"
 #include "runtime/node_runtime.h"
 #include "include/cef_app.h"
+#include <glib.h>
+#include <gtk/gtk.h>
 #include <iostream>
 #include <cstdlib>
 #include <csignal>
 #include <filesystem>
+#include <atomic>
 
 // ============================================================================
 // Signal Handling for Clean Shutdown
 // ============================================================================
 
-// Global application pointer for signal handlers
-static athena::core::Application* g_application = nullptr;
+// Async-signal-safe shutdown flag (atomic operations are safe in signal handlers)
+static std::atomic<bool> shutdown_requested{false};
 
 /**
  * Signal handler for graceful shutdown.
  * Handles SIGINT (Ctrl+C), SIGTERM, and SIGABRT.
+ *
+ * This handler uses only async-signal-safe operations (atomic store).
+ * The actual shutdown is handled in the main thread via periodic polling.
  */
 void signal_handler(int signum) {
-  const char* signal_name = "UNKNOWN";
-  switch (signum) {
-    case SIGINT:  signal_name = "SIGINT";  break;
-    case SIGTERM: signal_name = "SIGTERM"; break;
-    case SIGABRT: signal_name = "SIGABRT"; break;
-  }
+  // Only async-signal-safe operation: set the shutdown flag
+  shutdown_requested.store(true);
 
-  std::cout << "\n[Signal] Received " << signal_name << " (" << signum
-            << "), shutting down gracefully..." << std::endl;
-
-  if (g_application) {
-    g_application->Shutdown();
-  }
-
-  // Exit with signal number
-  exit(128 + signum);
+  // Note: We cannot safely call exit() or shutdown() here, as those
+  // functions are not async-signal-safe. The main thread will detect
+  // the flag and initiate shutdown.
+  (void)signum;  // Suppress unused parameter warning
 }
 
 int main(int argc, char* argv[]) {
@@ -137,9 +134,6 @@ int main(int argc, char* argv[]) {
       std::move(window_system),
       std::move(node_runtime));
 
-  // Set global pointer for signal handlers
-  g_application = application.get();
-
   // ============================================================================
   // Initialize Application
   // ============================================================================
@@ -197,6 +191,26 @@ int main(int argc, char* argv[]) {
   // ============================================================================
 
   std::cout << "Entering main event loop..." << std::endl;
+
+  // Set up periodic check for shutdown signal (every 100ms)
+  // This allows the signal handler to request shutdown asynchronously
+  auto check_shutdown = [&]() -> gboolean {
+    if (shutdown_requested.load()) {
+      std::cout << "\n[Main] Shutdown requested by signal, exiting event loop..." << std::endl;
+      application->Shutdown();
+      gtk_main_quit();
+      return G_SOURCE_REMOVE;  // Stop the timeout
+    }
+    return G_SOURCE_CONTINUE;  // Continue checking
+  };
+
+  // Convert lambda to function pointer for g_timeout_add
+  static auto check_shutdown_func = check_shutdown;
+  g_timeout_add(100, +[](gpointer data) -> gboolean {
+    auto* func = static_cast<decltype(check_shutdown)*>(data);
+    return (*func)();
+  }, &check_shutdown_func);
+
   application->Run();  // Blocking call
 
   // ============================================================================
@@ -204,11 +218,14 @@ int main(int argc, char* argv[]) {
   // ============================================================================
 
   std::cout << "Shutting down..." << std::endl;
+
+  // Check if shutdown was requested by signal handler
+  if (shutdown_requested.load()) {
+    std::cout << "Shutdown initiated by signal" << std::endl;
+  }
+
   window.reset();  // Close window
   application->Shutdown();
-
-  // Clear global pointer
-  g_application = nullptr;
 
   std::cout << "Shutdown complete" << std::endl;
   return 0;

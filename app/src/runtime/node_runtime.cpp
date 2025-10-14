@@ -10,6 +10,7 @@
 #include <sstream>
 #include <thread>
 #include <filesystem>
+#include <glib.h>
 
 namespace athena {
 namespace runtime {
@@ -26,6 +27,7 @@ NodeRuntime::NodeRuntime(const NodeRuntimeConfig& config)
       pid_(-1),
       state_(RuntimeState::STOPPED),
       health_monitoring_enabled_(false),
+      health_check_timer_id_(0),
       restart_attempts_(0) {
   logger.Debug("NodeRuntime::NodeRuntime - Creating runtime");
 
@@ -170,17 +172,74 @@ utils::Result<HealthStatus> NodeRuntime::CheckHealth() {
   return utils::Ok(std::move(status));
 }
 
-void NodeRuntime::StartHealthMonitoring() {
-  health_monitoring_enabled_ = true;
-  logger.Debug("NodeRuntime - Health monitoring started");
+// GLib callback for periodic health checks
+static gboolean health_check_callback(gpointer user_data) {
+  auto* runtime = static_cast<NodeRuntime*>(user_data);
 
-  // Note: In production, implement proper async health checks
-  // For now, health checks are synchronous on-demand
+  // Check if process is still alive
+  if (!runtime->IsProcessAlive()) {
+    logger.Error("NodeRuntime - Process died, triggering restart");
+    runtime->HandleCrash();
+    return G_SOURCE_REMOVE;  // Stop timer, HandleCrash will restart with new timer
+  }
+
+  // Perform health check
+  auto health_result = runtime->CheckHealth();
+  if (!health_result) {
+    logger.Warn("NodeRuntime - Health check failed: " + health_result.GetError().Message());
+    // Mark as unhealthy but don't restart immediately - give it a few chances
+    return G_SOURCE_CONTINUE;  // Keep checking
+  }
+
+  auto health = health_result.Value();
+  if (!health.healthy) {
+    logger.Warn("NodeRuntime - Health check reports unhealthy status");
+    return G_SOURCE_CONTINUE;  // Keep checking
+  }
+
+  logger.Debug("NodeRuntime - Health check passed (uptime: " +
+               std::to_string(health.uptime_ms) + "ms)");
+  return G_SOURCE_CONTINUE;  // Keep checking
+}
+
+void NodeRuntime::StartHealthMonitoring() {
+  if (health_monitoring_enabled_) {
+    logger.Debug("NodeRuntime - Health monitoring already running");
+    return;
+  }
+
+  if (state_ != RuntimeState::READY) {
+    logger.Warn("NodeRuntime - Cannot start health monitoring, runtime not ready");
+    return;
+  }
+
+  health_monitoring_enabled_ = true;
+
+  // Set up periodic health check using GLib timeout
+  // Check every config_.health_check_interval_ms milliseconds
+  health_check_timer_id_ = g_timeout_add(
+      config_.health_check_interval_ms,
+      health_check_callback,
+      this);
+
+  logger.Info("NodeRuntime - Health monitoring started (interval: " +
+              std::to_string(config_.health_check_interval_ms) + "ms)");
 }
 
 void NodeRuntime::StopHealthMonitoring() {
+  if (!health_monitoring_enabled_) {
+    return;
+  }
+
   health_monitoring_enabled_ = false;
-  logger.Debug("NodeRuntime - Health monitoring stopped");
+
+  // Remove GLib timeout
+  if (health_check_timer_id_ > 0) {
+    g_source_remove(health_check_timer_id_);
+    health_check_timer_id_ = 0;
+  }
+
+  logger.Info("NodeRuntime - Health monitoring stopped");
 }
 
 // ============================================================================
@@ -623,7 +682,14 @@ utils::Result<void> NodeRuntime::Restart() {
   state_ = RuntimeState::STOPPED;
 
   // Reinitialize
-  return Initialize();
+  auto result = Initialize();
+  if (result) {
+    // Restart health monitoring on successful restart
+    StartHealthMonitoring();
+    logger.Info("NodeRuntime - Restart successful, health monitoring resumed");
+  }
+
+  return result;
 }
 
 int NodeRuntime::CalculateBackoff() const {

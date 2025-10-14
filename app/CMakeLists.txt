@@ -39,6 +39,7 @@ if(CEF_FOUND)
     libcef_dll_wrapper
     ${CEF_ROOT}/Release/libcef.so
     ${CEF_STANDARD_LIBS}
+    nlohmann_json::nlohmann_json
   )
 
   if(UNIX AND NOT APPLE)

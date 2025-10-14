@@ -192,6 +192,18 @@ class NodeRuntime {
    */
   const NodeRuntimeConfig& GetConfig() const;
 
+  /**
+   * Check if the Node process is alive.
+   * Returns true if process exists, false otherwise.
+   */
+  bool IsProcessAlive() const;
+
+  /**
+   * Handle runtime crash (called by health monitoring).
+   * Attempts automatic restart with exponential backoff.
+   */
+  void HandleCrash();
+
  private:
   // Configuration
   NodeRuntimeConfig config_;
@@ -203,6 +215,7 @@ class NodeRuntime {
 
   // Health monitoring
   bool health_monitoring_enabled_;
+  unsigned int health_check_timer_id_;  // GLib timer source ID
   std::chrono::steady_clock::time_point last_health_check_;
 
   // Restart tracking
@@ -214,8 +227,6 @@ class NodeRuntime {
   utils::Result<std::string> ReadReadyLine();
   utils::Result<void> WaitForReady();
   void TerminateProcess(bool force);
-  bool IsProcessAlive() const;
-  void HandleCrash();
   utils::Result<void> Restart();
   int CalculateBackoff() const;
 };

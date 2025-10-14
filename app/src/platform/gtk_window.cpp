@@ -16,6 +16,9 @@
 namespace athena {
 namespace platform {
 
+// Maximum number of chat messages to keep in history (to prevent unbounded growth)
+static constexpr size_t MAX_CHAT_MESSAGES = 50;
+
 // ============================================================================
 // GtkWindow Implementation
 // ============================================================================
@@ -45,6 +48,7 @@ GtkWindow::GtkWindow(const WindowConfig& config,
       sidebar_container_(nullptr),
       sidebar_header_(nullptr),
       sidebar_toggle_button_(nullptr),
+      sidebar_clear_button_(nullptr),
       chat_scrolled_window_(nullptr),
       chat_text_view_(nullptr),
       chat_text_buffer_(nullptr),
@@ -193,10 +197,14 @@ void GtkWindow::CreateSidebar() {
   gtk_label_set_attributes(GTK_LABEL(title_label), attrs);
   pango_attr_list_unref(attrs);
 
+  sidebar_clear_button_ = gtk_button_new_with_label("🗑");
+  gtk_widget_set_tooltip_text(sidebar_clear_button_, "Clear Chat History");
+
   GtkWidget* close_button = gtk_button_new_with_label("✕");
   gtk_widget_set_halign(close_button, GTK_ALIGN_END);
 
   gtk_box_pack_start(GTK_BOX(sidebar_header_), title_label, TRUE, TRUE, 0);
+  gtk_box_pack_start(GTK_BOX(sidebar_header_), sidebar_clear_button_, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(sidebar_header_), close_button, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(sidebar_container_), sidebar_header_, FALSE, FALSE, 0);
 
@@ -257,6 +265,11 @@ void GtkWindow::CreateSidebar() {
   // Connect close button to toggle
   g_signal_connect_swapped(close_button, "clicked",
                             G_CALLBACK(+[](GtkWindow* self) { self->ToggleSidebar(); }),
+                            this);
+
+  // Connect clear button to ClearChatHistory
+  g_signal_connect_swapped(sidebar_clear_button_, "clicked",
+                            G_CALLBACK(+[](GtkWindow* self) { self->ClearChatHistory(); }),
                             this);
 
   std::cout << "[GtkWindow] Sidebar created" << std::endl;
@@ -870,6 +883,9 @@ void GtkWindow::AppendChatMessage(const std::string& role, const std::string& me
   gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(chat_text_view_), end_mark, 0.0, TRUE, 0.0, 1.0);
   gtk_text_buffer_delete_mark(chat_text_buffer_, end_mark);
 
+  // Trim history to prevent unbounded growth
+  TrimChatHistory();
+
   std::cout << "[GtkWindow] Appended chat message from " << role << std::endl;
 }
 
@@ -963,6 +979,126 @@ void GtkWindow::ReplaceLastChatMessage(const std::string& role, const std::strin
   // Thread-safe: marshal to GTK main thread using g_idle_add
   auto* data = new ChatMessageReplaceData{this, role, message};
   g_idle_add(replace_last_chat_message_idle, data);
+}
+
+void GtkWindow::ClearChatHistory() {
+  if (!chat_text_buffer_) {
+    std::cerr << "[GtkWindow] Chat text buffer not initialized" << std::endl;
+    return;
+  }
+
+  GtkTextIter start, end;
+  gtk_text_buffer_get_start_iter(chat_text_buffer_, &start);
+  gtk_text_buffer_get_end_iter(chat_text_buffer_, &end);
+  gtk_text_buffer_delete(chat_text_buffer_, &start, &end);
+
+  std::cout << "[GtkWindow] Chat history cleared" << std::endl;
+}
+
+void GtkWindow::TrimChatHistory() {
+  if (!chat_text_buffer_) {
+    return;
+  }
+
+  // Count the number of messages by counting "You:\n" and "Claude:\n" prefixes
+  GtkTextIter start, end;
+  gtk_text_buffer_get_start_iter(chat_text_buffer_, &start);
+  gtk_text_buffer_get_end_iter(chat_text_buffer_, &end);
+
+  gchar* text = gtk_text_buffer_get_text(chat_text_buffer_, &start, &end, FALSE);
+  std::string buffer_text(text);
+  g_free(text);
+
+  // Count occurrences of "You:\n" and "Claude:\n"
+  size_t message_count = 0;
+  size_t pos = 0;
+  while ((pos = buffer_text.find("You:\n", pos)) != std::string::npos) {
+    message_count++;
+    pos += 5;  // Length of "You:\n"
+  }
+  pos = 0;
+  while ((pos = buffer_text.find("Claude:\n", pos)) != std::string::npos) {
+    message_count++;
+    pos += 8;  // Length of "Claude:\n"
+  }
+
+  // If we exceed the limit, remove the oldest messages
+  if (message_count > MAX_CHAT_MESSAGES) {
+    size_t messages_to_remove = message_count - MAX_CHAT_MESSAGES;
+    std::cout << "[GtkWindow] Trimming " << messages_to_remove << " old messages (total: "
+              << message_count << ")" << std::endl;
+
+    // Find and delete the first N messages
+    gtk_text_buffer_get_start_iter(chat_text_buffer_, &start);
+    GtkTextIter delete_end = start;
+
+    for (size_t i = 0; i < messages_to_remove; ++i) {
+      GtkTextIter user_match_start, user_match_end;
+      GtkTextIter claude_match_start, claude_match_end;
+
+      bool found_user = gtk_text_iter_forward_search(&delete_end, "You:\n",
+                                                      GTK_TEXT_SEARCH_TEXT_ONLY,
+                                                      &user_match_start, &user_match_end, nullptr);
+      bool found_claude = gtk_text_iter_forward_search(&delete_end, "Claude:\n",
+                                                        GTK_TEXT_SEARCH_TEXT_ONLY,
+                                                        &claude_match_start, &claude_match_end, nullptr);
+
+      if (!found_user && !found_claude) {
+        break;  // No more messages
+      }
+
+      // Use the earliest match
+      GtkTextIter next_message_start;
+      if (found_user && found_claude) {
+        next_message_start = gtk_text_iter_compare(&user_match_start, &claude_match_start) < 0
+                             ? user_match_start : claude_match_start;
+      } else if (found_user) {
+        next_message_start = user_match_start;
+      } else {
+        next_message_start = claude_match_start;
+      }
+
+      // Find the next message prefix (or end of buffer)
+      delete_end = next_message_start;
+      GtkTextIter next_prefix_start, next_prefix_end;
+
+      // Skip past current prefix
+      if (found_user && gtk_text_iter_equal(&next_message_start, &user_match_start)) {
+        delete_end = user_match_end;
+      } else if (found_claude && gtk_text_iter_equal(&next_message_start, &claude_match_start)) {
+        delete_end = claude_match_end;
+      }
+
+      // Find next prefix
+      GtkTextIter next_user_start, next_user_end;
+      GtkTextIter next_claude_start, next_claude_end;
+
+      bool has_next_user = gtk_text_iter_forward_search(&delete_end, "You:\n",
+                                                         GTK_TEXT_SEARCH_TEXT_ONLY,
+                                                         &next_user_start, &next_user_end, nullptr);
+      bool has_next_claude = gtk_text_iter_forward_search(&delete_end, "Claude:\n",
+                                                           GTK_TEXT_SEARCH_TEXT_ONLY,
+                                                           &next_claude_start, &next_claude_end, nullptr);
+
+      if (has_next_user && has_next_claude) {
+        delete_end = gtk_text_iter_compare(&next_user_start, &next_claude_start) < 0
+                     ? next_user_start : next_claude_start;
+      } else if (has_next_user) {
+        delete_end = next_user_start;
+      } else if (has_next_claude) {
+        delete_end = next_claude_start;
+      } else {
+        // This is the last message, delete to end of buffer
+        gtk_text_buffer_get_end_iter(chat_text_buffer_, &delete_end);
+      }
+    }
+
+    // Delete all messages from start to delete_end
+    gtk_text_buffer_get_start_iter(chat_text_buffer_, &start);
+    gtk_text_buffer_delete(chat_text_buffer_, &start, &delete_end);
+
+    std::cout << "[GtkWindow] Trimmed chat history" << std::endl;
+  }
 }
 
 void GtkWindow::OnChatInputActivate() {

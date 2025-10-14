@@ -113,20 +113,22 @@ void Application::Run() {
     return;
   }
 
-  // Initialize Node runtime right before event loop starts
-  auto runtime_result = InitializeRuntime();
-  if (!runtime_result) {
-    logger.Warn("Application::Run - Node runtime initialization failed: " +
-                runtime_result.GetError().Message());
-    // Continue without runtime (non-fatal)
-  }
-
-  // Initialize browser control server (after first window is created)
+  // Initialize browser control server FIRST (before Node runtime)
+  // This ensures the server is listening before Node tries to connect
   auto server_result = InitializeBrowserControlServer();
   if (!server_result) {
     logger.Warn("Application::Run - Browser control server initialization failed: " +
                 server_result.GetError().Message());
     // Continue without server (non-fatal)
+  }
+
+  // Initialize Node runtime right before event loop starts
+  // Node will connect to browser control server during MCP initialization
+  auto runtime_result = InitializeRuntime();
+  if (!runtime_result) {
+    logger.Warn("Application::Run - Node runtime initialization failed: " +
+                runtime_result.GetError().Message());
+    // Continue without runtime (non-fatal)
   }
 
   logger.Info("Application::Run - Entering main event loop");
@@ -328,7 +330,10 @@ utils::Result<void> Application::InitializeRuntime() {
                        result.GetError().Message());
   }
 
-  logger.Info("Application::InitializeRuntime - Node runtime started successfully");
+  // Start health monitoring with automatic restart on failure
+  node_runtime_->StartHealthMonitoring();
+
+  logger.Info("Application::InitializeRuntime - Node runtime started successfully with health monitoring");
   return utils::Ok();
 }
 
