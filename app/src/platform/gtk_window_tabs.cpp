@@ -179,6 +179,12 @@ int GtkWindow::CreateTab(const std::string& url) {
           g_idle_add([](gpointer user_data) -> gboolean {
             auto* data = static_cast<TitleUpdateData*>(user_data);
 
+            // Check if window is closed first
+            if (data->window->IsClosed()) {
+              delete data;
+              return G_SOURCE_REMOVE;
+            }
+
             // Re-lookup the tab by browser_id to ensure it still exists
             std::lock_guard<std::mutex> lock(data->window->tabs_mutex_);
             auto it = std::find_if(data->window->tabs_.begin(),
@@ -187,8 +193,9 @@ int GtkWindow::CreateTab(const std::string& url) {
                                      return t.browser_id == data->browser_id;
                                    });
 
-            // Only update if tab still exists
-            if (it != data->window->tabs_.end() && it->tab_label != nullptr) {
+            // Only update if tab still exists AND widget is still valid
+            if (it != data->window->tabs_.end() && it->tab_label != nullptr &&
+                GTK_IS_WIDGET(it->tab_label)) {
               gtk_label_set_text(GTK_LABEL(it->tab_label), data->title.c_str());
             }
 

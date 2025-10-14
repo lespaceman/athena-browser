@@ -92,11 +92,18 @@ void GLRenderer::Cleanup() {
   }
 
   if (osr_renderer_) {
-    ScopedGLContext context(gl_area_);
-    if (!context.IsValid()) {
-      std::cerr << "[GLRenderer] Warning: GL context invalid during cleanup" << std::endl;
+    // Only try to make GL context current if widget is still valid
+    // During window destruction, gl_area_ may already be destroyed
+    if (gl_area_ && G_IS_OBJECT(gl_area_) && GTK_IS_GL_AREA(gl_area_)) {
+      ScopedGLContext context(gl_area_);
+      if (!context.IsValid()) {
+        std::cerr << "[GLRenderer] Warning: GL context invalid during cleanup" << std::endl;
+      }
+      osr_renderer_->Cleanup();
+    } else {
+      // Widget already destroyed, just clean up CEF renderer without GL context
+      osr_renderer_->Cleanup();
     }
-    osr_renderer_->Cleanup();
     osr_renderer_.reset();
   }
 
