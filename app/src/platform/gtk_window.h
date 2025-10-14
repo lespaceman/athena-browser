@@ -288,6 +288,15 @@ class GtkWindow : public Window {
   void AppendChatMessage(const std::string& role, const std::string& message);
 
   /**
+   * Replace the last assistant message in the chat history.
+   * Used to update placeholder messages with actual responses.
+   * Thread-safe: can be called from any thread.
+   * @param role "user" or "assistant"
+   * @param message New message text
+   */
+  void ReplaceLastChatMessage(const std::string& role, const std::string& message);
+
+  /**
    * Called when the chat input is activated (Enter key).
    */
   void OnChatInputActivate();
@@ -305,6 +314,7 @@ class GtkWindow : public Window {
   // Friend functions for GTK idle callbacks
   friend gboolean update_address_bar_idle(gpointer user_data);
   friend gboolean update_navigation_buttons_idle(gpointer user_data);
+  friend gboolean replace_last_chat_message_idle(gpointer user_data);
 
  private:
   // Window configuration and state

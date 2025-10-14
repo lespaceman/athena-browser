@@ -11,6 +11,7 @@
 
 #include <GL/gl.h>
 #include <iostream>
+#include <thread>
 
 namespace athena {
 namespace platform {
@@ -725,98 +726,115 @@ void GtkWindow::SendClaudeMessage(const std::string& message) {
     return;
   }
 
-  // Build JSON request body (new Athena Agent format)
-  // Escape quotes in message for JSON
-  std::string escaped_message = message;
-  size_t pos = 0;
-  while ((pos = escaped_message.find("\"", pos)) != std::string::npos) {
-    escaped_message.replace(pos, 1, "\\\"");
-    pos += 2;
-  }
-  std::string json_body = "{\"message\":\"" + escaped_message + "\"}";
+  // Show placeholder message immediately
+  AppendChatMessage("assistant", "⏳ Thinking...");
 
-  // Call the Athena Agent API (new endpoint)
-  auto response = node_runtime_->Call("POST", "/v1/chat/send", json_body);
+  // Capture necessary data for the background thread
+  // Copy the message and capture the node_runtime pointer
+  std::string message_copy = message;
+  runtime::NodeRuntime* node_runtime = node_runtime_;
 
-  if (!response.IsOk()) {
-    std::cerr << "[GtkWindow] Failed to get response from Claude: "
-              << response.GetError().Message() << std::endl;
-    AppendChatMessage("assistant", "[Error] Failed to communicate with Claude Agent: " + response.GetError().Message());
-    return;
-  }
-
-  // Parse the JSON response from Athena Agent
-  // New format: {"success": true/false, "response": "...", "error": "..."}
-  std::string response_body = response.Value();
-
-  std::cout << "[GtkWindow] Athena Agent response: " << response_body << std::endl;
-
-  // Check for success field
-  size_t success_pos = response_body.find("\"success\":");
-  bool success = false;
-  if (success_pos != std::string::npos) {
-    size_t true_pos = response_body.find("true", success_pos);
-    size_t false_pos = response_body.find("false", success_pos);
-    if (true_pos != std::string::npos && (false_pos == std::string::npos || true_pos < false_pos)) {
-      success = true;
+  // Launch background thread to make the blocking API call
+  std::thread([this, message_copy, node_runtime]() {
+    // Build JSON request body (new Athena Agent format)
+    // Escape quotes in message for JSON
+    std::string escaped_message = message_copy;
+    size_t pos = 0;
+    while ((pos = escaped_message.find("\"", pos)) != std::string::npos) {
+      escaped_message.replace(pos, 1, "\\\"");
+      pos += 2;
     }
-  }
+    std::string json_body = "{\"message\":\"" + escaped_message + "\"}";
 
-  if (!success) {
-    // Extract error message
-    size_t error_pos = response_body.find("\"error\":\"");
-    if (error_pos != std::string::npos) {
-      size_t start = error_pos + 9;
-      size_t end = response_body.find("\"", start);
-      std::string error_msg = response_body.substr(start, end - start);
-      AppendChatMessage("assistant", "[Error] " + error_msg);
-    } else {
-      AppendChatMessage("assistant", "[Error] Request failed with unknown error");
+    // Call the Athena Agent API (THIS BLOCKS FOR 5-15 SECONDS)
+    auto response = node_runtime->Call("POST", "/v1/chat/send", json_body);
+
+    if (!response.IsOk()) {
+      std::cerr << "[GtkWindow] Failed to get response from Claude: "
+                << response.GetError().Message() << std::endl;
+
+      // Replace placeholder with error (thread-safe via g_idle_add)
+      std::string error_msg = "[Error] Failed to communicate with Claude Agent: " + response.GetError().Message();
+      this->ReplaceLastChatMessage("assistant", error_msg);
+      return;
     }
-    return;
-  }
 
-  // Extract response field
-  size_t response_pos = response_body.find("\"response\":\"");
-  if (response_pos == std::string::npos) {
-    AppendChatMessage("assistant", "[Error] Unexpected response format from Claude Agent");
-    return;
-  }
+    // Parse the JSON response from Athena Agent
+    // New format: {"success": true/false, "response": "...", "error": "..."}
+    std::string response_body = response.Value();
 
-  // Extract the response string
-  size_t start = response_pos + 12;  // Skip past "response":"
-  size_t end = start;
-  int escape_count = 0;
+    std::cout << "[GtkWindow] Athena Agent response received (length=" << response_body.length() << ")" << std::endl;
 
-  // Find the end of the string, accounting for escaped quotes
-  while (end < response_body.length()) {
-    if (response_body[end] == '\\') {
-      escape_count++;
+    // Check for success field
+    size_t success_pos = response_body.find("\"success\":");
+    bool success = false;
+    if (success_pos != std::string::npos) {
+      size_t true_pos = response_body.find("true", success_pos);
+      size_t false_pos = response_body.find("false", success_pos);
+      if (true_pos != std::string::npos && (false_pos == std::string::npos || true_pos < false_pos)) {
+        success = true;
+      }
+    }
+
+    if (!success) {
+      // Extract error message
+      size_t error_pos = response_body.find("\"error\":\"");
+      std::string error_msg;
+      if (error_pos != std::string::npos) {
+        size_t start = error_pos + 9;
+        size_t end = response_body.find("\"", start);
+        error_msg = "[Error] " + response_body.substr(start, end - start);
+      } else {
+        error_msg = "[Error] Request failed with unknown error";
+      }
+
+      this->ReplaceLastChatMessage("assistant", error_msg);
+      return;
+    }
+
+    // Extract response field
+    size_t response_pos = response_body.find("\"response\":\"");
+    if (response_pos == std::string::npos) {
+      this->ReplaceLastChatMessage("assistant", "[Error] Unexpected response format from Claude Agent");
+      return;
+    }
+
+    // Extract the response string
+    size_t start = response_pos + 12;  // Skip past "response":"
+    size_t end = start;
+    int escape_count = 0;
+
+    // Find the end of the string, accounting for escaped quotes
+    while (end < response_body.length()) {
+      if (response_body[end] == '\\') {
+        escape_count++;
+        end++;
+        continue;
+      }
+      if (response_body[end] == '\"' && escape_count % 2 == 0) {
+        break;
+      }
+      escape_count = 0;
       end++;
-      continue;
     }
-    if (response_body[end] == '\"' && escape_count % 2 == 0) {
-      break;
+
+    std::string claude_response = response_body.substr(start, end - start);
+
+    // Unescape basic JSON escape sequences
+    pos = 0;
+    while ((pos = claude_response.find("\\n", pos)) != std::string::npos) {
+      claude_response.replace(pos, 2, "\n");
+      pos += 1;
     }
-    escape_count = 0;
-    end++;
-  }
+    pos = 0;
+    while ((pos = claude_response.find("\\\"", pos)) != std::string::npos) {
+      claude_response.replace(pos, 2, "\"");
+      pos += 1;
+    }
 
-  std::string claude_response = response_body.substr(start, end - start);
-
-  // Unescape basic JSON escape sequences
-  pos = 0;
-  while ((pos = claude_response.find("\\n", pos)) != std::string::npos) {
-    claude_response.replace(pos, 2, "\n");
-    pos += 1;
-  }
-  pos = 0;
-  while ((pos = claude_response.find("\\\"", pos)) != std::string::npos) {
-    claude_response.replace(pos, 2, "\"");
-    pos += 1;
-  }
-
-  AppendChatMessage("assistant", claude_response);
+    // Replace placeholder with actual response (thread-safe via g_idle_add)
+    this->ReplaceLastChatMessage("assistant", claude_response);
+  }).detach();  // Detach thread so it runs independently
 }
 
 void GtkWindow::AppendChatMessage(const std::string& role, const std::string& message) {
@@ -853,6 +871,98 @@ void GtkWindow::AppendChatMessage(const std::string& role, const std::string& me
   gtk_text_buffer_delete_mark(chat_text_buffer_, end_mark);
 
   std::cout << "[GtkWindow] Appended chat message from " << role << std::endl;
+}
+
+// Helper structure for thread-safe chat message replacement
+struct ChatMessageReplaceData {
+  GtkWindow* window;
+  std::string role;
+  std::string message;
+};
+
+// GTK idle callback to replace last chat message on main thread
+gboolean replace_last_chat_message_idle(gpointer user_data) {
+  auto* data = static_cast<ChatMessageReplaceData*>(user_data);
+
+  if (!data || !data->window || !data->window->chat_text_buffer_) {
+    delete data;
+    return G_SOURCE_REMOVE;
+  }
+
+  GtkTextBuffer* buffer = data->window->chat_text_buffer_;
+
+  // Search backwards for the last occurrence of the role prefix
+  GtkTextIter start, end;
+  gtk_text_buffer_get_start_iter(buffer, &start);
+  gtk_text_buffer_get_end_iter(buffer, &end);
+
+  std::string prefix = (data->role == "user") ? "You:\n" : "Claude:\n";
+
+  // Find last occurrence of the role prefix
+  GtkTextIter match_start, match_end;
+  GtkTextIter search_start = end;
+  bool found = false;
+
+  while (gtk_text_iter_backward_search(&search_start, prefix.c_str(),
+                                       GTK_TEXT_SEARCH_TEXT_ONLY,
+                                       &match_start, &match_end, nullptr)) {
+    // Found a match - this is the last occurrence
+    found = true;
+
+    // Find the end of this message (next role prefix or end of buffer)
+    GtkTextIter msg_end = match_end;
+    GtkTextIter next_user_start, next_user_end;
+    GtkTextIter next_claude_start, next_claude_end;
+
+    bool has_next_user = gtk_text_iter_forward_search(&msg_end, "You:\n",
+                                                        GTK_TEXT_SEARCH_TEXT_ONLY,
+                                                        &next_user_start, &next_user_end, nullptr);
+    bool has_next_claude = gtk_text_iter_forward_search(&msg_end, "Claude:\n",
+                                                          GTK_TEXT_SEARCH_TEXT_ONLY,
+                                                          &next_claude_start, &next_claude_end, nullptr);
+
+    // Use the earliest next prefix, or end of buffer
+    GtkTextIter content_end = end;
+    if (has_next_user && has_next_claude) {
+      content_end = gtk_text_iter_compare(&next_user_start, &next_claude_start) < 0
+                    ? next_user_start : next_claude_start;
+    } else if (has_next_user) {
+      content_end = next_user_start;
+    } else if (has_next_claude) {
+      content_end = next_claude_start;
+    }
+
+    // Delete the old message content (everything after the role prefix)
+    gtk_text_buffer_delete(buffer, &match_end, &content_end);
+
+    // Insert new message content
+    GtkTextIter insert_pos = match_end;
+    std::string message_with_newline = data->message + "\n\n";
+    gtk_text_buffer_insert_with_tags_by_name(buffer, &insert_pos,
+                                              message_with_newline.c_str(), -1,
+                                              "message", nullptr);
+
+    // Auto-scroll to bottom
+    gtk_text_buffer_get_end_iter(buffer, &end);
+    GtkTextMark* end_mark = gtk_text_buffer_create_mark(buffer, nullptr, &end, FALSE);
+    gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(data->window->chat_text_view_), end_mark, 0.0, TRUE, 0.0, 1.0);
+    gtk_text_buffer_delete_mark(buffer, end_mark);
+
+    break;
+  }
+
+  if (!found) {
+    std::cerr << "[GtkWindow] Could not find last message from role: " << data->role << std::endl;
+  }
+
+  delete data;
+  return G_SOURCE_REMOVE;
+}
+
+void GtkWindow::ReplaceLastChatMessage(const std::string& role, const std::string& message) {
+  // Thread-safe: marshal to GTK main thread using g_idle_add
+  auto* data = new ChatMessageReplaceData{this, role, message};
+  g_idle_add(replace_last_chat_message_idle, data);
 }
 
 void GtkWindow::OnChatInputActivate() {
