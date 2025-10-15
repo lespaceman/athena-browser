@@ -93,6 +93,7 @@ add_athena_test(gtk_window_tabs_test
   ../src/platform/gtk_window_callbacks.cpp
   ../src/platform/gtk_window_tabs.cpp
   ../src/platform/gtk_window_sidebar.cpp
+  ../src/platform/gtk_window_browser_control.cpp
   ../src/rendering/gl_renderer.cpp
   ../src/browser/cef_client.cpp
   ../src/browser/cef_engine.cpp
@@ -110,6 +111,7 @@ add_athena_test(gtk_window_chat_test
   ../src/platform/gtk_window_callbacks.cpp
   ../src/platform/gtk_window_tabs.cpp
   ../src/platform/gtk_window_sidebar.cpp
+  ../src/platform/gtk_window_browser_control.cpp
   ../src/rendering/gl_renderer.cpp
   ../src/browser/cef_client.cpp
   ../src/browser/cef_engine.cpp
@@ -136,6 +138,7 @@ add_athena_test(application_test
   ../src/platform/gtk_window_callbacks.cpp
   ../src/platform/gtk_window_tabs.cpp
   ../src/platform/gtk_window_sidebar.cpp
+  ../src/platform/gtk_window_browser_control.cpp
   ../src/rendering/gl_renderer.cpp
   ../src/browser/cef_client.cpp
   ../src/browser/cef_engine.cpp

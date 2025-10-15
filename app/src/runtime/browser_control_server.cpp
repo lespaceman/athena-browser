@@ -420,6 +420,30 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
   } else if (method == "GET" && path == "/internal/tab_count") {
     return BuildHttpResponse(200, "OK", HandleGetTabCount());
 
+  } else if (method == "GET" && path == "/internal/get_html") {
+    return BuildHttpResponse(200, "OK", HandleGetPageHtml());
+
+  } else if (method == "POST" && path == "/internal/execute_js") {
+    try {
+      auto json = nlohmann::json::parse(body);
+
+      if (!json.contains("code")) {
+        return BuildHttpResponse(400, "Bad Request",
+                                R"({"success":false,"error":"Missing code parameter"})");
+      }
+
+      std::string code = json["code"].get<std::string>();
+      return BuildHttpResponse(200, "OK", HandleExecuteJavaScript(code));
+
+    } catch (const nlohmann::json::exception& e) {
+      logger.Error("JSON parsing error: " + std::string(e.what()));
+      return BuildHttpResponse(400, "Bad Request",
+                              R"({"success":false,"error":"Invalid JSON"})");
+    }
+
+  } else if (method == "GET" && path == "/internal/screenshot") {
+    return BuildHttpResponse(200, "OK", HandleTakeScreenshot());
+
   } else {
     logger.Warn("Unknown endpoint: " + path);
     return BuildHttpResponse(404, "Not Found",
@@ -505,6 +529,85 @@ std::string BrowserControlServer::HandleGetTabCount() {
     size_t count = window->GetTabCount();
     std::ostringstream response;
     response << R"({"success":true,"count":)" << count << "}";
+    return response.str();
+
+  } catch (const std::exception& e) {
+    std::ostringstream response;
+    response << R"({"success":false,"error":")" << e.what() << R"("})";
+    return response.str();
+  }
+}
+
+std::string BrowserControlServer::HandleGetPageHtml() {
+  auto window = window_.lock();
+  if (!running_ || !window) {
+    return R"({"success":false,"error":"Server is shutting down"})";
+  }
+
+  try {
+    std::string html = window->GetPageHTML();
+    if (html.empty()) {
+      return R"({"success":false,"error":"Failed to retrieve HTML"})";
+    }
+
+    // Escape HTML for JSON (replace quotes and newlines)
+    std::string escaped;
+    escaped.reserve(html.size());
+    for (char c : html) {
+      switch (c) {
+        case '"':  escaped += "\\\""; break;
+        case '\\': escaped += "\\\\"; break;
+        case '\n': escaped += "\\n"; break;
+        case '\r': escaped += "\\r"; break;
+        case '\t': escaped += "\\t"; break;
+        default:   escaped += c; break;
+      }
+    }
+
+    std::ostringstream response;
+    response << R"({"success":true,"html":")" << escaped << R"("})";
+    return response.str();
+
+  } catch (const std::exception& e) {
+    std::ostringstream response;
+    response << R"({"success":false,"error":")" << e.what() << R"("})";
+    return response.str();
+  }
+}
+
+std::string BrowserControlServer::HandleExecuteJavaScript(const std::string& code) {
+  auto window = window_.lock();
+  if (!running_ || !window) {
+    return R"({"success":false,"error":"Server is shutting down"})";
+  }
+
+  try {
+    std::string result = window->ExecuteJavaScript(code);
+    std::ostringstream response;
+    response << R"({"success":true,"result":)" << result << "}";
+    return response.str();
+
+  } catch (const std::exception& e) {
+    std::ostringstream response;
+    response << R"({"success":false,"error":")" << e.what() << R"("})";
+    return response.str();
+  }
+}
+
+std::string BrowserControlServer::HandleTakeScreenshot() {
+  auto window = window_.lock();
+  if (!running_ || !window) {
+    return R"({"success":false,"error":"Server is shutting down"})";
+  }
+
+  try {
+    std::string base64_png = window->TakeScreenshot();
+    if (base64_png.empty()) {
+      return R"({"success":false,"error":"Failed to capture screenshot"})";
+    }
+
+    std::ostringstream response;
+    response << R"({"success":true,"screenshot":")" << base64_png << R"("})";
     return response.str();
 
   } catch (const std::exception& e) {

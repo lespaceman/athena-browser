@@ -205,6 +205,28 @@ class GtkWindow : public Window {
    */
   void StopLoad();
 
+  /**
+   * Get the HTML source of the current page.
+   * This method blocks until the HTML is retrieved from CEF (with 5s timeout).
+   * @return HTML source as string, or empty string on error
+   */
+  std::string GetPageHTML();
+
+  /**
+   * Execute JavaScript code in the current page and return the result.
+   * This method blocks until the result is available from CEF (with 5s timeout).
+   * @param code JavaScript code to execute
+   * @return JSON-encoded result, or error message on failure
+   */
+  std::string ExecuteJavaScript(const std::string& code);
+
+  /**
+   * Take a screenshot of the current page.
+   * Captures the current GL framebuffer and encodes as base64 PNG.
+   * @return Base64-encoded PNG image data
+   */
+  std::string TakeScreenshot();
+
   // ============================================================================
   // Tab Management
   // ============================================================================

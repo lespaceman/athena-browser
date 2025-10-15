@@ -131,6 +131,9 @@ class BrowserControlServer {
   std::string HandleOpenUrl(const std::string& url);
   std::string HandleGetUrl();
   std::string HandleGetTabCount();
+  std::string HandleGetPageHtml();
+  std::string HandleExecuteJavaScript(const std::string& code);
+  std::string HandleTakeScreenshot();
 
   // HTTP helpers
   static std::string ParseHttpMethod(const std::string& request);

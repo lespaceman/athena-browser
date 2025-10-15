@@ -180,18 +180,58 @@ export class NativeBrowserController implements BrowserController {
   }
 
   async getPageHtml(_tabIndex?: number): Promise<string> {
-    logger.warn('getPageHtml not implemented in native module yet');
-    throw new Error('Not implemented');
+    try {
+      const response = await this.client.request('GET', '/internal/get_html');
+      const result = JSON.parse(response.body);
+
+      if (result.success) {
+        return result.html;
+      } else {
+        throw new Error(result.error || 'Failed to get HTML');
+      }
+    } catch (error) {
+      throw new Error(
+        error instanceof Error ? error.message : 'Failed to get HTML'
+      );
+    }
   }
 
-  async executeJavaScript(_code: string, _tabIndex?: number): Promise<any> {
-    logger.warn('executeJavaScript not implemented in native module yet');
-    throw new Error('Not implemented');
+  async executeJavaScript(code: string, _tabIndex?: number): Promise<any> {
+    try {
+      const response = await this.client.request(
+        'POST',
+        '/internal/execute_js',
+        JSON.stringify({ code })
+      );
+      const result = JSON.parse(response.body);
+
+      if (result.success) {
+        return result.result;
+      } else {
+        throw new Error(result.error || 'Failed to execute JavaScript');
+      }
+    } catch (error) {
+      throw new Error(
+        error instanceof Error ? error.message : 'Failed to execute JavaScript'
+      );
+    }
   }
 
   async screenshot(_tabIndex?: number, _fullPage?: boolean): Promise<string> {
-    logger.warn('screenshot not implemented in native module yet');
-    throw new Error('Not implemented');
+    try {
+      const response = await this.client.request('GET', '/internal/screenshot');
+      const result = JSON.parse(response.body);
+
+      if (result.success) {
+        return result.screenshot;
+      } else {
+        throw new Error(result.error || 'Failed to take screenshot');
+      }
+    } catch (error) {
+      throw new Error(
+        error instanceof Error ? error.message : 'Failed to take screenshot'
+      );
+    }
   }
 
   async createTab(url: string): Promise<number> {
