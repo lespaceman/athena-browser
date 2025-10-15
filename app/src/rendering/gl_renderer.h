@@ -4,7 +4,6 @@
 #ifndef ATHENA_RENDERING_GL_RENDERER_H_
 #define ATHENA_RENDERING_GL_RENDERER_H_
 
-#include <gtk/gtk.h>
 #include <memory>
 #include <vector>
 
@@ -14,6 +13,13 @@
 #include "tests/cefclient/browser/osr_renderer_settings.h"
 #include "core/types.h"
 #include "utils/error.h"
+
+// Platform-specific forward declarations
+#ifdef ATHENA_USE_QT
+// Qt doesn't need forward declarations (widget passed as void*)
+#else
+typedef struct _GtkWidget GtkWidget;
+#endif
 
 namespace athena {
 namespace rendering {
@@ -48,14 +54,18 @@ class GLRenderer {
   GLRenderer();
   ~GLRenderer();
 
-  // Initialize the OpenGL environment with the given GtkGLArea.
+  // Initialize the OpenGL environment with the given GL widget.
   // Must be called before any other methods.
   // Must be called with the GL context current (inside realize callback).
+  //
+  // Platform-specific:
+  //   - GTK: Pass GtkGLArea* widget
+  //   - Qt: Pass QOpenGLWidget* widget
   //
   // Returns:
   //   - Ok(void) on success
   //   - Error if GL context is invalid or initialization fails
-  utils::Result<void> Initialize(GtkWidget* gl_area);
+  utils::Result<void> Initialize(void* gl_widget);
 
   // Clean up OpenGL resources.
   // Should be called before destroying the GtkGLArea.
@@ -113,8 +123,9 @@ class GLRenderer {
   // Convert core::Rect to CefRect
   static CefRect ToCefRect(const core::Rect& rect);
 
-  // The GtkGLArea widget we're rendering to
-  GtkWidget* gl_area_;
+  // The GL widget we're rendering to (platform-specific)
+  // GTK: GtkGLArea*, Qt: QOpenGLWidget*
+  void* gl_widget_;
 
   // CEF's official OpenGL renderer (does the heavy lifting)
   std::unique_ptr<client::OsrRenderer> osr_renderer_;

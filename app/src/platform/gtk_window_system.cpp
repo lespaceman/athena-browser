@@ -26,7 +26,7 @@ GtkWindowSystem::~GtkWindowSystem() {
   Shutdown();
 }
 
-utils::Result<void> GtkWindowSystem::Initialize(int argc, char* argv[],
+utils::Result<void> GtkWindowSystem::Initialize(int& argc, char* argv[],
                                                  browser::BrowserEngine* engine) {
   if (initialized_) {
     return utils::Error("WindowSystem already initialized");

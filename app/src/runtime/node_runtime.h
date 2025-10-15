@@ -215,7 +215,7 @@ class NodeRuntime {
 
   // Health monitoring
   bool health_monitoring_enabled_;
-  unsigned int health_check_timer_id_;  // GLib timer source ID
+  void* health_check_timer_handle_;  // Platform-specific timer handle (GLib source ID or QTimer*)
   std::chrono::steady_clock::time_point last_health_check_;
 
   // Restart tracking

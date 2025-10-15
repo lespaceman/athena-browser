@@ -81,12 +81,12 @@ class WindowSystem {
    * Initialize the window system.
    * Must be called before any other operations.
    *
-   * @param argc Command line argument count
+   * @param argc Command line argument count (passed by reference for Qt compatibility)
    * @param argv Command line arguments
    * @param engine Browser engine instance (non-owning pointer)
    * @return Ok on success, error on failure
    */
-  virtual utils::Result<void> Initialize(int argc, char* argv[],
+  virtual utils::Result<void> Initialize(int& argc, char* argv[],
                                           browser::BrowserEngine* engine) = 0;
 
   /**

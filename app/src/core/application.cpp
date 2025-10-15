@@ -49,7 +49,7 @@ Application::~Application() {
 // Lifecycle Management
 // ============================================================================
 
-utils::Result<void> Application::Initialize(int argc, char* argv[]) {
+utils::Result<void> Application::Initialize(int& argc, char* argv[]) {
   logger.Debug("Application::Initialize - Initializing application");
 
   if (initialized_) {
@@ -113,14 +113,17 @@ void Application::Run() {
     return;
   }
 
+#ifndef ATHENA_USE_QT
   // Initialize browser control server FIRST (before Node runtime)
   // This ensures the server is listening before Node tries to connect
+  // Note: Browser control server is GTK-only for now
   auto server_result = InitializeBrowserControlServer();
   if (!server_result) {
     logger.Warn("Application::Run - Browser control server initialization failed: " +
                 server_result.GetError().Message());
     // Continue without server (non-fatal)
   }
+#endif
 
   // Initialize Node runtime right before event loop starts
   // Node will connect to browser control server during MCP initialization
@@ -136,7 +139,9 @@ void Application::Run() {
   logger.Info("Application::Run - Exited main event loop");
 
   // Shutdown servers immediately after event loop exits
+#ifndef ATHENA_USE_QT
   ShutdownBrowserControlServer();
+#endif
   ShutdownRuntime();
 }
 
@@ -164,7 +169,9 @@ void Application::Shutdown() {
   CloseAllWindows(true);
 
   // Shutdown servers (if not already done in Run())
+#ifndef ATHENA_USE_QT
   ShutdownBrowserControlServer();
+#endif
   ShutdownRuntime();
 
   // Shutdown in reverse order
@@ -353,8 +360,9 @@ void Application::ShutdownRuntime() {
   logger.Info("Application::ShutdownRuntime - Node runtime stopped");
 }
 
+#ifndef ATHENA_USE_QT
 // ============================================================================
-// Browser Control Server Lifecycle Helpers
+// Browser Control Server Lifecycle Helpers (GTK only)
 // ============================================================================
 
 utils::Result<void> Application::InitializeBrowserControlServer() {
@@ -370,7 +378,7 @@ utils::Result<void> Application::InitializeBrowserControlServer() {
 
   logger.Info("Application::InitializeBrowserControlServer - Starting browser control server");
 
-  // Get the first window's native window (GtkWindow)
+  // Get the first window's native window
   auto* first_window = windows_[0];
   if (!first_window) {
     return utils::Error("First window is null");
@@ -381,19 +389,13 @@ utils::Result<void> Application::InitializeBrowserControlServer() {
     return utils::Error("First window's native window is null");
   }
 
-  // Cast to GtkWindow (we know it's GTK from window_system)
-  auto gtk_window = std::dynamic_pointer_cast<platform::GtkWindow>(window_shared);
-  if (!gtk_window) {
-    return utils::Error("Native window is not a GtkWindow");
-  }
-
   // Create server config
   runtime::BrowserControlServerConfig server_config;
   server_config.socket_path = "/tmp/athena-" + std::to_string(getuid()) + "-control.sock";
 
   // Create and initialize server
   browser_control_server_ = std::make_unique<runtime::BrowserControlServer>(server_config);
-  browser_control_server_->SetBrowserWindow(gtk_window);
+  browser_control_server_->SetBrowserWindow(window_shared);
 
   auto result = browser_control_server_->Initialize();
   if (!result) {
@@ -420,6 +422,7 @@ void Application::ShutdownBrowserControlServer() {
   browser_control_server_.reset();
   logger.Info("Application::ShutdownBrowserControlServer - Server stopped");
 }
+#endif  // ATHENA_USE_QT
 
 }  // namespace core
 }  // namespace athena

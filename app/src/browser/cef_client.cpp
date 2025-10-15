@@ -1,7 +1,6 @@
 #include "browser/cef_client.h"
 #include "include/cef_app.h"
 #include "include/wrapper/cef_helpers.h"
-#include <gtk/gtk.h>
 #include <iostream>
 
 namespace athena {

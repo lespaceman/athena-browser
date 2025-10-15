@@ -8,7 +8,9 @@
 #include "browser/browser_engine.h"
 #include "platform/window_system.h"
 #include "runtime/node_runtime.h"
+#ifndef ATHENA_USE_QT
 #include "runtime/browser_control_server.h"
+#endif
 #include "utils/error.h"
 
 namespace athena {
@@ -105,11 +107,11 @@ class Application {
    * Initialize the application.
    * Must be called before any other operations.
    *
-   * @param argc Command line argument count
+   * @param argc Command line argument count (passed by reference for Qt compatibility)
    * @param argv Command line arguments
    * @return Ok on success, error on failure
    */
-  utils::Result<void> Initialize(int argc, char* argv[]);
+  utils::Result<void> Initialize(int& argc, char* argv[]);
 
   /**
    * Initialize the application (no command line args).
@@ -202,7 +204,9 @@ class Application {
   std::unique_ptr<browser::BrowserEngine> browser_engine_;
   std::unique_ptr<platform::WindowSystem> window_system_;
   std::unique_ptr<runtime::NodeRuntime> node_runtime_;
+#ifndef ATHENA_USE_QT
   std::unique_ptr<runtime::BrowserControlServer> browser_control_server_;
+#endif
 
   // Window tracking (weak pointers - windows are owned by callers)
   std::vector<BrowserWindow*> windows_;
@@ -219,9 +223,11 @@ class Application {
   utils::Result<void> InitializeRuntime();
   void ShutdownRuntime();
 
-  // Browser control server lifecycle helpers
+#ifndef ATHENA_USE_QT
+  // Browser control server lifecycle helpers (GTK only)
   utils::Result<void> InitializeBrowserControlServer();
   void ShutdownBrowserControlServer();
+#endif
 };
 
 }  // namespace core

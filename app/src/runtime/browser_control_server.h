@@ -4,7 +4,7 @@
  * Internal HTTP server that exposes browser control endpoints over Unix socket.
  * Allows the Node.js agent to control the browser via HTTP requests.
  *
- * This server runs in the GTK main thread using GLib's I/O watch mechanism,
+ * This server runs on the main UI thread using platform-specific I/O mechanisms,
  * avoiding the need for additional threading.
  */
 
@@ -16,7 +16,7 @@
 #include <functional>
 #include <memory>
 #include "utils/error.h"
-#include "platform/gtk_window.h"
+#include "platform/window_system.h"  // For Window base class
 
 namespace athena {
 namespace runtime {
@@ -34,20 +34,20 @@ struct BrowserControlServerConfig {
  * Lightweight HTTP server that:
  * - Listens on Unix socket
  * - Accepts HTTP requests from Node.js agent
- * - Calls browser control methods directly (on GTK main thread)
+ * - Calls browser control methods directly (on UI main thread)
  * - Returns HTTP responses
  *
- * Runs entirely on GTK main thread using non-blocking I/O.
+ * Runs entirely on UI main thread using non-blocking I/O.
  *
  * Lifecycle:
  * 1. Create server with config
  * 2. SetBrowserWindow() to register browser instance
  * 3. Initialize() to start listening
- * 4. GTK main loop handles requests via GLib I/O watches
+ * 4. Main loop handles requests via platform-specific I/O watches
  * 5. Shutdown() to stop server
  *
  * Thread Safety:
- * - All methods must be called from GTK main thread
+ * - All methods must be called from UI main thread
  * - No threading - all operations run synchronously on main thread
  * - Non-blocking I/O prevents stalling the event loop
  */
@@ -65,7 +65,7 @@ class BrowserControlServer {
    */
   ~BrowserControlServer();
 
-  // Non-copyable, non-movable (due to GLib callbacks)
+  // Non-copyable, non-movable
   BrowserControlServer(const BrowserControlServer&) = delete;
   BrowserControlServer& operator=(const BrowserControlServer&) = delete;
   BrowserControlServer(BrowserControlServer&&) = delete;
@@ -75,9 +75,9 @@ class BrowserControlServer {
    * Set the browser window to control.
    * Must be called before Initialize().
    *
-   * @param window Shared pointer to GtkWindow (server stores a weak reference)
+   * @param window Shared pointer to Window (server stores a weak reference)
    */
-  void SetBrowserWindow(const std::shared_ptr<platform::GtkWindow>& window);
+  void SetBrowserWindow(const std::shared_ptr<platform::Window>& window);
 
   /**
    * Initialize the server and start listening.
@@ -107,13 +107,13 @@ class BrowserControlServer {
   BrowserControlServerConfig config_;
 
   // Browser window (weak reference, does not own)
-  std::weak_ptr<platform::GtkWindow> window_;
+  std::weak_ptr<platform::Window> window_;
 
   // Socket file descriptor
   int server_fd_;
 
-  // GLib I/O watch source IDs
-  guint server_watch_id_;
+  // Platform-specific I/O watch handle (opaque pointer)
+  void* io_watch_handle_;
 
   // Active client connections (opaque pointer - implementation detail)
   std::vector<void*> active_clients_;
@@ -127,7 +127,7 @@ class BrowserControlServer {
   void CloseClient(void* client);
   std::string ProcessRequest(const std::string& request);
 
-  // Request handlers (run synchronously on GTK main thread)
+  // Request handlers (run synchronously on UI main thread)
   std::string HandleOpenUrl(const std::string& url);
   std::string HandleGetUrl();
   std::string HandleGetTabCount();
@@ -143,13 +143,9 @@ class BrowserControlServer {
                                        const std::string& status_text,
                                        const std::string& body);
 
-  // GLib callbacks (static, use user_data for 'this' pointer)
-  static gboolean OnServerReadable(GIOChannel* source,
-                                   GIOCondition condition,
-                                   gpointer user_data);
-  static gboolean OnClientReadable(GIOChannel* source,
-                                   GIOCondition condition,
-                                   gpointer user_data);
+  // Platform-specific callbacks (implemented in .cpp with conditional compilation)
+  static void* CreateIOWatch(int fd, void* server);
+  static void DestroyIOWatch(void* handle);
 };
 
 }  // namespace runtime

@@ -447,7 +447,7 @@ class GtkWindowSystem : public WindowSystem {
   // Lifecycle Management
   // ============================================================================
 
-  utils::Result<void> Initialize(int argc, char* argv[],
+  utils::Result<void> Initialize(int& argc, char* argv[],
                                   browser::BrowserEngine* engine) override;
   void Shutdown() override;
   bool IsInitialized() const override;

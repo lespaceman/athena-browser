@@ -10,7 +10,13 @@
 #include <sstream>
 #include <thread>
 #include <filesystem>
+
+// Platform-specific includes for timers
+#ifdef ATHENA_USE_QT
+#include <QTimer>
+#else
 #include <glib.h>
+#endif
 
 namespace athena {
 namespace runtime {
@@ -27,7 +33,7 @@ NodeRuntime::NodeRuntime(const NodeRuntimeConfig& config)
       pid_(-1),
       state_(RuntimeState::STOPPED),
       health_monitoring_enabled_(false),
-      health_check_timer_id_(0),
+      health_check_timer_handle_(nullptr),
       restart_attempts_(0) {
   logger.Debug("NodeRuntime::NodeRuntime - Creating runtime");
 
@@ -172,7 +178,8 @@ utils::Result<HealthStatus> NodeRuntime::CheckHealth() {
   return utils::Ok(std::move(status));
 }
 
-// GLib callback for periodic health checks
+#ifndef ATHENA_USE_QT
+// GTK: GLib callback for periodic health checks
 static gboolean health_check_callback(gpointer user_data) {
   auto* runtime = static_cast<NodeRuntime*>(user_data);
 
@@ -201,6 +208,7 @@ static gboolean health_check_callback(gpointer user_data) {
                std::to_string(health.uptime_ms) + "ms)");
   return G_SOURCE_CONTINUE;  // Keep checking
 }
+#endif
 
 void NodeRuntime::StartHealthMonitoring() {
   if (health_monitoring_enabled_) {
@@ -215,12 +223,50 @@ void NodeRuntime::StartHealthMonitoring() {
 
   health_monitoring_enabled_ = true;
 
-  // Set up periodic health check using GLib timeout
-  // Check every config_.health_check_interval_ms milliseconds
-  health_check_timer_id_ = g_timeout_add(
+#ifdef ATHENA_USE_QT
+  // Qt: Use QTimer for periodic health checks
+  QTimer* timer = new QTimer();
+  timer->setInterval(config_.health_check_interval_ms);
+
+  // Connect timer timeout to health check lambda
+  QObject::connect(timer, &QTimer::timeout, [this, timer]() {
+    // Check if process is still alive
+    if (!IsProcessAlive()) {
+      logger.Error("NodeRuntime - Process died, triggering restart");
+      timer->stop();
+      timer->deleteLater();
+      health_check_timer_handle_ = nullptr;
+      HandleCrash();
+      return;
+    }
+
+    // Perform health check
+    auto health_result = CheckHealth();
+    if (!health_result) {
+      logger.Warn("NodeRuntime - Health check failed: " + health_result.GetError().Message());
+      return;
+    }
+
+    auto health = health_result.Value();
+    if (!health.healthy) {
+      logger.Warn("NodeRuntime - Health check reports unhealthy status");
+      return;
+    }
+
+    logger.Debug("NodeRuntime - Health check passed (uptime: " +
+                 std::to_string(health.uptime_ms) + "ms)");
+  });
+
+  timer->start();
+  health_check_timer_handle_ = static_cast<void*>(timer);
+#else
+  // GTK: Use GLib timeout for periodic health checks
+  unsigned int timer_id = g_timeout_add(
       config_.health_check_interval_ms,
       health_check_callback,
       this);
+  health_check_timer_handle_ = reinterpret_cast<void*>(static_cast<uintptr_t>(timer_id));
+#endif
 
   logger.Info("NodeRuntime - Health monitoring started (interval: " +
               std::to_string(config_.health_check_interval_ms) + "ms)");
@@ -233,11 +279,22 @@ void NodeRuntime::StopHealthMonitoring() {
 
   health_monitoring_enabled_ = false;
 
-  // Remove GLib timeout
-  if (health_check_timer_id_ > 0) {
-    g_source_remove(health_check_timer_id_);
-    health_check_timer_id_ = 0;
+#ifdef ATHENA_USE_QT
+  // Qt: Stop and delete QTimer
+  if (health_check_timer_handle_) {
+    QTimer* timer = static_cast<QTimer*>(health_check_timer_handle_);
+    timer->stop();
+    timer->deleteLater();
+    health_check_timer_handle_ = nullptr;
   }
+#else
+  // GTK: Remove GLib timeout
+  if (health_check_timer_handle_) {
+    unsigned int timer_id = static_cast<unsigned int>(reinterpret_cast<uintptr_t>(health_check_timer_handle_));
+    g_source_remove(timer_id);
+    health_check_timer_handle_ = nullptr;
+  }
+#endif
 
   logger.Info("NodeRuntime - Health monitoring stopped");
 }

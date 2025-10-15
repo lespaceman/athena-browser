@@ -8,11 +8,22 @@
 #include "core/application.h"
 #include "browser/cef_engine.h"
 #include "browser/app_handler.h"
-#include "platform/gtk_window.h"
 #include "runtime/node_runtime.h"
 #include "include/cef_app.h"
+
+// Platform-specific includes
+#ifdef ATHENA_USE_QT
+#include "platform/qt_mainwindow.h"
+#include <QApplication>
+#include <QTimer>
+// Forward declare GTK function to avoid header conflicts with Qt
+extern "C" void gtk_disable_setlocale();
+#else
+#include "platform/gtk_window.h"
 #include <glib.h>
 #include <gtk/gtk.h>
+#endif
+
 #include <iostream>
 #include <cstdlib>
 #include <csignal>
@@ -62,6 +73,10 @@ int main(int argc, char* argv[]) {
   // ============================================================================
   // CEF runs helper processes (renderer, GPU, etc.). If this is a subprocess,
   // execute it and exit immediately.
+
+  // GTK setlocale must be disabled before CEF init (CEF requirement)
+  // Even in Qt builds, CEF on Linux has GTK dependencies that need this
+  gtk_disable_setlocale();
 
   CefMainArgs main_args(argc, argv);
   CefRefPtr<AppHandler> app = new AppHandler();
@@ -126,7 +141,14 @@ int main(int argc, char* argv[]) {
   // ============================================================================
 
   auto browser_engine = std::make_unique<browser::CefEngine>(app, &main_args);
+
+#ifdef ATHENA_USE_QT
+  auto window_system = std::make_unique<platform::QtWindowSystem>();
+  std::cout << "Using Qt window system" << std::endl;
+#else
   auto window_system = std::make_unique<platform::GtkWindowSystem>();
+  std::cout << "Using GTK window system" << std::endl;
+#endif
 
   auto application = std::make_unique<core::Application>(
       config,
@@ -194,11 +216,23 @@ int main(int argc, char* argv[]) {
 
   // Set up periodic check for shutdown signal (every 100ms)
   // This allows the signal handler to request shutdown asynchronously
+#ifdef ATHENA_USE_QT
+  // Qt version using QTimer
+  QTimer* shutdown_timer = new QTimer();
+  QObject::connect(shutdown_timer, &QTimer::timeout, [&]() {
+    if (shutdown_requested.load()) {
+      std::cout << "\n[Main] Shutdown requested by signal, exiting event loop..." << std::endl;
+      application->Shutdown();
+      QApplication::quit();
+      shutdown_timer->stop();
+    }
+  });
+  shutdown_timer->start(100);  // Check every 100ms
+#else
+  // GTK version using g_timeout_add
   auto check_shutdown = [&]() -> gboolean {
     if (shutdown_requested.load()) {
       std::cout << "\n[Main] Shutdown requested by signal, exiting event loop..." << std::endl;
-      // Initiate shutdown from event loop context (async-signal-safe)
-      // Note: Shutdown() is idempotent, safe to call multiple times
       application->Shutdown();
       gtk_main_quit();
       return G_SOURCE_REMOVE;  // Stop the timeout
@@ -206,12 +240,12 @@ int main(int argc, char* argv[]) {
     return G_SOURCE_CONTINUE;  // Continue checking
   };
 
-  // Convert lambda to function pointer for g_timeout_add
   static auto check_shutdown_func = check_shutdown;
   g_timeout_add(100, +[](gpointer data) -> gboolean {
     auto* func = static_cast<decltype(check_shutdown)*>(data);
     return (*func)();
   }, &check_shutdown_func);
+#endif
 
   application->Run();  // Blocking call
 

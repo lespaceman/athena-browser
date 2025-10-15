@@ -9,34 +9,73 @@
 #include "include/base/cef_logging.h"
 #include "utils/logging.h"
 
+// Platform-specific includes
+#ifdef ATHENA_USE_QT
+#include <QOpenGLWidget>
+#else
+#include <gtk/gtk.h>
+#endif
+
 namespace athena {
 namespace rendering {
 
 namespace {
 
+#ifndef ATHENA_USE_QT
+// GTK-specific: Helper to manage GL context
 class ScopedGLContext {
  public:
-  explicit ScopedGLContext(GtkWidget* gl_area)
-      : gl_area_(gl_area), valid_(false) {
-    if (!gl_area_) {
+  explicit ScopedGLContext(void* gl_widget)
+      : gl_widget_(gl_widget), valid_(false) {
+    if (!gl_widget_) {
       return;
     }
 
-    gtk_gl_area_make_current(GTK_GL_AREA(gl_area_));
-    valid_ = gtk_gl_area_get_error(GTK_GL_AREA(gl_area_)) == nullptr;
+    auto* gtk_widget = static_cast<GtkWidget*>(gl_widget_);
+    gtk_gl_area_make_current(GTK_GL_AREA(gtk_widget));
+    valid_ = gtk_gl_area_get_error(GTK_GL_AREA(gtk_widget)) == nullptr;
   }
 
   bool IsValid() const { return valid_; }
 
  private:
-  GtkWidget* gl_area_;
+  void* gl_widget_;
   bool valid_;
 };
+#else
+// Qt-specific: Make GL context current for CEF threads
+class ScopedGLContext {
+ public:
+  explicit ScopedGLContext(void* gl_widget)
+      : gl_widget_(gl_widget), valid_(false) {
+    if (!gl_widget_) {
+      return;
+    }
+
+    auto* widget = static_cast<QOpenGLWidget*>(gl_widget_);
+    widget->makeCurrent();
+    valid_ = true;  // Qt's makeCurrent() always succeeds or throws
+  }
+
+  ~ScopedGLContext() {
+    if (valid_ && gl_widget_) {
+      auto* widget = static_cast<QOpenGLWidget*>(gl_widget_);
+      widget->doneCurrent();
+    }
+  }
+
+  bool IsValid() const { return valid_; }
+
+ private:
+  void* gl_widget_;
+  bool valid_;
+};
+#endif
 
 }  // namespace
 
 GLRenderer::GLRenderer()
-    : gl_area_(nullptr),
+    : gl_widget_(nullptr),
       osr_renderer_(nullptr),
       initialized_(false),
       view_width_(0),
@@ -53,25 +92,32 @@ GLRenderer::~GLRenderer() {
   Cleanup();
 }
 
-utils::Result<void> GLRenderer::Initialize(GtkWidget* gl_area) {
+utils::Result<void> GLRenderer::Initialize(void* gl_widget) {
   if (initialized_) {
     return utils::Error("Renderer already initialized");
   }
 
-  if (!gl_area) {
-    return utils::Error("gl_area cannot be null");
+  if (!gl_widget) {
+    return utils::Error("gl_widget cannot be null");
   }
 
-  if (!GTK_IS_GL_AREA(gl_area)) {
+#ifndef ATHENA_USE_QT
+  // GTK-specific validation
+  auto* gtk_widget = static_cast<GtkWidget*>(gl_widget);
+  if (!GTK_IS_GL_AREA(gtk_widget)) {
     return utils::Error("widget must be a GtkGLArea");
   }
+#else
+  // Qt-specific: Assume QOpenGLWidget* - context is managed by Qt
+  // No validation needed, Qt handles everything
+#endif
 
-  ScopedGLContext context(gl_area);
+  ScopedGLContext context(gl_widget);
   if (!context.IsValid()) {
     return utils::Error("Failed to make GL context current for renderer initialization");
   }
 
-  gl_area_ = gl_area;
+  gl_widget_ = gl_widget;
 
   // Create CEF's OsrRenderer
   osr_renderer_ = std::make_unique<client::OsrRenderer>(settings_);
@@ -92,10 +138,22 @@ void GLRenderer::Cleanup() {
   }
 
   if (osr_renderer_) {
-    // Only try to make GL context current if widget is still valid
-    // During window destruction, gl_area_ may already be destroyed
-    if (gl_area_ && G_IS_OBJECT(gl_area_) && GTK_IS_GL_AREA(gl_area_)) {
-      ScopedGLContext context(gl_area_);
+    // Platform-specific widget validation
+    bool widget_valid = false;
+
+#ifndef ATHENA_USE_QT
+    // GTK: Check if widget is still valid
+    if (gl_widget_) {
+      auto* gtk_widget = static_cast<GtkWidget*>(gl_widget_);
+      widget_valid = (G_IS_OBJECT(gtk_widget) && GTK_IS_GL_AREA(gtk_widget));
+    }
+#else
+    // Qt: Widget pointer is valid (Qt manages lifecycle)
+    widget_valid = (gl_widget_ != nullptr);
+#endif
+
+    if (widget_valid) {
+      ScopedGLContext context(gl_widget_);
       if (!context.IsValid()) {
         std::cerr << "[GLRenderer] Warning: GL context invalid during cleanup" << std::endl;
       }
@@ -108,7 +166,7 @@ void GLRenderer::Cleanup() {
   }
 
   initialized_ = false;
-  gl_area_ = nullptr;
+  gl_widget_ = nullptr;
 
   std::cout << "[GLRenderer] Cleaned up" << std::endl;
 }
@@ -124,7 +182,7 @@ void GLRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
     return;
   }
 
-  ScopedGLContext context(gl_area_);
+  ScopedGLContext context(gl_widget_);
   if (!context.IsValid()) {
     std::cerr << "[GLRenderer] Warning: Unable to make GL context current during OnPaint" << std::endl;
     return;
@@ -157,12 +215,13 @@ utils::Result<void> GLRenderer::Render() {
     return utils::Error("Renderer not initialized");
   }
 
-  if (!gl_area_) {
-    return utils::Error("No GL area set");
+  if (!gl_widget_) {
+    return utils::Error("No GL widget set");
   }
 
   // The GL context is automatically current when this is called
-  // from the GtkGLArea "render" signal
+  // GTK: from GtkGLArea "render" signal
+  // Qt: from QOpenGLWidget::paintGL()
 
   // Let CEF's renderer do the actual OpenGL rendering
   osr_renderer_->Render();
