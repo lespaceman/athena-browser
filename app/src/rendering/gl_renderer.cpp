@@ -12,6 +12,9 @@
 // Platform-specific includes
 #ifdef ATHENA_USE_QT
 #include <QOpenGLWidget>
+#include <QImage>
+#include <QBuffer>
+#include <QByteArray>
 #else
 #include <gtk/gtk.h>
 #endif
@@ -264,6 +267,69 @@ int GLRenderer::GetViewHeight() const {
 
 CefRect GLRenderer::ToCefRect(const core::Rect& rect) {
   return CefRect(rect.x, rect.y, rect.width, rect.height);
+}
+
+std::string GLRenderer::TakeScreenshot() const {
+  if (!initialized_ || !osr_renderer_ || !gl_widget_) {
+    std::cerr << "[GLRenderer] Warning: Cannot take screenshot - renderer not initialized" << std::endl;
+    return "";
+  }
+
+  // Make GL context current
+  ScopedGLContext context(gl_widget_);
+  if (!context.IsValid()) {
+    std::cerr << "[GLRenderer] Warning: Unable to make GL context current for screenshot" << std::endl;
+    return "";
+  }
+
+  int width = GetViewWidth();
+  int height = GetViewHeight();
+
+  if (width <= 0 || height <= 0) {
+    std::cerr << "[GLRenderer] Warning: Invalid view size for screenshot" << std::endl;
+    return "";
+  }
+
+  // Read pixels from the framebuffer
+  std::vector<unsigned char> pixels(width * height * 4);  // RGBA
+  glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+  // Check for GL errors
+  GLenum gl_error = glGetError();
+  if (gl_error != GL_NO_ERROR) {
+    std::cerr << "[GLRenderer] OpenGL error during screenshot: " << gl_error << std::endl;
+    return "";
+  }
+
+  // Flip image vertically (OpenGL bottom-left origin -> PNG top-left origin)
+  std::vector<unsigned char> flipped(width * height * 4);
+  for (int y = 0; y < height; y++) {
+    memcpy(&flipped[y * width * 4],
+           &pixels[(height - 1 - y) * width * 4],
+           width * 4);
+  }
+
+#ifdef ATHENA_USE_QT
+  // Use Qt to encode as PNG and convert to base64
+  QImage image(flipped.data(), width, height, width * 4, QImage::Format_RGBA8888);
+
+  QByteArray byte_array;
+  QBuffer buffer(&byte_array);
+  buffer.open(QIODevice::WriteOnly);
+
+  if (!image.save(&buffer, "PNG")) {
+    std::cerr << "[GLRenderer] Failed to encode PNG" << std::endl;
+    return "";
+  }
+
+  // Convert to base64
+  QByteArray base64 = byte_array.toBase64();
+  return std::string(base64.constData(), base64.size());
+#else
+  // GTK version: Would need to implement PNG encoding using libpng
+  std::cerr << "[GLRenderer] PNG encoding not yet implemented for GTK" << std::endl;
+  return "";
+#endif
 }
 
 }  // namespace rendering

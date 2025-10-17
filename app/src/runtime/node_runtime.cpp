@@ -508,8 +508,17 @@ utils::Result<void> NodeRuntime::SpawnProcess() {
     // Node.js will just get EPIPE error which it can handle gracefully
     signal(SIGPIPE, SIG_IGN);
 
-    // Set environment variable for socket path
-    setenv("ATHENA_SOCKET_PATH", config_.socket_path.c_str(), 1);
+    // Set environment variable for Node.js Express server socket path
+    // Note: This is DIFFERENT from the browser control socket path.
+    // The Node server gets its own socket (without -control suffix)
+    std::string agent_socket_path = "/tmp/athena-" + std::to_string(getuid()) + ".sock";
+    setenv("ATHENA_SOCKET_PATH", agent_socket_path.c_str(), 1);
+
+    // Set environment variable for browser control socket path
+    // This tells the Node NativeController where to connect to the C++ browser control server
+    // The control socket has the -control suffix
+    std::string control_socket_path = "/tmp/athena-" + std::to_string(getuid()) + "-control.sock";
+    setenv("ATHENA_CONTROL_SOCKET_PATH", control_socket_path.c_str(), 1);
 
     // Execute Node
     execlp(config_.node_executable.c_str(),

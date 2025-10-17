@@ -7,6 +7,7 @@
 
 #include "platform/qt_mainwindow.h"
 #include "platform/qt_browserwidget.h"
+#include "platform/qt_claude_panel.h"
 #include "browser/browser_engine.h"
 #include "browser/cef_engine.h"
 #include "browser/cef_client.h"
@@ -24,6 +25,15 @@
 #include <QTimer>
 #include <QMetaObject>
 #include <QUrl>
+#include <QSplitter>
+#include <QShortcut>
+#include <QKeySequence>
+#include <QCoreApplication>
+#include <QEventLoop>
+
+#include <atomic>
+#include <chrono>
+#include <thread>
 
 namespace athena {
 namespace platform {
@@ -58,7 +68,9 @@ QtMainWindow::QtMainWindow(const WindowConfig& config,
     , reloadButton_(nullptr)
     , stopButton_(nullptr)
     , newTabButton_(nullptr)
+    , claudeButton_(nullptr)
     , tabWidget_(nullptr)
+    , claudePanel_(nullptr)
     , active_tab_index_(0)
     , current_url_(QString::fromStdString(config.url))
 {
@@ -160,6 +172,17 @@ void QtMainWindow::createToolbar() {
   newTabButton_->setToolTip(tr("New Tab (Ctrl+T)"));
   newTabButton_->setMaximumWidth(30);
   toolbar_->addWidget(newTabButton_);
+
+  // Add separator
+  toolbar_->addSeparator();
+
+  // Claude sidebar toggle button
+  claudeButton_ = new QPushButton(this);
+  claudeButton_->setText("Claude");
+  claudeButton_->setToolTip(tr("Toggle Claude Sidebar (Ctrl+Shift+C)"));
+  claudeButton_->setCheckable(true);
+  claudeButton_->setChecked(true);  // Sidebar visible by default
+  toolbar_->addWidget(claudeButton_);
 }
 
 void QtMainWindow::createCentralWidget() {
@@ -169,7 +192,32 @@ void QtMainWindow::createCentralWidget() {
   tabWidget_->setMovable(true);       // Allow dragging tabs to reorder
   tabWidget_->setDocumentMode(true);  // Cleaner look
 
-  setCentralWidget(tabWidget_);
+  // Create Claude chat panel
+  claudePanel_ = new ClaudePanel(this, this);
+  claudePanel_->SetNodeRuntime(node_runtime_);
+  claudePanel_->setMinimumWidth(300);
+  claudePanel_->setMaximumWidth(500);  // Prevent sidebar from taking too much space
+
+  // Create horizontal splitter: browser tabs on left, Claude sidebar on right
+  QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
+  splitter->addWidget(tabWidget_);      // Browser tabs (left)
+  splitter->addWidget(claudePanel_);    // Claude sidebar (right)
+
+  // Set stretch factors: 70% browser, 30% sidebar (more balanced)
+  splitter->setStretchFactor(0, 7);     // Browser gets 7x weight
+  splitter->setStretchFactor(1, 3);     // Sidebar gets 3x weight
+
+  // Set initial sizes: For a 1920px window, sidebar should be ~400px
+  QList<int> sizes;
+  sizes << 1400 << 400;  // Browser: 1400px, Sidebar: 400px
+  splitter->setSizes(sizes);
+
+  // Allow user to resize the splitter, but prevent collapse
+  splitter->setChildrenCollapsible(false);
+
+  setCentralWidget(splitter);
+
+  logger.Info("Central widget created with Claude sidebar");
 }
 
 void QtMainWindow::connectSignals() {
@@ -198,6 +246,15 @@ void QtMainWindow::connectSignals() {
 
   connect(tabWidget_, &QTabWidget::currentChanged,
           this, &QtMainWindow::onCurrentTabChanged);
+
+  // Claude button
+  connect(claudeButton_, &QPushButton::clicked,
+          this, &QtMainWindow::onClaudeButtonClicked);
+
+  // Keyboard shortcut: Ctrl+Shift+C (or Cmd+Shift+C on macOS)
+  QShortcut* claudeShortcut = new QShortcut(QKeySequence("Ctrl+Shift+C"), this);
+  connect(claudeShortcut, &QShortcut::activated,
+          this, &QtMainWindow::onClaudeButtonClicked);
 }
 
 void QtMainWindow::InitializeBrowser() {
@@ -373,6 +430,17 @@ void QtMainWindow::onCurrentTabChanged(int index) {
   }
 }
 
+void QtMainWindow::onClaudeButtonClicked() {
+  if (claudePanel_) {
+    claudePanel_->ToggleVisibility();
+
+    // Update button state
+    claudeButton_->setChecked(claudePanel_->IsVisible());
+
+    logger.Info(claudePanel_->IsVisible() ? "Claude sidebar shown" : "Claude sidebar hidden");
+  }
+}
+
 // ============================================================================
 // Public Interface Methods
 // ============================================================================
@@ -408,6 +476,7 @@ void QtMainWindow::LoadURL(const QString& url) {
     // Save client pointer and update tab URL
     client = tab->cef_client;
     tab->url = url;
+    tab->is_loading = true;
     tab_index = active_tab_index_;
   }
 
@@ -450,6 +519,7 @@ void QtMainWindow::GoBack() {
     QtTab* tab = GetActiveTab();
     if (tab && tab->cef_client && tab->cef_client->GetBrowser()) {
       client = tab->cef_client;
+      tab->is_loading = true;
     }
   }
 
@@ -467,6 +537,7 @@ void QtMainWindow::GoForward() {
     QtTab* tab = GetActiveTab();
     if (tab && tab->cef_client && tab->cef_client->GetBrowser()) {
       client = tab->cef_client;
+      tab->is_loading = true;
     }
   }
 
@@ -476,7 +547,7 @@ void QtMainWindow::GoForward() {
   }
 }
 
-void QtMainWindow::Reload() {
+void QtMainWindow::Reload(bool ignore_cache) {
   CefClient* client = nullptr;
 
   {
@@ -484,12 +555,17 @@ void QtMainWindow::Reload() {
     QtTab* tab = GetActiveTab();
     if (tab && tab->cef_client && tab->cef_client->GetBrowser()) {
       client = tab->cef_client;
+      tab->is_loading = true;
     }
   }
 
   // Call CEF outside the lock
   if (client && client->GetBrowser()) {
-    client->GetBrowser()->Reload();
+    if (ignore_cache) {
+      client->GetBrowser()->ReloadIgnoreCache();
+    } else {
+      client->GetBrowser()->Reload();
+    }
   }
 }
 
@@ -501,6 +577,7 @@ void QtMainWindow::StopLoad() {
     QtTab* tab = GetActiveTab();
     if (tab && tab->cef_client && tab->cef_client->GetBrowser()) {
       client = tab->cef_client;
+      tab->is_loading = false;
     }
   }
 
@@ -550,29 +627,109 @@ QString QtMainWindow::GetCurrentUrl() const {
 }
 
 QString QtMainWindow::GetPageHTML() const {
-  std::lock_guard<std::mutex> lock(tabs_mutex_);
+  QtTab* tab = nullptr;
+  CefRefPtr<CefBrowser> browser;
 
-  QtTab* tab = const_cast<QtMainWindow*>(this)->GetActiveTab();
-  if (!tab || !tab->cef_client || !tab->cef_client->GetBrowser()) {
+  {
+    std::lock_guard<std::mutex> lock(tabs_mutex_);
+    tab = const_cast<QtMainWindow*>(this)->GetActiveTab();
+    if (!tab || !tab->cef_client || !tab->cef_client->GetBrowser()) {
+      return QString();
+    }
+    browser = tab->cef_client->GetBrowser();
+  }
+
+  auto main_frame = browser->GetMainFrame();
+  if (!main_frame) {
+    logger.Error("No main frame available");
     return QString();
   }
 
-  // This will be implemented in CefClient
-  // For now, placeholder:
-  return QString("<html><body>TODO: Implement GetPageHTML</body></html>");
+  // Helper class for synchronous HTML retrieval
+  class HtmlVisitor : public CefStringVisitor {
+   public:
+    HtmlVisitor() : complete_(false) {}
+
+    void Visit(const CefString& string) override {
+      std::lock_guard<std::mutex> lock(mutex_);
+      html_ = string.ToString();
+      complete_.store(true, std::memory_order_release);
+    }
+
+    bool WaitForHtml(std::string& html, int timeout_ms = 5000) {
+      auto start = std::chrono::steady_clock::now();
+
+      // Poll and pump CEF message loop instead of blocking
+      while (!complete_.load(std::memory_order_acquire)) {
+        // Check timeout
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        if (elapsed >= timeout_ms) {
+          return false;
+        }
+
+        // Pump CEF message loop to allow callbacks to run
+        CefDoMessageLoopWork();
+
+        // Small sleep to avoid busy-waiting
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+
+      std::lock_guard<std::mutex> lock(mutex_);
+      html = html_;
+      return true;
+    }
+
+   private:
+    std::mutex mutex_;
+    std::string html_;
+    std::atomic<bool> complete_;
+    IMPLEMENT_REFCOUNTING(HtmlVisitor);
+  };
+
+  // Request HTML source
+  CefRefPtr<HtmlVisitor> visitor = new HtmlVisitor();
+  main_frame->GetSource(visitor);
+
+  // Wait for result
+  std::string html;
+  if (visitor->WaitForHtml(html, 5000)) {
+    logger.Info("Retrieved HTML (" + std::to_string(html.length()) + " bytes)");
+    return QString::fromStdString(html);
+  } else {
+    logger.Error("Timeout waiting for HTML");
+    return QString();
+  }
 }
 
 QString QtMainWindow::ExecuteJavaScript(const QString& code) const {
-  std::lock_guard<std::mutex> lock(tabs_mutex_);
+  CefRefPtr<CefBrowser> browser;
 
-  QtTab* tab = const_cast<QtMainWindow*>(this)->GetActiveTab();
-  if (!tab || !tab->cef_client || !tab->cef_client->GetBrowser()) {
-    return QString("{}");
+  {
+    std::lock_guard<std::mutex> lock(tabs_mutex_);
+
+    QtTab* tab = const_cast<QtMainWindow*>(this)->GetActiveTab();
+    if (!tab || !tab->cef_client || !tab->cef_client->GetBrowser()) {
+      logger.Error("No active CEF client or browser");
+      return QString(R"({"error":"No active browser"})");
+    }
+
+    browser = tab->cef_client->GetBrowser();
   }
 
-  // This will be implemented in CefClient
-  // For now, placeholder:
-  return QString("{}");
+  auto main_frame = browser->GetMainFrame();
+  if (!main_frame) {
+    logger.Error("No main frame");
+    return QString(R"({"error":"No main frame"})");
+  }
+
+  // Execute JavaScript without waiting for result
+  // CEF's ExecuteJavaScript is fire-and-forget
+  // To get a result, we'd need to use a different approach (like evaluating an expression)
+  main_frame->ExecuteJavaScript(code.toStdString(), main_frame->GetURL(), 0);
+
+  logger.Info("JavaScript executed");
+  return QString(R"({"success":true,"message":"JavaScript executed"})");
 }
 
 QString QtMainWindow::TakeScreenshot() const {
@@ -580,12 +737,19 @@ QString QtMainWindow::TakeScreenshot() const {
 
   QtTab* tab = const_cast<QtMainWindow*>(this)->GetActiveTab();
   if (!tab || !tab->renderer) {
+    logger.Error("TakeScreenshot: No active tab or renderer");
     return QString();
   }
 
-  // Your GLRenderer already has this logic from GTK version
-  // Just adapt to return QString
-  return QString();  // TODO: Call renderer->TakeScreenshot()
+  // Call the GLRenderer's TakeScreenshot method
+  std::string base64_png = tab->renderer->TakeScreenshot();
+  if (base64_png.empty()) {
+    logger.Error("TakeScreenshot: Failed to capture screenshot");
+    return QString();
+  }
+
+  logger.Info("Screenshot captured successfully");
+  return QString::fromStdString(base64_png);
 }
 
 // ============================================================================
@@ -971,6 +1135,45 @@ QtTab* QtMainWindow::GetActiveTab() {
   }
 
   return &tabs_[active_tab_index_];
+}
+
+bool QtMainWindow::WaitForLoadToComplete(size_t tab_index, int timeout_ms) const {
+  auto start = std::chrono::steady_clock::now();
+
+  while (true) {
+    bool ready = false;
+    {
+      std::lock_guard<std::mutex> lock(tabs_mutex_);
+      if (tab_index >= tabs_.size()) {
+        logger.Warn("WaitForLoadToComplete: invalid tab index " + std::to_string(tab_index));
+        return false;
+      }
+
+      const QtTab& tab = tabs_[tab_index];
+      ready = (tab.cef_client != nullptr) && !tab.is_loading;
+    }
+
+    if (ready) {
+      return true;
+    }
+
+    if (closed_) {
+      logger.Warn("WaitForLoadToComplete aborted because window is closed");
+      return false;
+    }
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+    if (elapsed >= timeout_ms) {
+      logger.Warn("WaitForLoadToComplete timed out after " + std::to_string(timeout_ms) +
+                  "ms for tab " + std::to_string(tab_index));
+      return false;
+    }
+
+    CefDoMessageLoopWork();
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
 }
 
 // ============================================================================

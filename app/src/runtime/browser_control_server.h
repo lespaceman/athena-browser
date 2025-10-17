@@ -15,8 +15,17 @@
 #include <vector>
 #include <functional>
 #include <memory>
+#include <optional>
 #include "utils/error.h"
-#include "platform/window_system.h"  // For Window base class
+
+// Forward declare Qt types
+class QSocketNotifier;
+
+namespace athena {
+namespace platform {
+class QtMainWindow;
+}
+}
 
 namespace athena {
 namespace runtime {
@@ -75,9 +84,9 @@ class BrowserControlServer {
    * Set the browser window to control.
    * Must be called before Initialize().
    *
-   * @param window Shared pointer to Window (server stores a weak reference)
+   * @param window Shared pointer to QtMainWindow (server stores a weak reference)
    */
-  void SetBrowserWindow(const std::shared_ptr<platform::Window>& window);
+  void SetBrowserWindow(const std::shared_ptr<platform::QtMainWindow>& window);
 
   /**
    * Initialize the server and start listening.
@@ -107,13 +116,13 @@ class BrowserControlServer {
   BrowserControlServerConfig config_;
 
   // Browser window (weak reference, does not own)
-  std::weak_ptr<platform::Window> window_;
+  std::weak_ptr<platform::QtMainWindow> window_;
 
   // Socket file descriptor
   int server_fd_;
 
-  // Platform-specific I/O watch handle (opaque pointer)
-  void* io_watch_handle_;
+  // Qt socket notifier for accepting connections
+  QSocketNotifier* server_watch_id_;
 
   // Active client connections (opaque pointer - implementation detail)
   std::vector<void*> active_clients_;
@@ -129,11 +138,23 @@ class BrowserControlServer {
 
   // Request handlers (run synchronously on UI main thread)
   std::string HandleOpenUrl(const std::string& url);
-  std::string HandleGetUrl();
+  std::string HandleGetUrl(std::optional<size_t> tab_index);
   std::string HandleGetTabCount();
-  std::string HandleGetPageHtml();
-  std::string HandleExecuteJavaScript(const std::string& code);
-  std::string HandleTakeScreenshot();
+  std::string HandleGetPageHtml(std::optional<size_t> tab_index);
+  std::string HandleExecuteJavaScript(const std::string& code,
+                                     std::optional<size_t> tab_index);
+  std::string HandleTakeScreenshot(std::optional<size_t> tab_index,
+                                   std::optional<bool> full_page);
+  std::string HandleNavigate(const std::string& url,
+                             std::optional<size_t> tab_index);
+  std::string HandleHistory(const std::string& action,
+                            std::optional<size_t> tab_index);
+  std::string HandleReload(std::optional<size_t> tab_index,
+                           std::optional<bool> ignore_cache);
+  std::string HandleCreateTab(const std::string& url);
+  std::string HandleCloseTab(size_t tab_index);
+  std::string HandleSwitchTab(size_t tab_index);
+  std::string HandleTabInfo();
 
   // HTTP helpers
   static std::string ParseHttpMethod(const std::string& request);
@@ -142,10 +163,6 @@ class BrowserControlServer {
   static std::string BuildHttpResponse(int status_code,
                                        const std::string& status_text,
                                        const std::string& body);
-
-  // Platform-specific callbacks (implemented in .cpp with conditional compilation)
-  static void* CreateIOWatch(int fd, void* server);
-  static void DestroyIOWatch(void* handle);
 };
 
 }  // namespace runtime

@@ -20,24 +20,11 @@ import {
   createClearHandler,
   capabilitiesHandler
 } from './routes/chat.js';
-import {
-  navigateHandler,
-  backHandler,
-  forwardHandler,
-  reloadHandler,
-  getUrlHandler,
-  getHtmlHandler,
-  executeJsHandler,
-  screenshotHandler,
-  createTabHandler,
-  closeTabHandler,
-  switchTabHandler,
-  tabInfoHandler,
-  setBrowserController
-} from './routes/browser.js';
+import { setBrowserController } from './routes/browser.js';
 import { createMockBrowserController } from './browser-controller-impl.js';
 import { createNativeBrowserController } from './native-controller.js';
 import { openUrlHandler } from './routes/poc.js';
+import { createV1Router } from './api/v1.js';
 
 const logger = new Logger('Server');
 
@@ -63,9 +50,12 @@ async function main() {
       permissionMode: config.permissionMode
     });
 
-    // Configure MCP server to call back to this server's endpoints
+    // Configure MCP server to use the Express API exposed on the agent socket
+    const uid = process.getuid?.() ?? 1000;
+    const controlSocketPath = process.env.ATHENA_CONTROL_SOCKET_PATH || `/tmp/athena-${uid}-control.sock`;
     setBrowserApiBase(config.socketPath);
     logger.info('MCP browser API base configured', { socketPath: config.socketPath });
+    logger.info('Browser control socket detected', { controlSocketPath });
 
     // Register browser controller (try native first, fall back to mock)
     const nativeController = createNativeBrowserController();
@@ -125,21 +115,8 @@ async function main() {
     app.post('/v1/chat/continue', createContinueHandler(claudeClient));
     app.post('/v1/chat/clear', createClearHandler(claudeClient));
 
-    // Browser control endpoints
-    app.post('/v1/browser/navigate', navigateHandler);
-    app.post('/v1/browser/back', backHandler);
-    app.post('/v1/browser/forward', forwardHandler);
-    app.post('/v1/browser/reload', reloadHandler);
-    app.get('/v1/browser/get_url', getUrlHandler);
-    app.get('/v1/browser/get_html', getHtmlHandler);
-    app.post('/v1/browser/execute_js', executeJsHandler);
-    app.post('/v1/browser/screenshot', screenshotHandler);
-
-    // Tab management endpoints
-    app.post('/v1/window/create_tab', createTabHandler);
-    app.post('/v1/window/close_tab', closeTabHandler);
-    app.post('/v1/window/switch_tab', switchTabHandler);
-    app.get('/v1/window/tab_info', tabInfoHandler);
+    // Unified API (preferred entry point for MCP and other clients)
+    app.use('/v1', createV1Router(browserController));
 
     // POC endpoint
     app.post('/v1/poc/open_url', openUrlHandler);
@@ -159,14 +136,15 @@ async function main() {
           'POST /v1/browser/back',
           'POST /v1/browser/forward',
           'POST /v1/browser/reload',
-          'GET /v1/browser/get_url',
-          'GET /v1/browser/get_html',
-          'POST /v1/browser/execute_js',
+          'GET /v1/browser/url',
+          'GET /v1/browser/html',
+          'POST /v1/browser/execute-js',
           'POST /v1/browser/screenshot',
-          'POST /v1/window/create_tab',
-          'POST /v1/window/close_tab',
-          'POST /v1/window/switch_tab',
-          'GET /v1/window/tab_info'
+          'POST /v1/window/create',
+          'POST /v1/window/close',
+          'POST /v1/window/switch',
+          'GET /v1/window/tabs',
+          'POST /v1/poc/open_url'
         ]
       });
     });

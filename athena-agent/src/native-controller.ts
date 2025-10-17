@@ -71,10 +71,48 @@ class UnixSocketHttpClient {
 export class NativeBrowserController implements BrowserController {
   private client: UnixSocketHttpClient;
 
+  private async requestJson(
+    method: string,
+    path: string,
+    body?: Record<string, any>
+  ): Promise<any> {
+    const payload = body
+      ? JSON.stringify(
+          Object.fromEntries(
+            Object.entries(body).filter(([, value]) => value !== undefined)
+          )
+        )
+      : undefined;
+
+    const response = await this.client.request(method, path, payload);
+    let parsed: any = {};
+
+    try {
+      parsed = response.body ? JSON.parse(response.body) : {};
+    } catch (error) {
+      throw new Error(
+        `Failed to parse response from ${path}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300 || parsed.success === false) {
+      const message =
+        parsed.error ||
+        parsed.message ||
+        `Request to ${path} failed with status ${response.statusCode}`;
+      throw new Error(message);
+    }
+
+    return parsed;
+  }
+
   constructor() {
-    // Unix socket path for browser control server
+    // Unix socket path for C++ browser control server
+    // This is passed via ATHENA_CONTROL_SOCKET_PATH environment variable by the C++ runtime
     const uid = process.getuid?.() ?? 1000;
-    const socketPath = `/tmp/athena-${uid}-control.sock`;
+    const socketPath = process.env.ATHENA_CONTROL_SOCKET_PATH || `/tmp/athena-${uid}-control.sock`;
 
     this.client = new UnixSocketHttpClient(socketPath);
 
@@ -91,38 +129,22 @@ export class NativeBrowserController implements BrowserController {
 
     try {
       // Make HTTP POST to C++ internal server
-      const response = await this.client.request(
-        'POST',
-        '/internal/open_url',
-        JSON.stringify({ url })
-      );
+      const result = await this.requestJson('POST', '/internal/open_url', { url });
+      const loadTimeMs =
+        typeof result.loadTimeMs === 'number' ? result.loadTimeMs : Date.now() - startTime;
 
-      const loadTimeMs = Date.now() - startTime;
+      logger.info('Native openUrl succeeded', {
+        url: result.finalUrl ?? url,
+        tabIndex: result.tabIndex,
+        loadTimeMs
+      });
 
-      // Parse response
-      const result = JSON.parse(response.body);
-
-      if (result.success) {
-        logger.info('Native openUrl succeeded', {
-          url,
-          tabIndex: result.tabIndex,
-          loadTimeMs
-        });
-
-        return {
-          success: true,
-          finalUrl: url,
-          tabIndex: result.tabIndex ?? 0,
-          loadTimeMs
-        };
-      } else {
-        logger.error('Native openUrl failed', { error: result.error });
-
-        return {
-          success: false,
-          error: result.error || 'Unknown error from browser'
-        };
-      }
+      return {
+        success: true,
+        finalUrl: result.finalUrl ?? url,
+        tabIndex: result.tabIndex ?? 0,
+        loadTimeMs
+      };
     } catch (error) {
       logger.error('Exception in native openUrl', {
         error: error instanceof Error ? error.message : String(error)
@@ -140,139 +162,99 @@ export class NativeBrowserController implements BrowserController {
   async navigate(url: string, tabIndex?: number): Promise<void> {
     logger.info('Native navigate', { url, tabIndex });
 
-    // For now, just use openUrl
-    const result = await this.openUrl(url);
-    if (!result.success) {
-      throw new Error(result.error || 'Navigation failed');
-    }
+    const result = await this.requestJson('POST', '/internal/navigate', { url, tabIndex });
+    logger.info('Native navigate completed', {
+      url: result.finalUrl ?? url,
+      tabIndex: result.tabIndex ?? tabIndex ?? 0,
+      loadTimeMs: result.loadTimeMs
+    });
   }
 
-  async goBack(_tabIndex?: number): Promise<void> {
-    logger.warn('goBack not implemented in native module yet');
-    throw new Error('Not implemented');
+  async goBack(tabIndex?: number): Promise<void> {
+    const result = await this.requestJson('POST', '/internal/history', {
+      action: 'back',
+      tabIndex
+    });
+    logger.info('Native back completed', {
+      tabIndex: result.tabIndex ?? tabIndex ?? 0,
+      loadTimeMs: result.loadTimeMs,
+      url: result.finalUrl
+    });
   }
 
-  async goForward(_tabIndex?: number): Promise<void> {
-    logger.warn('goForward not implemented in native module yet');
-    throw new Error('Not implemented');
+  async goForward(tabIndex?: number): Promise<void> {
+    const result = await this.requestJson('POST', '/internal/history', {
+      action: 'forward',
+      tabIndex
+    });
+    logger.info('Native forward completed', {
+      tabIndex: result.tabIndex ?? tabIndex ?? 0,
+      loadTimeMs: result.loadTimeMs,
+      url: result.finalUrl
+    });
   }
 
-  async reload(_tabIndex?: number, _ignoreCache?: boolean): Promise<void> {
-    logger.warn('reload not implemented in native module yet');
-    throw new Error('Not implemented');
+  async reload(tabIndex?: number, ignoreCache?: boolean): Promise<void> {
+    const result = await this.requestJson('POST', '/internal/reload', {
+      tabIndex,
+      ignoreCache
+    });
+    logger.info('Native reload completed', {
+      tabIndex: result.tabIndex ?? tabIndex ?? 0,
+      loadTimeMs: result.loadTimeMs,
+      ignoreCache: result.ignoreCache
+    });
   }
 
-  async getCurrentUrl(_tabIndex?: number): Promise<string> {
-    try {
-      const response = await this.client.request('GET', '/internal/get_url');
-      const result = JSON.parse(response.body);
-
-      if (result.success) {
-        return result.url;
-      } else {
-        throw new Error(result.error || 'Failed to get URL');
-      }
-    } catch (error) {
-      throw new Error(
-        error instanceof Error ? error.message : 'Failed to get URL'
-      );
-    }
+  async getCurrentUrl(tabIndex?: number): Promise<string> {
+    const result = await this.requestJson('POST', '/internal/get_url', { tabIndex });
+    return result.url;
   }
 
-  async getPageHtml(_tabIndex?: number): Promise<string> {
-    try {
-      const response = await this.client.request('GET', '/internal/get_html');
-      const result = JSON.parse(response.body);
-
-      if (result.success) {
-        return result.html;
-      } else {
-        throw new Error(result.error || 'Failed to get HTML');
-      }
-    } catch (error) {
-      throw new Error(
-        error instanceof Error ? error.message : 'Failed to get HTML'
-      );
-    }
+  async getPageHtml(tabIndex?: number): Promise<string> {
+    const result = await this.requestJson('POST', '/internal/get_html', { tabIndex });
+    return result.html;
   }
 
-  async executeJavaScript(code: string, _tabIndex?: number): Promise<any> {
-    try {
-      const response = await this.client.request(
-        'POST',
-        '/internal/execute_js',
-        JSON.stringify({ code })
-      );
-      const result = JSON.parse(response.body);
-
-      if (result.success) {
-        return result.result;
-      } else {
-        throw new Error(result.error || 'Failed to execute JavaScript');
-      }
-    } catch (error) {
-      throw new Error(
-        error instanceof Error ? error.message : 'Failed to execute JavaScript'
-      );
-    }
+  async executeJavaScript(code: string, tabIndex?: number): Promise<any> {
+    const result = await this.requestJson('POST', '/internal/execute_js', {
+      code,
+      tabIndex
+    });
+    return result.result;
   }
 
-  async screenshot(_tabIndex?: number, _fullPage?: boolean): Promise<string> {
-    try {
-      const response = await this.client.request('GET', '/internal/screenshot');
-      const result = JSON.parse(response.body);
-
-      if (result.success) {
-        return result.screenshot;
-      } else {
-        throw new Error(result.error || 'Failed to take screenshot');
-      }
-    } catch (error) {
-      throw new Error(
-        error instanceof Error ? error.message : 'Failed to take screenshot'
-      );
-    }
+  async screenshot(tabIndex?: number, fullPage?: boolean): Promise<string> {
+    const result = await this.requestJson('POST', '/internal/screenshot', {
+      tabIndex,
+      fullPage
+    });
+    return result.screenshot;
   }
 
   async createTab(url: string): Promise<number> {
     logger.info('Native createTab', { url });
 
-    const result = await this.openUrl(url);
-    if (!result.success) {
-      throw new Error(result.error || 'Tab creation failed');
-    }
-
-    return result.tabIndex ?? 0;
+    const result = await this.requestJson('POST', '/internal/tab/create', { url });
+    return result.tabIndex;
   }
 
-  async closeTab(_tabIndex: number): Promise<void> {
-    logger.warn('closeTab not implemented in native module yet');
-    throw new Error('Not implemented');
+  async closeTab(tabIndex: number): Promise<void> {
+    await this.requestJson('POST', '/internal/tab/close', { tabIndex });
   }
 
-  async switchToTab(_tabIndex: number): Promise<void> {
-    logger.warn('switchToTab not implemented in native module yet');
-    throw new Error('Not implemented');
+  async switchToTab(tabIndex: number): Promise<void> {
+    await this.requestJson('POST', '/internal/tab/switch', { tabIndex });
   }
 
   async getTabCount(): Promise<number> {
-    try {
-      const response = await this.client.request('GET', '/internal/tab_count');
-      const result = JSON.parse(response.body);
-
-      if (result.success) {
-        return result.count;
-      } else {
-        return 0;
-      }
-    } catch (error) {
-      return 0;
-    }
+    const result = await this.requestJson('GET', '/internal/tab_info');
+    return result.count ?? 0;
   }
 
   async getActiveTabIndex(): Promise<number> {
-    // Not available from native yet, return 0
-    return 0;
+    const result = await this.requestJson('GET', '/internal/tab_info');
+    return result.activeTabIndex ?? 0;
   }
 }
 

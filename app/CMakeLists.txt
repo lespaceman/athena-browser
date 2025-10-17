@@ -26,6 +26,7 @@ if(USE_QT)
   set(PLATFORM_SOURCES
     src/platform/qt_mainwindow.cpp
     src/platform/qt_browserwidget.cpp
+    src/platform/qt_claude_panel.cpp
   )
 
   add_compile_definitions(ATHENA_USE_QT)
@@ -47,17 +48,11 @@ endif()
 # Main Executable
 # ============================================================================
 
-# Conditionally add browser_control_server (GTK-only for now)
-if(USE_QT)
-  set(RUNTIME_SOURCES
-    src/runtime/node_runtime.cpp
-  )
-else()
-  set(RUNTIME_SOURCES
-    src/runtime/node_runtime.cpp
-    src/runtime/browser_control_server.cpp
-  )
-endif()
+# Runtime sources (Qt and GTK both support browser_control_server now)
+set(RUNTIME_SOURCES
+  src/runtime/node_runtime.cpp
+  src/runtime/browser_control_server.cpp
+)
 
 add_executable(athena-browser
   src/main.cpp

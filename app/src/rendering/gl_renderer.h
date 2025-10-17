@@ -119,6 +119,10 @@ class GLRenderer {
   // Returns nullptr if not initialized.
   client::OsrRenderer* GetOsrRenderer() { return osr_renderer_.get(); }
 
+  // Capture the current framebuffer as a PNG image.
+  // Returns base64-encoded PNG data, or empty string on failure.
+  std::string TakeScreenshot() const;
+
  private:
   // Convert core::Rect to CefRect
   static CefRect ToCefRect(const core::Rect& rect);

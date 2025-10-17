@@ -30,6 +30,7 @@ namespace platform {
 
 // Forward declarations
 class BrowserWidget;
+class ClaudePanel;
 
 /**
  * Represents a single browser tab (Qt version).
@@ -202,7 +203,7 @@ class QtMainWindow : public QMainWindow, public Window {
   /**
    * Reload the current page.
    */
-  void Reload();
+  void Reload(bool ignore_cache = false);
 
   /**
    * Stop loading the current page.
@@ -284,6 +285,14 @@ class QtMainWindow : public QMainWindow, public Window {
   QtTab* GetActiveTab();
 
   /**
+   * Wait until a tab has finished loading.
+   * @param tab_index Tab index to monitor
+   * @param timeout_ms Maximum time to wait
+   * @return true if load completed, false on timeout or invalid tab
+   */
+  bool WaitForLoadToComplete(size_t tab_index, int timeout_ms = 15000) const;
+
+  /**
    * Handle tab switch event from QTabWidget.
    * @param index New tab index
    */
@@ -322,6 +331,7 @@ class QtMainWindow : public QMainWindow, public Window {
   void onNewTabClicked();
   void onTabCloseRequested(int index);
   void onCurrentTabChanged(int index);
+  void onClaudeButtonClicked();
 
  private:
   // ============================================================================
@@ -361,7 +371,9 @@ class QtMainWindow : public QMainWindow, public Window {
   QPushButton* reloadButton_;
   QPushButton* stopButton_;
   QPushButton* newTabButton_;       // "+" button to create new tabs
+  QPushButton* claudeButton_;       // Toggle Claude sidebar
   QTabWidget* tabWidget_;           // Tab container (replaces single browserWidget_)
+  ClaudePanel* claudePanel_;        // Claude chat sidebar
 
   // Tab management (Phase 2: full multi-tab support)
   std::vector<QtTab> tabs_;         // All open tabs

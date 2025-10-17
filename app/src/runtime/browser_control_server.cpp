@@ -2,10 +2,11 @@
  * Browser Control Server Implementation
  *
  * Internal HTTP server for browser control via Unix socket.
- * Runs entirely on GTK main thread using non-blocking I/O.
+ * Runs entirely on Qt main thread using non-blocking I/O.
  */
 
 #include "runtime/browser_control_server.h"
+#include "platform/qt_mainwindow.h"
 #include "utils/logging.h"
 #include <nlohmann/json.hpp>
 #include <sys/socket.h>
@@ -15,7 +16,10 @@
 #include <cstring>
 #include <sstream>
 #include <filesystem>
-#include <glib.h>
+#include <algorithm>
+#include <cctype>
+#include <QSocketNotifier>
+#include <QObject>
 
 namespace athena {
 namespace runtime {
@@ -25,6 +29,32 @@ static utils::Logger logger("BrowserControlServer");
 // Maximum size for HTTP requests (1MB to prevent DoS attacks)
 static constexpr size_t MAX_REQUEST_SIZE = 1024 * 1024;
 
+namespace {
+
+constexpr int kDefaultNavigationTimeoutMs = 15000;
+constexpr int kDefaultContentTimeoutMs = 5000;
+
+bool SwitchToRequestedTab(const std::shared_ptr<platform::QtMainWindow>& window,
+                          std::optional<size_t> tab_index,
+                          std::string& error_message) {
+  if (!tab_index.has_value()) {
+    return true;
+  }
+
+  size_t count = window->GetTabCount();
+  if (*tab_index >= count) {
+    error_message = "Invalid tab index";
+    return false;
+  }
+
+  if (window->GetActiveTabIndex() != *tab_index) {
+    window->SwitchToTab(*tab_index);
+  }
+  return true;
+}
+
+}  // namespace
+
 // ============================================================================
 // Client Connection Context
 // ============================================================================
@@ -32,8 +62,7 @@ static constexpr size_t MAX_REQUEST_SIZE = 1024 * 1024;
 struct ClientConnection {
   BrowserControlServer* server;
   int fd;
-  GIOChannel* channel;
-  guint watch_id;
+  QSocketNotifier* notifier;
   std::string buffer;
   bool headers_complete;
   size_t content_length;
@@ -41,26 +70,17 @@ struct ClientConnection {
   ClientConnection(BrowserControlServer* s, int client_fd)
       : server(s),
         fd(client_fd),
-        channel(nullptr),
-        watch_id(0),
+        notifier(nullptr),
         headers_complete(false),
         content_length(0) {
     // Set non-blocking
     int flags = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-
-    // Create GLib I/O watch for this client
-    channel = g_io_channel_unix_new(fd);
-    g_io_channel_set_encoding(channel, nullptr, nullptr);  // Binary mode
-    g_io_channel_set_buffered(channel, FALSE);
   }
 
   ~ClientConnection() {
-    if (watch_id > 0) {
-      g_source_remove(watch_id);
-    }
-    if (channel) {
-      g_io_channel_unref(channel);
+    if (notifier) {
+      delete notifier;
     }
     if (fd >= 0) {
       close(fd);
@@ -76,7 +96,7 @@ BrowserControlServer::BrowserControlServer(
     const BrowserControlServerConfig& config)
     : config_(config),
       server_fd_(-1),
-      server_watch_id_(0),
+      server_watch_id_(nullptr),
       running_(false) {
   logger.Debug("BrowserControlServer created");
 }
@@ -89,7 +109,7 @@ BrowserControlServer::~BrowserControlServer() {
 // Public Methods
 // ============================================================================
 
-void BrowserControlServer::SetBrowserWindow(const std::shared_ptr<platform::GtkWindow>& window) {
+void BrowserControlServer::SetBrowserWindow(const std::shared_ptr<platform::QtMainWindow>& window) {
   if (window) {
     logger.Debug("Browser window registered with control server");
   } else {
@@ -153,13 +173,13 @@ utils::Result<void> BrowserControlServer::Initialize() {
                        std::string(strerror(errno)));
   }
 
-  // Create GLib I/O watch
-  GIOChannel* channel = g_io_channel_unix_new(server_fd_);
-  server_watch_id_ = g_io_add_watch(channel,
-                                    (GIOCondition)(G_IO_IN | G_IO_ERR | G_IO_HUP),
-                                    OnServerReadable,
-                                    this);
-  g_io_channel_unref(channel);
+  // Create Qt socket notifier
+  server_watch_id_ = new QSocketNotifier(server_fd_, QSocketNotifier::Read);
+  QObject::connect(server_watch_id_, &QSocketNotifier::activated,
+                   [this](QSocketDescriptor) {
+    AcceptConnection();
+  });
+  server_watch_id_->setEnabled(true);
 
   running_ = true;
 
@@ -175,10 +195,10 @@ void BrowserControlServer::Shutdown() {
 
   logger.Info("Shutting down browser control server");
 
-  // Remove GLib watch
-  if (server_watch_id_ > 0) {
-    g_source_remove(server_watch_id_);
-    server_watch_id_ = 0;
+  // Remove Qt socket notifier
+  if (server_watch_id_) {
+    delete server_watch_id_;
+    server_watch_id_ = nullptr;
   }
 
   // Close all client connections
@@ -220,50 +240,6 @@ std::string BrowserControlServer::GetSocketPath() const {
 }
 
 // ============================================================================
-// GLib Callbacks
-// ============================================================================
-
-gboolean BrowserControlServer::OnServerReadable(GIOChannel* source,
-                                                GIOCondition condition,
-                                                gpointer user_data) {
-  auto* server = static_cast<BrowserControlServer*>(user_data);
-
-  if (condition & (G_IO_ERR | G_IO_HUP)) {
-    logger.Error("Server socket error");
-    return G_SOURCE_REMOVE;
-  }
-
-  if (condition & G_IO_IN) {
-    server->AcceptConnection();
-  }
-
-  return G_SOURCE_CONTINUE;
-}
-
-gboolean BrowserControlServer::OnClientReadable(GIOChannel* source,
-                                                GIOCondition condition,
-                                                gpointer user_data) {
-  auto* client = static_cast<ClientConnection*>(user_data);
-  auto* server = client->server;
-
-  if (condition & (G_IO_ERR | G_IO_HUP)) {
-    logger.Debug("Client disconnected");
-    server->CloseClient(client);
-    return G_SOURCE_REMOVE;
-  }
-
-  if (condition & G_IO_IN) {
-    if (!server->HandleClientData(client)) {
-      // Error or request complete - close connection
-      server->CloseClient(client);
-      return G_SOURCE_REMOVE;
-    }
-  }
-
-  return G_SOURCE_CONTINUE;
-}
-
-// ============================================================================
 // Connection Handling
 // ============================================================================
 
@@ -281,11 +257,16 @@ void BrowserControlServer::AcceptConnection() {
   // Create client connection context
   auto* client = new ClientConnection(this, client_fd);
 
-  // Set up watch for client data
-  client->watch_id = g_io_add_watch(client->channel,
-                                     (GIOCondition)(G_IO_IN | G_IO_ERR | G_IO_HUP),
-                                     OnClientReadable,
-                                     client);
+  // Set up Qt socket notifier for client data
+  client->notifier = new QSocketNotifier(client_fd, QSocketNotifier::Read);
+  QObject::connect(client->notifier, &QSocketNotifier::activated,
+                   [this, client](QSocketDescriptor) {
+    if (!HandleClientData(client)) {
+      // Error or request complete - close connection
+      CloseClient(client);
+    }
+  });
+  client->notifier->setEnabled(true);
 
   active_clients_.push_back(client);
 }
@@ -385,7 +366,7 @@ void BrowserControlServer::CloseClient(void* client_ptr) {
 }
 
 // ============================================================================
-// Request Processing (runs on GTK main thread)
+// Request Processing (runs on Qt main thread)
 // ============================================================================
 
 std::string BrowserControlServer::ProcessRequest(const std::string& request) {
@@ -395,64 +376,197 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
 
   logger.Debug("Processing " + method + " " + path);
 
-  // Route to handlers - all run synchronously on main thread
-  if (method == "POST" && path == "/internal/open_url") {
+  auto parse_json = [&](nlohmann::json& json_out) -> bool {
     try {
-      auto json = nlohmann::json::parse(body);
-
-      if (!json.contains("url")) {
-        return BuildHttpResponse(400, "Bad Request",
-                                R"({"success":false,"error":"Missing url parameter"})");
+      if (body.empty()) {
+        json_out = nlohmann::json::object();
+      } else {
+        json_out = nlohmann::json::parse(body);
       }
-
-      std::string url = json["url"].get<std::string>();
-      return BuildHttpResponse(200, "OK", HandleOpenUrl(url));
-
+      return true;
     } catch (const nlohmann::json::exception& e) {
       logger.Error("JSON parsing error: " + std::string(e.what()));
-      return BuildHttpResponse(400, "Bad Request",
-                              R"({"success":false,"error":"Invalid JSON"})");
+      return false;
     }
+  };
 
-  } else if (method == "GET" && path == "/internal/get_url") {
-    return BuildHttpResponse(200, "OK", HandleGetUrl());
+  // Route to handlers - all run synchronously on main thread
+  if (method == "POST" && path == "/internal/open_url") {
+    nlohmann::json json;
+    if (!parse_json(json)) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Invalid JSON"})");
+    }
+    if (!json.contains("url") || !json["url"].is_string()) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Missing url parameter"})");
+    }
+    std::string url = json["url"].get<std::string>();
+    return BuildHttpResponse(200, "OK", HandleOpenUrl(url));
+
+  } else if ((method == "GET" || method == "POST") && path == "/internal/get_url") {
+    std::optional<size_t> tab_index;
+    if (method == "POST") {
+      nlohmann::json json;
+      if (!parse_json(json)) {
+        return BuildHttpResponse(400, "Bad Request",
+                                 R"({"success":false,"error":"Invalid JSON"})");
+      }
+      if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
+        tab_index = json["tabIndex"].get<size_t>();
+      }
+    }
+    return BuildHttpResponse(200, "OK", HandleGetUrl(tab_index));
 
   } else if (method == "GET" && path == "/internal/tab_count") {
     return BuildHttpResponse(200, "OK", HandleGetTabCount());
 
-  } else if (method == "GET" && path == "/internal/get_html") {
-    return BuildHttpResponse(200, "OK", HandleGetPageHtml());
+  } else if ((method == "GET" || method == "POST") && path == "/internal/get_html") {
+    std::optional<size_t> tab_index;
+    if (method == "POST") {
+      nlohmann::json json;
+      if (!parse_json(json)) {
+        return BuildHttpResponse(400, "Bad Request",
+                                 R"({"success":false,"error":"Invalid JSON"})");
+      }
+      if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
+        tab_index = json["tabIndex"].get<size_t>();
+      }
+    }
+    return BuildHttpResponse(200, "OK", HandleGetPageHtml(tab_index));
 
   } else if (method == "POST" && path == "/internal/execute_js") {
-    try {
-      auto json = nlohmann::json::parse(body);
-
-      if (!json.contains("code")) {
-        return BuildHttpResponse(400, "Bad Request",
-                                R"({"success":false,"error":"Missing code parameter"})");
-      }
-
-      std::string code = json["code"].get<std::string>();
-      return BuildHttpResponse(200, "OK", HandleExecuteJavaScript(code));
-
-    } catch (const nlohmann::json::exception& e) {
-      logger.Error("JSON parsing error: " + std::string(e.what()));
+    nlohmann::json json;
+    if (!parse_json(json)) {
       return BuildHttpResponse(400, "Bad Request",
-                              R"({"success":false,"error":"Invalid JSON"})");
+                               R"({"success":false,"error":"Invalid JSON"})");
     }
+    if (!json.contains("code") || !json["code"].is_string()) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Missing code parameter"})");
+    }
+    std::optional<size_t> tab_index;
+    if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
+      tab_index = json["tabIndex"].get<size_t>();
+    }
+    std::string code = json["code"].get<std::string>();
+    return BuildHttpResponse(200, "OK", HandleExecuteJavaScript(code, tab_index));
 
-  } else if (method == "GET" && path == "/internal/screenshot") {
-    return BuildHttpResponse(200, "OK", HandleTakeScreenshot());
+  } else if ((method == "GET" || method == "POST") && path == "/internal/screenshot") {
+    std::optional<size_t> tab_index;
+    std::optional<bool> full_page;
+    if (method == "POST") {
+      nlohmann::json json;
+      if (!parse_json(json)) {
+        return BuildHttpResponse(400, "Bad Request",
+                                 R"({"success":false,"error":"Invalid JSON"})");
+      }
+      if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
+        tab_index = json["tabIndex"].get<size_t>();
+      }
+      if (json.contains("fullPage") && json["fullPage"].is_boolean()) {
+        full_page = json["fullPage"].get<bool>();
+      }
+    }
+    return BuildHttpResponse(200, "OK", HandleTakeScreenshot(tab_index, full_page));
+
+  } else if (method == "POST" && path == "/internal/navigate") {
+    nlohmann::json json;
+    if (!parse_json(json)) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Invalid JSON"})");
+    }
+    if (!json.contains("url") || !json["url"].is_string()) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Missing url parameter"})");
+    }
+    std::optional<size_t> tab_index;
+    if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
+      tab_index = json["tabIndex"].get<size_t>();
+    }
+    return BuildHttpResponse(200, "OK", HandleNavigate(json["url"].get<std::string>(), tab_index));
+
+  } else if (method == "POST" && path == "/internal/history") {
+    nlohmann::json json;
+    if (!parse_json(json)) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Invalid JSON"})");
+    }
+    if (!json.contains("action") || !json["action"].is_string()) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Missing action parameter"})");
+    }
+    std::optional<size_t> tab_index;
+    if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
+      tab_index = json["tabIndex"].get<size_t>();
+    }
+    return BuildHttpResponse(200, "OK",
+                             HandleHistory(json["action"].get<std::string>(), tab_index));
+
+  } else if (method == "POST" && path == "/internal/reload") {
+    nlohmann::json json;
+    if (!parse_json(json)) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Invalid JSON"})");
+    }
+    std::optional<size_t> tab_index;
+    std::optional<bool> ignore_cache;
+    if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
+      tab_index = json["tabIndex"].get<size_t>();
+    }
+    if (json.contains("ignoreCache") && json["ignoreCache"].is_boolean()) {
+      ignore_cache = json["ignoreCache"].get<bool>();
+    }
+    return BuildHttpResponse(200, "OK", HandleReload(tab_index, ignore_cache));
+
+  } else if (method == "POST" && path == "/internal/tab/create") {
+    nlohmann::json json;
+    if (!parse_json(json)) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Invalid JSON"})");
+    }
+    if (!json.contains("url") || !json["url"].is_string()) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Missing url parameter"})");
+    }
+    return BuildHttpResponse(200, "OK", HandleCreateTab(json["url"].get<std::string>()));
+
+  } else if (method == "POST" && path == "/internal/tab/close") {
+    nlohmann::json json;
+    if (!parse_json(json)) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Invalid JSON"})");
+    }
+    if (!json.contains("tabIndex") || !json["tabIndex"].is_number_unsigned()) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Missing tabIndex parameter"})");
+    }
+    return BuildHttpResponse(200, "OK", HandleCloseTab(json["tabIndex"].get<size_t>()));
+
+  } else if (method == "POST" && path == "/internal/tab/switch") {
+    nlohmann::json json;
+    if (!parse_json(json)) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Invalid JSON"})");
+    }
+    if (!json.contains("tabIndex") || !json["tabIndex"].is_number_unsigned()) {
+      return BuildHttpResponse(400, "Bad Request",
+                               R"({"success":false,"error":"Missing tabIndex parameter"})");
+    }
+    return BuildHttpResponse(200, "OK", HandleSwitchTab(json["tabIndex"].get<size_t>()));
+
+  } else if (method == "GET" && path == "/internal/tab_info") {
+    return BuildHttpResponse(200, "OK", HandleTabInfo());
 
   } else {
     logger.Warn("Unknown endpoint: " + path);
     return BuildHttpResponse(404, "Not Found",
-                            R"({"success":false,"error":"Endpoint not found"})");
+                             R"({"success":false,"error":"Endpoint not found"})");
   }
 }
 
 // ============================================================================
-// Request Handlers (run synchronously on GTK main thread)
+// Request Handlers (run synchronously on Qt main thread)
 // ============================================================================
 
 std::string BrowserControlServer::HandleOpenUrl(const std::string& url) {
@@ -460,62 +574,84 @@ std::string BrowserControlServer::HandleOpenUrl(const std::string& url) {
 
   auto window = window_.lock();
   if (!running_ || !window) {
-    return R"({"success":false,"error":"Server is shutting down"})";
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Server is shutting down"}}.dump();
   }
 
   try {
-    // Check tab count to decide whether to create tab or navigate
-    size_t tab_count = window->GetTabCount();
+    const auto start = std::chrono::steady_clock::now();
+    size_t target_tab = 0;
+    bool created_tab = false;
 
+    size_t tab_count = window->GetTabCount();
     if (tab_count == 0) {
-      // Create new tab
-      int tab_index = window->CreateTab(url);
+      int tab_index = window->CreateTab(QString::fromStdString(url));
       if (tab_index < 0) {
-        return R"({"success":false,"error":"Failed to create tab"})";
+        return nlohmann::json{
+            {"success", false},
+            {"error", "Failed to create tab"}}.dump();
       }
 
-      std::ostringstream response;
-      response << R"({"success":true,"message":"Created tab and navigated to )"
-               << url << R"(","tabIndex":)" << tab_index << "}";
-      return response.str();
-
+      target_tab = static_cast<size_t>(tab_index);
+      created_tab = true;
     } else {
-      // Navigate active tab
-      window->LoadURL(url);
-
-      std::ostringstream response;
-      response << R"({"success":true,"message":"Navigated to )" << url << R"(")"
-               << R"(,"tabIndex":)" << window->GetActiveTabIndex() << "}";
-      return response.str();
+      target_tab = window->GetActiveTabIndex();
+      window->LoadURL(QString::fromStdString(url));
     }
 
+    bool loaded = window->WaitForLoadToComplete(target_tab, kDefaultNavigationTimeoutMs);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+
+    if (!loaded) {
+      return nlohmann::json{
+          {"success", false},
+          {"error", "Navigation timed out"},
+          {"tabIndex", static_cast<int>(target_tab)},
+          {"loadTimeMs", elapsed}}.dump();
+    }
+
+    const std::string final_url = window->GetCurrentUrl().toStdString();
+    return nlohmann::json{
+        {"success", true},
+        {"tabIndex", static_cast<int>(target_tab)},
+        {"finalUrl", final_url.empty() ? url : final_url},
+        {"createdTab", created_tab},
+        {"loadTimeMs", elapsed}}.dump();
+
   } catch (const std::exception& e) {
-    std::ostringstream response;
-    response << R"({"success":false,"error":")" << e.what() << R"("})";
-    return response.str();
+    return nlohmann::json{
+        {"success", false},
+        {"error", e.what()}}.dump();
   }
 }
 
-std::string BrowserControlServer::HandleGetUrl() {
+std::string BrowserControlServer::HandleGetUrl(std::optional<size_t> tab_index) {
   auto window = window_.lock();
   if (!running_ || !window) {
-    return R"({"success":false,"error":"Server is shutting down"})";
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Server is shutting down"}}.dump();
   }
 
   try {
-    auto* tab = window->GetActiveTab();
-    if (!tab) {
-      return R"({"success":false,"error":"No active tab"})";
+    std::string error;
+    if (!SwitchToRequestedTab(window, tab_index, error)) {
+      return nlohmann::json{
+          {"success", false},
+          {"error", error}}.dump();
     }
 
-    std::ostringstream response;
-    response << R"({"success":true,"url":")" << tab->url << R"("})";
-    return response.str();
-
+    QString url = window->GetCurrentUrl();
+    return nlohmann::json{
+        {"success", true},
+        {"url", url.toStdString()},
+        {"tabIndex", static_cast<int>(window->GetActiveTabIndex())}}.dump();
   } catch (const std::exception& e) {
-    std::ostringstream response;
-    response << R"({"success":false,"error":")" << e.what() << R"("})";
-    return response.str();
+    return nlohmann::json{
+        {"success", false},
+        {"error", e.what()}}.dump();
   }
 }
 
@@ -538,22 +674,42 @@ std::string BrowserControlServer::HandleGetTabCount() {
   }
 }
 
-std::string BrowserControlServer::HandleGetPageHtml() {
+std::string BrowserControlServer::HandleGetPageHtml(std::optional<size_t> tab_index) {
   auto window = window_.lock();
   if (!running_ || !window) {
-    return R"({"success":false,"error":"Server is shutting down"})";
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Server is shutting down"}}.dump();
   }
 
   try {
-    std::string html = window->GetPageHTML();
-    if (html.empty()) {
-      return R"({"success":false,"error":"Failed to retrieve HTML"})";
+    std::string error;
+    if (!SwitchToRequestedTab(window, tab_index, error)) {
+      return nlohmann::json{
+          {"success", false},
+          {"error", error}}.dump();
+    }
+
+    size_t target_tab = window->GetActiveTabIndex();
+    if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
+      return nlohmann::json{
+          {"success", false},
+          {"error", "Page is still loading"},
+          {"tabIndex", static_cast<int>(target_tab)}}.dump();
+    }
+
+    QString html = window->GetPageHTML();
+    if (html.isEmpty()) {
+      return nlohmann::json{
+          {"success", false},
+          {"error", "Failed to retrieve HTML"}}.dump();
     }
 
     // Escape HTML for JSON (replace quotes and newlines)
+    std::string html_str = html.toStdString();
     std::string escaped;
-    escaped.reserve(html.size());
-    for (char c : html) {
+    escaped.reserve(html_str.size());
+    for (char c : html_str) {
       switch (c) {
         case '"':  escaped += "\\\""; break;
         case '\\': escaped += "\\\\"; break;
@@ -564,57 +720,343 @@ std::string BrowserControlServer::HandleGetPageHtml() {
       }
     }
 
-    std::ostringstream response;
-    response << R"({"success":true,"html":")" << escaped << R"("})";
-    return response.str();
+    nlohmann::json response = {
+        {"success", true},
+        {"html", escaped},
+        {"tabIndex", static_cast<int>(window->GetActiveTabIndex())}};
+    return response.dump();
 
   } catch (const std::exception& e) {
-    std::ostringstream response;
-    response << R"({"success":false,"error":")" << e.what() << R"("})";
-    return response.str();
+    return nlohmann::json{
+        {"success", false},
+        {"error", e.what()}}.dump();
   }
 }
 
-std::string BrowserControlServer::HandleExecuteJavaScript(const std::string& code) {
+std::string BrowserControlServer::HandleExecuteJavaScript(const std::string& code,
+                                                          std::optional<size_t> tab_index) {
   auto window = window_.lock();
   if (!running_ || !window) {
-    return R"({"success":false,"error":"Server is shutting down"})";
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Server is shutting down"}}.dump();
   }
 
   try {
-    std::string result = window->ExecuteJavaScript(code);
-    std::ostringstream response;
-    response << R"({"success":true,"result":)" << result << "}";
-    return response.str();
-
-  } catch (const std::exception& e) {
-    std::ostringstream response;
-    response << R"({"success":false,"error":")" << e.what() << R"("})";
-    return response.str();
-  }
-}
-
-std::string BrowserControlServer::HandleTakeScreenshot() {
-  auto window = window_.lock();
-  if (!running_ || !window) {
-    return R"({"success":false,"error":"Server is shutting down"})";
-  }
-
-  try {
-    std::string base64_png = window->TakeScreenshot();
-    if (base64_png.empty()) {
-      return R"({"success":false,"error":"Failed to capture screenshot"})";
+    std::string error;
+    if (!SwitchToRequestedTab(window, tab_index, error)) {
+      return nlohmann::json{
+          {"success", false},
+          {"error", error}}.dump();
     }
 
-    std::ostringstream response;
-    response << R"({"success":true,"screenshot":")" << base64_png << R"("})";
-    return response.str();
+    size_t target_tab = window->GetActiveTabIndex();
+    if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
+      return nlohmann::json{
+          {"success", false},
+          {"error", "Page is still loading"},
+          {"tabIndex", static_cast<int>(target_tab)}}.dump();
+    }
+
+    QString result = window->ExecuteJavaScript(QString::fromStdString(code));
+    return nlohmann::json{
+        {"success", true},
+        {"result", result.toStdString()},
+        {"tabIndex", static_cast<int>(target_tab)}}.dump();
 
   } catch (const std::exception& e) {
-    std::ostringstream response;
-    response << R"({"success":false,"error":")" << e.what() << R"("})";
-    return response.str();
+    return nlohmann::json{
+        {"success", false},
+        {"error", e.what()}}.dump();
   }
+}
+
+std::string BrowserControlServer::HandleTakeScreenshot(std::optional<size_t> tab_index,
+                                                       std::optional<bool> full_page) {
+  auto window = window_.lock();
+  if (!running_ || !window) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Server is shutting down"}}.dump();
+  }
+
+  try {
+    std::string error;
+    if (!SwitchToRequestedTab(window, tab_index, error)) {
+      return nlohmann::json{
+          {"success", false},
+          {"error", error}}.dump();
+    }
+
+    size_t target_tab = window->GetActiveTabIndex();
+    if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
+      return nlohmann::json{
+          {"success", false},
+          {"error", "Page is still loading"},
+          {"tabIndex", static_cast<int>(target_tab)}}.dump();
+    }
+
+    if (full_page.value_or(false)) {
+      logger.Warn("Full page screenshot requested but not supported; capturing viewport only");
+    }
+
+    QString base64_png = window->TakeScreenshot();
+    if (base64_png.isEmpty()) {
+      return nlohmann::json{
+          {"success", false},
+          {"error", "Failed to capture screenshot"}}.dump();
+    }
+
+    return nlohmann::json{
+        {"success", true},
+        {"screenshot", base64_png.toStdString()},
+        {"tabIndex", static_cast<int>(target_tab)}}.dump();
+
+  } catch (const std::exception& e) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", e.what()}}.dump();
+  }
+}
+
+std::string BrowserControlServer::HandleNavigate(const std::string& url,
+                                                 std::optional<size_t> tab_index) {
+  auto window = window_.lock();
+  if (!running_ || !window) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Server is shutting down"}}.dump();
+  }
+
+  if (window->GetTabCount() == 0) {
+    return HandleOpenUrl(url);
+  }
+
+  std::string error;
+  if (!SwitchToRequestedTab(window, tab_index, error)) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", error}}.dump();
+  }
+
+  size_t target_tab = tab_index.has_value()
+      ? *tab_index
+      : window->GetActiveTabIndex();
+
+  const auto start = std::chrono::steady_clock::now();
+  window->LoadURL(QString::fromStdString(url));
+
+  bool loaded = window->WaitForLoadToComplete(target_tab, kDefaultNavigationTimeoutMs);
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start).count();
+
+  if (!loaded) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Navigation timed out"},
+        {"tabIndex", static_cast<int>(target_tab)},
+        {"loadTimeMs", elapsed}}.dump();
+  }
+
+  const std::string final_url = window->GetCurrentUrl().toStdString();
+  return nlohmann::json{
+      {"success", true},
+      {"tabIndex", static_cast<int>(target_tab)},
+      {"finalUrl", final_url.empty() ? url : final_url},
+      {"loadTimeMs", elapsed}}.dump();
+}
+
+std::string BrowserControlServer::HandleHistory(const std::string& action,
+                                                std::optional<size_t> tab_index) {
+  auto window = window_.lock();
+  if (!running_ || !window) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Server is shutting down"}}.dump();
+  }
+
+  std::string error;
+  if (!SwitchToRequestedTab(window, tab_index, error)) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", error}}.dump();
+  }
+
+  std::string action_lower = action;
+  std::transform(
+      action_lower.begin(),
+      action_lower.end(),
+      action_lower.begin(),
+      [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+  size_t target_tab = window->GetActiveTabIndex();
+  const auto start = std::chrono::steady_clock::now();
+
+  if (action_lower == "back") {
+    window->GoBack();
+  } else if (action_lower == "forward") {
+    window->GoForward();
+  } else {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Invalid history action"}}.dump();
+  }
+  bool loaded = window->WaitForLoadToComplete(target_tab, kDefaultNavigationTimeoutMs);
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start).count();
+
+  if (!loaded) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Navigation timed out"},
+        {"action", action_lower},
+        {"tabIndex", static_cast<int>(target_tab)},
+        {"loadTimeMs", elapsed}}.dump();
+  }
+
+  const std::string final_url = window->GetCurrentUrl().toStdString();
+  return nlohmann::json{
+      {"success", true},
+      {"action", action_lower},
+      {"tabIndex", static_cast<int>(target_tab)},
+      {"finalUrl", final_url},
+      {"loadTimeMs", elapsed}}.dump();
+}
+
+std::string BrowserControlServer::HandleReload(std::optional<size_t> tab_index,
+                                               std::optional<bool> ignore_cache) {
+  auto window = window_.lock();
+  if (!running_ || !window) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Server is shutting down"}}.dump();
+  }
+
+  std::string error;
+  if (!SwitchToRequestedTab(window, tab_index, error)) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", error}}.dump();
+  }
+
+  size_t target_tab = window->GetActiveTabIndex();
+  const auto start = std::chrono::steady_clock::now();
+
+  window->Reload(ignore_cache.value_or(false));
+  bool loaded = window->WaitForLoadToComplete(target_tab, kDefaultNavigationTimeoutMs);
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start).count();
+
+  if (!loaded) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Reload timed out"},
+        {"tabIndex", static_cast<int>(target_tab)},
+        {"ignoreCache", ignore_cache.value_or(false)},
+        {"loadTimeMs", elapsed}}.dump();
+  }
+
+  return nlohmann::json{
+      {"success", true},
+      {"tabIndex", static_cast<int>(target_tab)},
+      {"ignoreCache", ignore_cache.value_or(false)},
+      {"loadTimeMs", elapsed}}.dump();
+}
+
+std::string BrowserControlServer::HandleCreateTab(const std::string& url) {
+  auto window = window_.lock();
+  if (!running_ || !window) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Server is shutting down"}}.dump();
+  }
+
+  const auto start = std::chrono::steady_clock::now();
+  int tab_index = window->CreateTab(QString::fromStdString(url));
+  if (tab_index < 0) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Failed to create tab"}}.dump();
+  }
+
+  bool loaded = window->WaitForLoadToComplete(static_cast<size_t>(tab_index),
+                                              kDefaultNavigationTimeoutMs);
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start).count();
+
+  if (!loaded) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Tab creation timed out"},
+        {"tabIndex", tab_index},
+        {"loadTimeMs", elapsed}}.dump();
+  }
+
+  const std::string final_url = window->GetCurrentUrl().toStdString();
+  return nlohmann::json{
+      {"success", true},
+      {"tabIndex", tab_index},
+      {"url", url},
+      {"finalUrl", final_url.empty() ? url : final_url},
+      {"loadTimeMs", elapsed}}.dump();
+}
+
+std::string BrowserControlServer::HandleCloseTab(size_t tab_index) {
+  auto window = window_.lock();
+  if (!running_ || !window) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Server is shutting down"}}.dump();
+  }
+
+  size_t count = window->GetTabCount();
+  if (tab_index >= count) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Invalid tab index"}}.dump();
+  }
+
+  window->CloseTab(tab_index);
+  return nlohmann::json{
+      {"success", true},
+      {"tabIndex", static_cast<int>(tab_index)}}.dump();
+}
+
+std::string BrowserControlServer::HandleSwitchTab(size_t tab_index) {
+  auto window = window_.lock();
+  if (!running_ || !window) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Server is shutting down"}}.dump();
+  }
+
+  size_t count = window->GetTabCount();
+  if (tab_index >= count) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Invalid tab index"}}.dump();
+  }
+
+  window->SwitchToTab(tab_index);
+  return nlohmann::json{
+      {"success", true},
+      {"tabIndex", static_cast<int>(window->GetActiveTabIndex())}}.dump();
+}
+
+std::string BrowserControlServer::HandleTabInfo() {
+  auto window = window_.lock();
+  if (!running_ || !window) {
+    return nlohmann::json{
+        {"success", false},
+        {"error", "Server is shutting down"}}.dump();
+  }
+
+  size_t count = window->GetTabCount();
+  size_t active = window->GetActiveTabIndex();
+  return nlohmann::json{
+      {"success", true},
+      {"count", count},
+      {"activeTabIndex", active}}.dump();
 }
 
 // ============================================================================

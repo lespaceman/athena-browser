@@ -1,4 +1,5 @@
 #include "core/application.h"
+#include "platform/qt_mainwindow.h"
 #include "utils/logging.h"
 #include <algorithm>
 #include <iostream>
@@ -113,17 +114,14 @@ void Application::Run() {
     return;
   }
 
-#ifndef ATHENA_USE_QT
   // Initialize browser control server FIRST (before Node runtime)
   // This ensures the server is listening before Node tries to connect
-  // Note: Browser control server is GTK-only for now
   auto server_result = InitializeBrowserControlServer();
   if (!server_result) {
     logger.Warn("Application::Run - Browser control server initialization failed: " +
                 server_result.GetError().Message());
     // Continue without server (non-fatal)
   }
-#endif
 
   // Initialize Node runtime right before event loop starts
   // Node will connect to browser control server during MCP initialization
@@ -139,9 +137,7 @@ void Application::Run() {
   logger.Info("Application::Run - Exited main event loop");
 
   // Shutdown servers immediately after event loop exits
-#ifndef ATHENA_USE_QT
   ShutdownBrowserControlServer();
-#endif
   ShutdownRuntime();
 }
 
@@ -169,9 +165,7 @@ void Application::Shutdown() {
   CloseAllWindows(true);
 
   // Shutdown servers (if not already done in Run())
-#ifndef ATHENA_USE_QT
   ShutdownBrowserControlServer();
-#endif
   ShutdownRuntime();
 
   // Shutdown in reverse order
@@ -360,9 +354,8 @@ void Application::ShutdownRuntime() {
   logger.Info("Application::ShutdownRuntime - Node runtime stopped");
 }
 
-#ifndef ATHENA_USE_QT
 // ============================================================================
-// Browser Control Server Lifecycle Helpers (GTK only)
+// Browser Control Server Lifecycle Helpers
 // ============================================================================
 
 utils::Result<void> Application::InitializeBrowserControlServer() {
@@ -389,13 +382,19 @@ utils::Result<void> Application::InitializeBrowserControlServer() {
     return utils::Error("First window's native window is null");
   }
 
+  // Cast to QtMainWindow (Qt-only build)
+  auto qt_window = std::dynamic_pointer_cast<platform::QtMainWindow>(window_shared);
+  if (!qt_window) {
+    return utils::Error("Failed to cast window to QtMainWindow");
+  }
+
   // Create server config
   runtime::BrowserControlServerConfig server_config;
   server_config.socket_path = "/tmp/athena-" + std::to_string(getuid()) + "-control.sock";
 
   // Create and initialize server
   browser_control_server_ = std::make_unique<runtime::BrowserControlServer>(server_config);
-  browser_control_server_->SetBrowserWindow(window_shared);
+  browser_control_server_->SetBrowserWindow(qt_window);
 
   auto result = browser_control_server_->Initialize();
   if (!result) {
@@ -422,7 +421,6 @@ void Application::ShutdownBrowserControlServer() {
   browser_control_server_.reset();
   logger.Info("Application::ShutdownBrowserControlServer - Server stopped");
 }
-#endif  // ATHENA_USE_QT
 
 }  // namespace core
 }  // namespace athena

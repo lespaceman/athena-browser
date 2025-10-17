@@ -128,6 +128,9 @@ int main(int argc, char* argv[]) {
       runtime::NodeRuntimeConfig runtime_config;
       runtime_config.runtime_script_path = runtime_script.string();
       runtime_config.node_executable = "node";
+      // NOTE: This is the AGENT socket path (no -control suffix)
+      // The Node process will clean up this socket, not the control socket
+      // The control socket is managed by BrowserControlServer
       runtime_config.socket_path = "/tmp/athena-" + std::to_string(getuid()) + ".sock";
 
       node_runtime = std::make_unique<runtime::NodeRuntime>(runtime_config);

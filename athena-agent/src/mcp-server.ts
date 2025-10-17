@@ -8,9 +8,15 @@
 import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import http from 'http';
+import { URLSearchParams } from 'url';
 import { Logger } from './logger.js';
 
 const logger = new Logger('MCPServer');
+
+function toolError(prefix: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `${prefix}: ${message}`;
+}
 
 /**
  * Browser API base configuration
@@ -18,36 +24,77 @@ const logger = new Logger('MCPServer');
 let browserApiSocketPath: string | null = null;
 
 /**
- * Set the browser API socket path (Unix socket for IPC)
+ * Set the Express API socket path (Unix domain socket exposed by the agent).
  */
 export function setBrowserApiBase(socketPath: string) {
   browserApiSocketPath = socketPath;
-  logger.info('Browser API socket path set', { socketPath });
+  logger.info('Browser API socket configured for MCP tools', {
+    socketPath,
+    note: 'Requests hit the agent Express server, which proxies to the native controller'
+  });
 }
 
 /**
  * Make an HTTP call to the browser backend via Unix socket
  */
-async function callBrowserApi(endpoint: string, method: string = 'GET', body?: any): Promise<any> {
+async function callBrowserApi(
+  endpoint: string,
+  method: string = 'GET',
+  body?: any,
+  queryParams?: Record<string, string | number | boolean | undefined>
+): Promise<any> {
   if (!browserApiSocketPath) {
     throw new Error('Browser API socket path not configured. Call setBrowserApiBase() first.');
   }
 
   return new Promise((resolve, reject) => {
-    const bodyStr = body ? JSON.stringify(body) : '';
+    const sanitizedEndpoint = endpoint.startsWith('/v1')
+      ? endpoint
+      : `/v1${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+
+    const filteredBody =
+      body && typeof body === 'object'
+        ? Object.fromEntries(
+            Object.entries(body).filter(([, value]) => value !== undefined)
+          )
+        : undefined;
+    const bodyStr = filteredBody ? JSON.stringify(filteredBody) : '';
+
+    let queryString = '';
+    if (queryParams) {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(queryParams)) {
+        if (value !== undefined) {
+          params.append(key, String(value));
+        }
+      }
+      const serialized = params.toString();
+      if (serialized.length > 0) {
+        queryString = `?${serialized}`;
+      }
+    }
 
     const options: http.RequestOptions = {
-      socketPath: browserApiSocketPath!,  // Already checked for null above
-      path: endpoint,
+      socketPath: browserApiSocketPath!, // Already checked for null above
+      path: sanitizedEndpoint + queryString,
       method: method,
       headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(bodyStr),
-        'User-Agent': 'Athena-MCP/1.0'
+        'Accept': 'application/json',
+        'User-Agent': 'Athena-MCP/1.0',
+        ...(bodyStr
+          ? {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(bodyStr)
+            }
+          : {})
       }
     };
 
-    logger.debug('Browser API call', { endpoint, method, bodyLength: bodyStr.length });
+    logger.debug('Browser API call', {
+      endpoint: options.path,
+      method,
+      hasBody: Boolean(bodyStr)
+    });
 
     const req = http.request(options, (res) => {
       let data = '';
@@ -61,18 +108,35 @@ async function callBrowserApi(endpoint: string, method: string = 'GET', body?: a
           const result = JSON.parse(data);
 
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-            logger.debug('Browser API success', { endpoint, statusCode: res.statusCode });
+            if (result && typeof result === 'object' && result.success === false) {
+              const message = result.error || result.message || 'Unknown error';
+              logger.error('Browser API logical error', {
+                endpoint: options.path,
+                statusCode: res.statusCode,
+                error: message
+              });
+              reject(new Error(message));
+              return;
+            }
+
+            logger.debug('Browser API success', {
+              endpoint: options.path,
+              statusCode: res.statusCode
+            });
             resolve(result);
           } else {
             logger.error('Browser API error', {
-              endpoint,
+              endpoint: options.path,
               statusCode: res.statusCode,
               error: result.error || result.message
             });
             reject(new Error(result.error || result.message || 'Unknown error'));
           }
         } catch (error) {
-          logger.error('Browser API parse error', { endpoint, error: String(error) });
+          logger.error('Browser API parse error', {
+            endpoint: options.path,
+            error: String(error)
+          });
           reject(new Error('Failed to parse response: ' + data));
         }
       });
@@ -80,7 +144,7 @@ async function callBrowserApi(endpoint: string, method: string = 'GET', body?: a
 
     req.on('error', (error) => {
       logger.error('Browser API request error', {
-        endpoint,
+        endpoint: options.path,
         error: error.message
       });
       reject(error);
@@ -118,7 +182,7 @@ export function createAthenaBrowserMcpServer() {
           logger.info('Tool: open_url (POC)', args);
 
           try {
-            const result = await callBrowserApi('/v1/poc/open_url', 'POST', { url: args.url });
+            const result = await callBrowserApi('/poc/open_url', 'POST', { url: args.url });
 
             if (result.success) {
               return {
@@ -162,7 +226,7 @@ export function createAthenaBrowserMcpServer() {
         },
         async (args) => {
           logger.info('Tool: browser_navigate', args);
-          await callBrowserApi('/v1/browser/navigate', 'POST', {
+          const result = await callBrowserApi('/browser/navigate', 'POST', {
             url: args.url,
             tabIndex: args.tabIndex
           });
@@ -170,7 +234,7 @@ export function createAthenaBrowserMcpServer() {
           return {
             content: [{
               type: 'text',
-              text: `Navigated to ${args.url}`
+              text: `Navigated to ${result.finalUrl ?? args.url} (tab ${result.tabIndex}, ${result.loadTimeMs ?? '—'} ms)`
             }]
           };
         }
@@ -184,12 +248,14 @@ export function createAthenaBrowserMcpServer() {
         },
         async (args) => {
           logger.info('Tool: browser_back', args);
-          await callBrowserApi('/v1/browser/back', 'POST', args);
+          const result = await callBrowserApi('/browser/back', 'POST', {
+            tabIndex: args.tabIndex
+          });
 
           return {
             content: [{
               type: 'text',
-              text: 'Navigated back in history'
+              text: `Went back to ${result.finalUrl ?? 'previous page'} (tab ${result.tabIndex}, ${result.loadTimeMs ?? '—'} ms)`
             }]
           };
         }
@@ -203,12 +269,14 @@ export function createAthenaBrowserMcpServer() {
         },
         async (args) => {
           logger.info('Tool: browser_forward', args);
-          await callBrowserApi('/v1/browser/forward', 'POST', args);
+          const result = await callBrowserApi('/browser/forward', 'POST', {
+            tabIndex: args.tabIndex
+          });
 
           return {
             content: [{
               type: 'text',
-              text: 'Navigated forward in history'
+              text: `Moved forward to ${result.finalUrl ?? 'next page'} (tab ${result.tabIndex}, ${result.loadTimeMs ?? '—'} ms)`
             }]
           };
         }
@@ -223,12 +291,15 @@ export function createAthenaBrowserMcpServer() {
         },
         async (args) => {
           logger.info('Tool: browser_reload', args);
-          await callBrowserApi('/v1/browser/reload', 'POST', args);
+          const result = await callBrowserApi('/browser/reload', 'POST', {
+            tabIndex: args.tabIndex,
+            ignoreCache: args.ignoreCache
+          });
 
           return {
             content: [{
               type: 'text',
-              text: args.ignoreCache ? 'Page reloaded (cache bypassed)' : 'Page reloaded'
+              text: `${args.ignoreCache ? 'Hard reload' : 'Reload'} completed on tab ${result.tabIndex} (${result.loadTimeMs ?? '—'} ms, ${result.finalUrl ?? 'current URL'})`
             }]
           };
         }
@@ -246,7 +317,9 @@ export function createAthenaBrowserMcpServer() {
         },
         async (args) => {
           logger.info('Tool: browser_get_url', args);
-          const result = await callBrowserApi('/v1/browser/get_url', 'GET');
+          const result = await callBrowserApi('/browser/url', 'GET', undefined, {
+            tabIndex: args.tabIndex
+          });
 
           return {
             content: [{
@@ -265,14 +338,29 @@ export function createAthenaBrowserMcpServer() {
         },
         async (args) => {
           logger.info('Tool: browser_get_html', args);
-          const result = await callBrowserApi('/v1/browser/get_html', 'GET');
+          try {
+            const result = await callBrowserApi('/browser/html', 'GET', undefined, {
+              tabIndex: args.tabIndex
+            });
 
-          return {
-            content: [{
-              type: 'text',
-              text: result.html || '<html><body>Mock HTML</body></html>'
-            }]
-          };
+            return {
+              content: [{
+                type: 'text',
+                text: result.html ?? ''
+              }]
+            };
+          } catch (error) {
+            logger.error('browser_get_html failed', {
+              error: error instanceof Error ? error.message : String(error)
+            });
+            return {
+              content: [{
+                type: 'text',
+                text: toolError('✗ Failed to fetch HTML', error)
+              }],
+              isError: true
+            };
+          }
         }
       ),
 
@@ -289,17 +377,30 @@ export function createAthenaBrowserMcpServer() {
         },
         async (args) => {
           logger.info('Tool: browser_execute_js', { codeLength: args.code.length, tabIndex: args.tabIndex });
-          const result = await callBrowserApi('/v1/browser/execute_js', 'POST', {
-            code: args.code,
-            tabIndex: args.tabIndex
-          });
+          try {
+            const result = await callBrowserApi('/browser/execute-js', 'POST', {
+              code: args.code,
+              tabIndex: args.tabIndex
+            });
 
-          return {
-            content: [{
-              type: 'text',
-              text: `JavaScript executed. Result: ${result.result || 'undefined'}`
-            }]
-          };
+            return {
+              content: [{
+                type: 'text',
+                text: `JavaScript executed. Result: ${result.result ?? 'undefined'}`
+              }]
+            };
+          } catch (error) {
+            logger.error('browser_execute_js failed', {
+              error: error instanceof Error ? error.message : String(error)
+            });
+            return {
+              content: [{
+                type: 'text',
+                text: toolError('✗ Failed to execute JavaScript', error)
+              }],
+              isError: true
+            };
+          }
         }
       ),
 
@@ -312,15 +413,31 @@ export function createAthenaBrowserMcpServer() {
         },
         async (args) => {
           logger.info('Tool: browser_screenshot', args);
-          await callBrowserApi('/v1/browser/screenshot', 'POST', args);
+          try {
+            const result = await callBrowserApi('/browser/screenshot', 'POST', {
+              tabIndex: args.tabIndex,
+              fullPage: args.fullPage
+            });
 
-          // In production, this would return the actual base64 image
-          return {
-            content: [{
-              type: 'text',
-              text: 'Screenshot captured (base64 data would be here in production)'
-            }]
-          };
+            return {
+              content: [{
+                type: 'image',
+                data: result.screenshot,
+                mimeType: 'image/png'
+              }]
+            };
+          } catch (error) {
+            logger.error('browser_screenshot failed', {
+              error: error instanceof Error ? error.message : String(error)
+            });
+            return {
+              content: [{
+                type: 'text',
+                text: toolError('✗ Failed to capture screenshot', error)
+              }],
+              isError: true
+            };
+          }
         }
       ),
 
@@ -336,12 +453,12 @@ export function createAthenaBrowserMcpServer() {
         },
         async (args) => {
           logger.info('Tool: window_create_tab', args);
-          await callBrowserApi('/v1/window/create_tab', 'POST', { url: args.url });
+          const result = await callBrowserApi('/window/create', 'POST', { url: args.url });
 
           return {
             content: [{
               type: 'text',
-              text: `Created new tab with URL: ${args.url}`
+              text: `Created new tab at index ${result.tabIndex} with URL: ${args.url}`
             }]
           };
         }
@@ -355,7 +472,7 @@ export function createAthenaBrowserMcpServer() {
         },
         async (args) => {
           logger.info('Tool: window_close_tab', args);
-          await callBrowserApi('/v1/window/close_tab', 'POST', { tabIndex: args.tabIndex });
+          await callBrowserApi('/window/close', 'POST', { tabIndex: args.tabIndex });
 
           return {
             content: [{
@@ -374,7 +491,7 @@ export function createAthenaBrowserMcpServer() {
         },
         async (args) => {
           logger.info('Tool: window_switch_tab', args);
-          await callBrowserApi('/v1/window/switch_tab', 'POST', { tabIndex: args.tabIndex });
+          await callBrowserApi('/window/switch', 'POST', { tabIndex: args.tabIndex });
 
           return {
             content: [{

@@ -8,9 +8,7 @@
 #include "browser/browser_engine.h"
 #include "platform/window_system.h"
 #include "runtime/node_runtime.h"
-#ifndef ATHENA_USE_QT
 #include "runtime/browser_control_server.h"
-#endif
 #include "utils/error.h"
 
 namespace athena {
@@ -204,9 +202,7 @@ class Application {
   std::unique_ptr<browser::BrowserEngine> browser_engine_;
   std::unique_ptr<platform::WindowSystem> window_system_;
   std::unique_ptr<runtime::NodeRuntime> node_runtime_;
-#ifndef ATHENA_USE_QT
   std::unique_ptr<runtime::BrowserControlServer> browser_control_server_;
-#endif
 
   // Window tracking (weak pointers - windows are owned by callers)
   std::vector<BrowserWindow*> windows_;
@@ -223,11 +219,9 @@ class Application {
   utils::Result<void> InitializeRuntime();
   void ShutdownRuntime();
 
-#ifndef ATHENA_USE_QT
-  // Browser control server lifecycle helpers (GTK only)
+  // Browser control server lifecycle helpers
   utils::Result<void> InitializeBrowserControlServer();
   void ShutdownBrowserControlServer();
-#endif
 };
 
 }  // namespace core
