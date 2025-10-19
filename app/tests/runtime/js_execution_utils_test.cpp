@@ -1,4 +1,5 @@
 #include "runtime/js_execution_utils.h"
+
 #include <gtest/gtest.h>
 
 namespace athena {
@@ -7,8 +8,7 @@ namespace runtime {
 TEST(JsExecutionUtilsTest, ParsesSuccessfulObjectResult) {
   std::string error;
   auto result = ParseJsExecutionResultString(
-      R"({"success":true,"type":"object","result":{"foo":42},"stringResult":null})",
-      error);
+      R"({"success":true,"type":"object","result":{"foo":42},"stringResult":null})", error);
 
   ASSERT_TRUE(result.has_value());
   EXPECT_TRUE(result->success);

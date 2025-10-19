@@ -1,5 +1,5 @@
-#include "platform/gtk_window.h"
 #include "browser/cef_client.h"
+#include "platform/gtk_window.h"
 #include "rendering/gl_renderer.h"
 #include "runtime/node_runtime.h"
 
@@ -38,38 +38,40 @@ void GtkWindow::ToggleSidebar() {
 
   // Force resize of GL area and browser after sidebar toggle
   // This ensures the browser renders at the correct size
-  g_idle_add([](gpointer user_data) -> gboolean {
-    GtkWindow* self = static_cast<GtkWindow*>(user_data);
+  g_idle_add(
+      [](gpointer user_data) -> gboolean {
+        GtkWindow* self = static_cast<GtkWindow*>(user_data);
 
-    // Check if window is closed or widgets are destroyed
-    if (self->IsClosed() || !self->gl_area_ || !GTK_IS_WIDGET(self->gl_area_)) {
-      return G_SOURCE_REMOVE;
-    }
-
-    // Get new GL area size after paned position change
-    GtkAllocation gl_allocation;
-    gtk_widget_get_allocation(self->gl_area_, &gl_allocation);
-
-    // Notify CEF of the new size
-    {
-      std::lock_guard<std::mutex> lock(self->tabs_mutex_);
-      for (auto& tab : self->tabs_) {
-        if (tab.cef_client) {
-          tab.cef_client->SetSize(gl_allocation.width, gl_allocation.height);
+        // Check if window is closed or widgets are destroyed
+        if (self->IsClosed() || !self->gl_area_ || !GTK_IS_WIDGET(self->gl_area_)) {
+          return G_SOURCE_REMOVE;
         }
-        if (tab.renderer) {
-          tab.renderer->SetViewSize(gl_allocation.width, gl_allocation.height);
+
+        // Get new GL area size after paned position change
+        GtkAllocation gl_allocation;
+        gtk_widget_get_allocation(self->gl_area_, &gl_allocation);
+
+        // Notify CEF of the new size
+        {
+          std::lock_guard<std::mutex> lock(self->tabs_mutex_);
+          for (auto& tab : self->tabs_) {
+            if (tab.cef_client) {
+              tab.cef_client->SetSize(gl_allocation.width, gl_allocation.height);
+            }
+            if (tab.renderer) {
+              tab.renderer->SetViewSize(gl_allocation.width, gl_allocation.height);
+            }
+          }
         }
-      }
-    }
 
-    // Queue a render to update the display
-    if (self->gl_area_ && GTK_IS_WIDGET(self->gl_area_)) {
-      gtk_gl_area_queue_render(GTK_GL_AREA(self->gl_area_));
-    }
+        // Queue a render to update the display
+        if (self->gl_area_ && GTK_IS_WIDGET(self->gl_area_)) {
+          gtk_gl_area_queue_render(GTK_GL_AREA(self->gl_area_));
+        }
 
-    return G_SOURCE_REMOVE;
-  }, this);
+        return G_SOURCE_REMOVE;
+      },
+      this);
 }
 
 void GtkWindow::SendClaudeMessage(const std::string& message) {
@@ -86,7 +88,9 @@ void GtkWindow::SendClaudeMessage(const std::string& message) {
   // Check if node runtime is available
   if (!node_runtime_ || !node_runtime_->IsReady()) {
     std::cerr << "[GtkWindow] Node runtime not available" << std::endl;
-    AppendChatMessage("assistant", "[Error] Claude Agent is not available. Please ensure Node.js runtime is running.");
+    AppendChatMessage(
+        "assistant",
+        "[Error] Claude Agent is not available. Please ensure Node.js runtime is running.");
     return;
   }
 
@@ -118,7 +122,8 @@ void GtkWindow::SendClaudeMessage(const std::string& message) {
                 << response.GetError().Message() << std::endl;
 
       // Replace placeholder with error (thread-safe via g_idle_add)
-      std::string error_msg = "[Error] Failed to communicate with Claude Agent: " + response.GetError().Message();
+      std::string error_msg =
+          "[Error] Failed to communicate with Claude Agent: " + response.GetError().Message();
       this->ReplaceLastChatMessage("assistant", error_msg);
       return;
     }
@@ -127,7 +132,8 @@ void GtkWindow::SendClaudeMessage(const std::string& message) {
     // New format: {"success": true/false, "response": "...", "error": "..."}
     std::string response_body = response.Value();
 
-    std::cout << "[GtkWindow] Athena Agent response received (length=" << response_body.length() << ")" << std::endl;
+    std::cout << "[GtkWindow] Athena Agent response received (length=" << response_body.length()
+              << ")" << std::endl;
 
     // Check for success field
     size_t success_pos = response_body.find("\"success\":");
@@ -135,7 +141,8 @@ void GtkWindow::SendClaudeMessage(const std::string& message) {
     if (success_pos != std::string::npos) {
       size_t true_pos = response_body.find("true", success_pos);
       size_t false_pos = response_body.find("false", success_pos);
-      if (true_pos != std::string::npos && (false_pos == std::string::npos || true_pos < false_pos)) {
+      if (true_pos != std::string::npos &&
+          (false_pos == std::string::npos || true_pos < false_pos)) {
         success = true;
       }
     }
@@ -159,7 +166,8 @@ void GtkWindow::SendClaudeMessage(const std::string& message) {
     // Extract response field
     size_t response_pos = response_body.find("\"response\":\"");
     if (response_pos == std::string::npos) {
-      this->ReplaceLastChatMessage("assistant", "[Error] Unexpected response format from Claude Agent");
+      this->ReplaceLastChatMessage("assistant",
+                                   "[Error] Unexpected response format from Claude Agent");
       return;
     }
 
@@ -217,16 +225,14 @@ void GtkWindow::AppendChatMessage(const std::string& role, const std::string& me
   // Ensure we use the correct tag name (must match tags created in CreateSidebar)
   const char* role_tag = (role == "user") ? "user" : "assistant";
 
-  gtk_text_buffer_insert_with_tags_by_name(chat_text_buffer_, &end_iter,
-                                            role_text.c_str(), -1,
-                                            role_tag, nullptr);
+  gtk_text_buffer_insert_with_tags_by_name(
+      chat_text_buffer_, &end_iter, role_text.c_str(), -1, role_tag, nullptr);
 
   // Add message content
   gtk_text_buffer_get_end_iter(chat_text_buffer_, &end_iter);
   std::string message_with_newline = message + "\n\n";
-  gtk_text_buffer_insert_with_tags_by_name(chat_text_buffer_, &end_iter,
-                                            message_with_newline.c_str(), -1,
-                                            "message", nullptr);
+  gtk_text_buffer_insert_with_tags_by_name(
+      chat_text_buffer_, &end_iter, message_with_newline.c_str(), -1, "message", nullptr);
 
   // Auto-scroll to bottom
   gtk_text_buffer_get_end_iter(chat_text_buffer_, &end_iter);
@@ -251,9 +257,9 @@ struct ChatMessageReplaceData {
 gboolean replace_last_chat_message_idle(gpointer user_data) {
   auto* data = static_cast<ChatMessageReplaceData*>(user_data);
 
-  if (!data || !data->window || data->window->IsClosed() ||
-      !data->window->chat_text_buffer_ || !GTK_IS_TEXT_BUFFER(data->window->chat_text_buffer_) ||
-      !data->window->chat_text_view_ || !GTK_IS_WIDGET(data->window->chat_text_view_)) {
+  if (!data || !data->window || data->window->IsClosed() || !data->window->chat_text_buffer_ ||
+      !GTK_IS_TEXT_BUFFER(data->window->chat_text_buffer_) || !data->window->chat_text_view_ ||
+      !GTK_IS_WIDGET(data->window->chat_text_view_)) {
     delete data;
     return G_SOURCE_REMOVE;
   }
@@ -272,9 +278,12 @@ gboolean replace_last_chat_message_idle(gpointer user_data) {
   GtkTextIter search_start = end;
   bool found = false;
 
-  while (gtk_text_iter_backward_search(&search_start, prefix.c_str(),
+  while (gtk_text_iter_backward_search(&search_start,
+                                       prefix.c_str(),
                                        GTK_TEXT_SEARCH_TEXT_ONLY,
-                                       &match_start, &match_end, nullptr)) {
+                                       &match_start,
+                                       &match_end,
+                                       nullptr)) {
     // Found a match - this is the last occurrence
     found = true;
 
@@ -283,18 +292,21 @@ gboolean replace_last_chat_message_idle(gpointer user_data) {
     GtkTextIter next_user_start, next_user_end;
     GtkTextIter next_claude_start, next_claude_end;
 
-    bool has_next_user = gtk_text_iter_forward_search(&msg_end, "You:\n",
+    bool has_next_user = gtk_text_iter_forward_search(
+        &msg_end, "You:\n", GTK_TEXT_SEARCH_TEXT_ONLY, &next_user_start, &next_user_end, nullptr);
+    bool has_next_claude = gtk_text_iter_forward_search(&msg_end,
+                                                        "Claude:\n",
                                                         GTK_TEXT_SEARCH_TEXT_ONLY,
-                                                        &next_user_start, &next_user_end, nullptr);
-    bool has_next_claude = gtk_text_iter_forward_search(&msg_end, "Claude:\n",
-                                                          GTK_TEXT_SEARCH_TEXT_ONLY,
-                                                          &next_claude_start, &next_claude_end, nullptr);
+                                                        &next_claude_start,
+                                                        &next_claude_end,
+                                                        nullptr);
 
     // Use the earliest next prefix, or end of buffer
     GtkTextIter content_end = end;
     if (has_next_user && has_next_claude) {
       content_end = gtk_text_iter_compare(&next_user_start, &next_claude_start) < 0
-                    ? next_user_start : next_claude_start;
+                        ? next_user_start
+                        : next_claude_start;
     } else if (has_next_user) {
       content_end = next_user_start;
     } else if (has_next_claude) {
@@ -307,14 +319,14 @@ gboolean replace_last_chat_message_idle(gpointer user_data) {
     // Insert new message content
     GtkTextIter insert_pos = match_end;
     std::string message_with_newline = data->message + "\n\n";
-    gtk_text_buffer_insert_with_tags_by_name(buffer, &insert_pos,
-                                              message_with_newline.c_str(), -1,
-                                              "message", nullptr);
+    gtk_text_buffer_insert_with_tags_by_name(
+        buffer, &insert_pos, message_with_newline.c_str(), -1, "message", nullptr);
 
     // Auto-scroll to bottom
     gtk_text_buffer_get_end_iter(buffer, &end);
     GtkTextMark* end_mark = gtk_text_buffer_create_mark(buffer, nullptr, &end, FALSE);
-    gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(data->window->chat_text_view_), end_mark, 0.0, TRUE, 0.0, 1.0);
+    gtk_text_view_scroll_to_mark(
+        GTK_TEXT_VIEW(data->window->chat_text_view_), end_mark, 0.0, TRUE, 0.0, 1.0);
     gtk_text_buffer_delete_mark(buffer, end_mark);
 
     break;
@@ -378,8 +390,8 @@ void GtkWindow::TrimChatHistory() {
   // If we exceed the limit, remove the oldest messages
   if (message_count > MAX_CHAT_MESSAGES) {
     size_t messages_to_remove = message_count - MAX_CHAT_MESSAGES;
-    std::cout << "[GtkWindow] Trimming " << messages_to_remove << " old messages (total: "
-              << message_count << ")" << std::endl;
+    std::cout << "[GtkWindow] Trimming " << messages_to_remove
+              << " old messages (total: " << message_count << ")" << std::endl;
 
     // Find and delete the first N messages
     gtk_text_buffer_get_start_iter(chat_text_buffer_, &start);
@@ -389,12 +401,18 @@ void GtkWindow::TrimChatHistory() {
       GtkTextIter user_match_start, user_match_end;
       GtkTextIter claude_match_start, claude_match_end;
 
-      bool found_user = gtk_text_iter_forward_search(&delete_end, "You:\n",
-                                                      GTK_TEXT_SEARCH_TEXT_ONLY,
-                                                      &user_match_start, &user_match_end, nullptr);
-      bool found_claude = gtk_text_iter_forward_search(&delete_end, "Claude:\n",
-                                                        GTK_TEXT_SEARCH_TEXT_ONLY,
-                                                        &claude_match_start, &claude_match_end, nullptr);
+      bool found_user = gtk_text_iter_forward_search(&delete_end,
+                                                     "You:\n",
+                                                     GTK_TEXT_SEARCH_TEXT_ONLY,
+                                                     &user_match_start,
+                                                     &user_match_end,
+                                                     nullptr);
+      bool found_claude = gtk_text_iter_forward_search(&delete_end,
+                                                       "Claude:\n",
+                                                       GTK_TEXT_SEARCH_TEXT_ONLY,
+                                                       &claude_match_start,
+                                                       &claude_match_end,
+                                                       nullptr);
 
       if (!found_user && !found_claude) {
         break;  // No more messages
@@ -404,7 +422,8 @@ void GtkWindow::TrimChatHistory() {
       GtkTextIter next_message_start;
       if (found_user && found_claude) {
         next_message_start = gtk_text_iter_compare(&user_match_start, &claude_match_start) < 0
-                             ? user_match_start : claude_match_start;
+                                 ? user_match_start
+                                 : claude_match_start;
       } else if (found_user) {
         next_message_start = user_match_start;
       } else {
@@ -426,16 +445,23 @@ void GtkWindow::TrimChatHistory() {
       GtkTextIter next_user_start, next_user_end;
       GtkTextIter next_claude_start, next_claude_end;
 
-      bool has_next_user = gtk_text_iter_forward_search(&delete_end, "You:\n",
-                                                         GTK_TEXT_SEARCH_TEXT_ONLY,
-                                                         &next_user_start, &next_user_end, nullptr);
-      bool has_next_claude = gtk_text_iter_forward_search(&delete_end, "Claude:\n",
-                                                           GTK_TEXT_SEARCH_TEXT_ONLY,
-                                                           &next_claude_start, &next_claude_end, nullptr);
+      bool has_next_user = gtk_text_iter_forward_search(&delete_end,
+                                                        "You:\n",
+                                                        GTK_TEXT_SEARCH_TEXT_ONLY,
+                                                        &next_user_start,
+                                                        &next_user_end,
+                                                        nullptr);
+      bool has_next_claude = gtk_text_iter_forward_search(&delete_end,
+                                                          "Claude:\n",
+                                                          GTK_TEXT_SEARCH_TEXT_ONLY,
+                                                          &next_claude_start,
+                                                          &next_claude_end,
+                                                          nullptr);
 
       if (has_next_user && has_next_claude) {
         delete_end = gtk_text_iter_compare(&next_user_start, &next_claude_start) < 0
-                     ? next_user_start : next_claude_start;
+                         ? next_user_start
+                         : next_claude_start;
       } else if (has_next_user) {
         delete_end = next_user_start;
       } else if (has_next_claude) {

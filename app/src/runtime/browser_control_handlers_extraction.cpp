@@ -9,13 +9,14 @@
  * - Annotated screenshots
  */
 
+#include "platform/qt_mainwindow.h"
 #include "runtime/browser_control_server.h"
 #include "runtime/browser_control_server_internal.h"
 #include "runtime/js_execution_utils.h"
-#include "platform/qt_mainwindow.h"
 #include "utils/logging.h"
-#include <nlohmann/json.hpp>
+
 #include <map>
+#include <nlohmann/json.hpp>
 
 namespace athena {
 namespace runtime {
@@ -29,24 +30,18 @@ static utils::Logger logger("BrowserControlServer");
 std::string BrowserControlServer::HandleGetPageSummary(std::optional<size_t> tab_index) {
   auto window = window_.lock();
   if (!running_ || !window) {
-    return nlohmann::json{
-        {"success", false},
-        {"error", "Server is shutting down"}}.dump();
+    return nlohmann::json{{"success", false}, {"error", "Server is shutting down"}}.dump();
   }
 
   try {
     std::string error;
     if (!SwitchToRequestedTab(window, tab_index, error)) {
-      return nlohmann::json{
-          {"success", false},
-          {"error", error}}.dump();
+      return nlohmann::json{{"success", false}, {"error", error}}.dump();
     }
 
     size_t target_tab = window->GetActiveTabIndex();
     if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
-      return nlohmann::json{
-          {"success", false},
-          {"error", "Page is still loading"}}.dump();
+      return nlohmann::json{{"success", false}, {"error", "Page is still loading"}}.dump();
     }
 
     QString js = R"(
@@ -84,16 +79,22 @@ std::string BrowserControlServer::HandleGetPageSummary(std::optional<size_t> tab
       logger.Error("Page summary parsing failed: {}", parse_error);
       return nlohmann::json{
           {"success", false},
-          {"error", parse_error.empty() ? "Failed to parse page summary response" : parse_error}}.dump();
+          {"error", parse_error.empty() ? "Failed to parse page summary response" : parse_error}}
+          .dump();
     }
 
-    logger.Info("Parsed exec result - success: {}, type: {}, value: {}", exec->success, exec->type, exec->value.dump());
+    logger.Info("Parsed exec result - success: {}, type: {}, value: {}",
+                exec->success,
+                exec->type,
+                exec->value.dump());
 
     if (!exec->success) {
       logger.Warn("Page summary script execution failed: {}", exec->error_message);
       return nlohmann::json{
           {"success", false},
-          {"error", exec->error_message.empty() ? "Failed to extract page summary" : exec->error_message}}.dump();
+          {"error",
+           exec->error_message.empty() ? "Failed to extract page summary" : exec->error_message}}
+          .dump();
     }
 
     nlohmann::json summary = exec->value;
@@ -101,45 +102,37 @@ std::string BrowserControlServer::HandleGetPageSummary(std::optional<size_t> tab
 
     if (!summary.is_object()) {
       logger.Error("Page summary result is not an object. Type: {}, Value: {}",
-                   summary.type_name(), summary.dump());
-      return nlohmann::json{
-          {"success", false},
-          {"error", "Invalid response format - expected object"}}.dump();
+                   summary.type_name(),
+                   summary.dump());
+      return nlohmann::json{{"success", false},
+                            {"error", "Invalid response format - expected object"}}
+          .dump();
     }
 
     return nlohmann::json{
-        {"success", true},
-        {"summary", summary},
-        {"tabIndex", static_cast<int>(target_tab)}}.dump();
+        {"success", true}, {"summary", summary}, {"tabIndex", static_cast<int>(target_tab)}}
+        .dump();
 
   } catch (const std::exception& e) {
-    return nlohmann::json{
-        {"success", false},
-        {"error", e.what()}}.dump();
+    return nlohmann::json{{"success", false}, {"error", e.what()}}.dump();
   }
 }
 
 std::string BrowserControlServer::HandleGetInteractiveElements(std::optional<size_t> tab_index) {
   auto window = window_.lock();
   if (!running_ || !window) {
-    return nlohmann::json{
-        {"success", false},
-        {"error", "Server is shutting down"}}.dump();
+    return nlohmann::json{{"success", false}, {"error", "Server is shutting down"}}.dump();
   }
 
   try {
     std::string error;
     if (!SwitchToRequestedTab(window, tab_index, error)) {
-      return nlohmann::json{
-          {"success", false},
-          {"error", error}}.dump();
+      return nlohmann::json{{"success", false}, {"error", error}}.dump();
     }
 
     size_t target_tab = window->GetActiveTabIndex();
     if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
-      return nlohmann::json{
-          {"success", false},
-          {"error", "Page is still loading"}}.dump();
+      return nlohmann::json{{"success", false}, {"error", "Page is still loading"}}.dump();
     }
 
     QString js = R"(
@@ -191,7 +184,7 @@ std::string BrowserControlServer::HandleGetInteractiveElements(std::optional<siz
           }
         });
 
-        return JSON.stringify(elements);
+        return elements;  // Return object directly, not stringified
       })();
     )";
 
@@ -202,69 +195,67 @@ std::string BrowserControlServer::HandleGetInteractiveElements(std::optional<siz
       logger.Error("Interactive elements parsing failed: {}", parse_error);
       return nlohmann::json{
           {"success", false},
-          {"error", parse_error.empty() ? "Failed to parse interactive elements response" : parse_error}}.dump();
+          {"error",
+           parse_error.empty() ? "Failed to parse interactive elements response" : parse_error}}
+          .dump();
     }
 
     if (!exec->success) {
       logger.Warn("Interactive elements script execution failed: {}", exec->error_message);
-      return nlohmann::json{
-          {"success", false},
-          {"error", exec->error_message.empty() ? "Failed to extract interactive elements" : exec->error_message}}.dump();
+      return nlohmann::json{{"success", false},
+                            {"error",
+                             exec->error_message.empty() ? "Failed to extract interactive elements"
+                                                         : exec->error_message}}
+          .dump();
     }
 
     nlohmann::json elements = exec->value;
+
+    // Since we now return objects directly, exec->value should already be an array
+    // Keep fallback for backwards compatibility with stringified responses
     if (elements.is_string() && JsonStringLooksLikeObject(elements)) {
       try {
         elements = nlohmann::json::parse(elements.get<std::string>());
       } catch (const nlohmann::json::parse_error& e) {
         logger.Error("Failed to parse interactive elements payload: {}", e.what());
-        return nlohmann::json{
-            {"success", false},
-            {"error", "Failed to parse interactive elements"}}.dump();
+        return nlohmann::json{{"success", false}, {"error", "Failed to parse interactive elements"}}
+            .dump();
       }
     }
 
     if (!elements.is_array()) {
-      logger.Error("Interactive elements result is not an array");
-      return nlohmann::json{
-          {"success", false},
-          {"error", "Invalid response format - expected array"}}.dump();
+      logger.Error("Interactive elements result is not an array. Type: {}", elements.type_name());
+      return nlohmann::json{{"success", false},
+                            {"error", "Invalid response format - expected array"}}
+          .dump();
     }
 
-    return nlohmann::json{
-        {"success", true},
-        {"elements", elements},
-        {"count", elements.size()},
-        {"tabIndex", static_cast<int>(target_tab)}}.dump();
+    return nlohmann::json{{"success", true},
+                          {"elements", elements},
+                          {"count", elements.size()},
+                          {"tabIndex", static_cast<int>(target_tab)}}
+        .dump();
 
   } catch (const std::exception& e) {
-    return nlohmann::json{
-        {"success", false},
-        {"error", e.what()}}.dump();
+    return nlohmann::json{{"success", false}, {"error", e.what()}}.dump();
   }
 }
 
 std::string BrowserControlServer::HandleGetAccessibilityTree(std::optional<size_t> tab_index) {
   auto window = window_.lock();
   if (!running_ || !window) {
-    return nlohmann::json{
-        {"success", false},
-        {"error", "Server is shutting down"}}.dump();
+    return nlohmann::json{{"success", false}, {"error", "Server is shutting down"}}.dump();
   }
 
   try {
     std::string error;
     if (!SwitchToRequestedTab(window, tab_index, error)) {
-      return nlohmann::json{
-          {"success", false},
-          {"error", error}}.dump();
+      return nlohmann::json{{"success", false}, {"error", error}}.dump();
     }
 
     size_t target_tab = window->GetActiveTabIndex();
     if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
-      return nlohmann::json{
-          {"success", false},
-          {"error", "Page is still loading"}}.dump();
+      return nlohmann::json{{"success", false}, {"error", "Page is still loading"}}.dump();
     }
 
     QString js = R"(
@@ -324,7 +315,7 @@ std::string BrowserControlServer::HandleGetAccessibilityTree(std::optional<size_
           return node;
         }
 
-        return JSON.stringify(buildA11yTree(document.body));
+        return buildA11yTree(document.body);  // Return object directly
       })();
     )";
 
@@ -335,14 +326,18 @@ std::string BrowserControlServer::HandleGetAccessibilityTree(std::optional<size_
       logger.Error("Accessibility tree parsing failed: {}", parse_error);
       return nlohmann::json{
           {"success", false},
-          {"error", parse_error.empty() ? "Failed to parse accessibility tree response" : parse_error}}.dump();
+          {"error",
+           parse_error.empty() ? "Failed to parse accessibility tree response" : parse_error}}
+          .dump();
     }
 
     if (!exec->success) {
       logger.Warn("Accessibility tree execution failed: {}", exec->error_message);
-      return nlohmann::json{
-          {"success", false},
-          {"error", exec->error_message.empty() ? "Failed to extract accessibility tree" : exec->error_message}}.dump();
+      return nlohmann::json{{"success", false},
+                            {"error",
+                             exec->error_message.empty() ? "Failed to extract accessibility tree"
+                                                         : exec->error_message}}
+          .dump();
     }
 
     nlohmann::json tree = exec->value;
@@ -351,21 +346,17 @@ std::string BrowserControlServer::HandleGetAccessibilityTree(std::optional<size_
         tree = nlohmann::json::parse(tree.get<std::string>());
       } catch (const nlohmann::json::parse_error& e) {
         logger.Error("Failed to parse accessibility tree JSON: {}", e.what());
-        return nlohmann::json{
-            {"success", false},
-            {"error", "Failed to parse accessibility tree"}}.dump();
+        return nlohmann::json{{"success", false}, {"error", "Failed to parse accessibility tree"}}
+            .dump();
       }
     }
 
     return nlohmann::json{
-        {"success", true},
-        {"tree", tree},
-        {"tabIndex", static_cast<int>(target_tab)}}.dump();
+        {"success", true}, {"tree", tree}, {"tabIndex", static_cast<int>(target_tab)}}
+        .dump();
 
   } catch (const std::exception& e) {
-    return nlohmann::json{
-        {"success", false},
-        {"error", e.what()}}.dump();
+    return nlohmann::json{{"success", false}, {"error", e.what()}}.dump();
   }
 }
 
@@ -373,123 +364,119 @@ std::string BrowserControlServer::HandleQueryContent(const std::string& query_ty
                                                      std::optional<size_t> tab_index) {
   auto window = window_.lock();
   if (!running_ || !window) {
-    return nlohmann::json{
-        {"success", false},
-        {"error", "Server is shutting down"}}.dump();
+    return nlohmann::json{{"success", false}, {"error", "Server is shutting down"}}.dump();
   }
 
   try {
     std::string error;
     if (!SwitchToRequestedTab(window, tab_index, error)) {
-      return nlohmann::json{
-          {"success", false},
-          {"error", error}}.dump();
+      return nlohmann::json{{"success", false}, {"error", error}}.dump();
     }
 
     size_t target_tab = window->GetActiveTabIndex();
     if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
-      return nlohmann::json{
-          {"success", false},
-          {"error", "Page is still loading"}}.dump();
+      return nlohmann::json{{"success", false}, {"error", "Page is still loading"}}.dump();
     }
 
-    // Define query types
+    // Define query types (return objects directly, not stringified)
     std::map<std::string, std::string> queries = {
-      {"forms", R"(JSON.stringify(Array.from(document.querySelectorAll('form')).map((f, idx) => ({index: idx, action: f.action, method: f.method, name: f.name || '', id: f.id || '', fields: Array.from(f.elements).map(e => ({name: e.name || '', type: e.type || '', id: e.id || '', placeholder: e.placeholder || '', required: e.required || false, value: e.value || '', options: e.tagName.toLowerCase() === 'select' ? Array.from(e.options).map(o => ({text: o.text, value: o.value})) : []}))}))))"},
+        {"forms",
+         R"(Array.from(document.querySelectorAll('form')).map((f, idx) => ({index: idx, action: f.action, method: f.method, name: f.name || '', id: f.id || '', fields: Array.from(f.elements).map(e => ({name: e.name || '', type: e.type || '', id: e.id || '', placeholder: e.placeholder || '', required: e.required || false, value: e.value || '', options: e.tagName.toLowerCase() === 'select' ? Array.from(e.options).map(o => ({text: o.text, value: o.value})) : []}))})))"},
 
-      {"navigation", R"(JSON.stringify(Array.from(document.querySelectorAll('nav a, header a, [role="navigation"] a')).map(a => ({text: a.textContent.trim(), href: a.href, title: a.title || ''}))))"},
+        {"navigation",
+         R"(Array.from(document.querySelectorAll('nav a, header a, [role="navigation"] a')).map(a => ({text: a.textContent.trim(), href: a.href, title: a.title || ''})))"},
 
-      {"article", R"(JSON.stringify({title: document.title, heading: document.querySelector('h1')?.textContent.trim() || '', content: (document.querySelector('article, main, [role="main"]')?.textContent || document.body.textContent).trim().substring(0, 2000), author: document.querySelector('[rel="author"], .author, .byline')?.textContent.trim() || '', published: document.querySelector('time, [itemprop="datePublished"]')?.textContent.trim() || ''}))"},
+        {"article",
+         R"({title: document.title, heading: document.querySelector('h1')?.textContent.trim() || '', content: (document.querySelector('article, main, [role="main"]')?.textContent || document.body.textContent).trim().substring(0, 2000), author: document.querySelector('[rel="author"], .author, .byline')?.textContent.trim() || '', published: document.querySelector('time, [itemprop="datePublished"]')?.textContent.trim() || ''})"},
 
-      {"tables", R"(JSON.stringify(Array.from(document.querySelectorAll('table')).slice(0, 5).map(table => ({caption: table.caption?.textContent.trim() || '', headers: Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim()), rows: Array.from(table.querySelectorAll('tbody tr')).slice(0, 10).map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim()))}))))"},
+        {"tables",
+         R"(Array.from(document.querySelectorAll('table')).slice(0, 5).map(table => ({caption: table.caption?.textContent.trim() || '', headers: Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim()), rows: Array.from(table.querySelectorAll('tbody tr')).slice(0, 10).map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim()))})))"},
 
-      {"media", R"(JSON.stringify({images: Array.from(document.querySelectorAll('img')).slice(0, 20).map(img => ({src: img.src, alt: img.alt || '', title: img.title || ''})), videos: Array.from(document.querySelectorAll('video')).map(v => ({src: v.src || v.currentSrc, poster: v.poster || ''}))}))"}
-    };
+        {"media",
+         R"({images: Array.from(document.querySelectorAll('img')).slice(0, 20).map(img => ({src: img.src, alt: img.alt || '', title: img.title || ''})), videos: Array.from(document.querySelectorAll('video')).map(v => ({src: v.src || v.currentSrc, poster: v.poster || ''}))})"}};
 
     auto it = queries.find(query_type);
     if (it == queries.end()) {
       return nlohmann::json{
           {"success", false},
-          {"error", "Unknown query type. Available: forms, navigation, article, tables, media"}}.dump();
+          {"error", "Unknown query type. Available: forms, navigation, article, tables, media"}}
+          .dump();
     }
 
     QString js = QString::fromStdString("return (function() { return " + it->second + "; })();");
-    logger.Info("Query content ({}) - Executing JS (first 200 chars): {}", query_type, js.toStdString().substr(0, 200));
+    logger.Info("Query content ({}) - Executing JS (first 200 chars): {}",
+                query_type,
+                js.toStdString().substr(0, 200));
     QString result = window->ExecuteJavaScript(js);
-    logger.Info("Query content ({}) - Raw result (first 500 chars): {}", query_type, result.toStdString().substr(0, 500));
+    logger.Info("Query content ({}) - Raw result (first 500 chars): {}",
+                query_type,
+                result.toStdString().substr(0, 500));
     std::string parse_error;
     auto exec = ParseJsExecutionResultString(result.toStdString(), parse_error);
     if (!exec.has_value()) {
       logger.Error("Query content ({}) parse error: {}", query_type, parse_error);
       return nlohmann::json{
           {"success", false},
-          {"error", parse_error.empty() ? "Failed to parse query response" : parse_error}}.dump();
+          {"error", parse_error.empty() ? "Failed to parse query response" : parse_error}}
+          .dump();
     }
 
     if (!exec->success) {
       logger.Warn("Query content ({}) execution failed: {}", query_type, exec->error_message);
       return nlohmann::json{
           {"success", false},
-          {"error", exec->error_message.empty() ? "Failed to execute query" : exec->error_message}}.dump();
+          {"error", exec->error_message.empty() ? "Failed to execute query" : exec->error_message}}
+          .dump();
     }
 
     nlohmann::json data = exec->value;
     logger.Info("Query content ({}) - exec->value type: {}, is_string: {}, is_null: {}, dump: {}",
-                query_type, exec->type, data.is_string(), data.is_null(),
+                query_type,
+                exec->type,
+                data.is_string(),
+                data.is_null(),
                 data.dump().substr(0, 200));
     if (data.is_string() && JsonStringLooksLikeObject(data)) {
       try {
         data = nlohmann::json::parse(data.get<std::string>());
       } catch (const nlohmann::json::parse_error& e) {
         logger.Error("Failed to parse query content JSON for {}: {}", query_type, e.what());
-        return nlohmann::json{
-            {"success", false},
-            {"error", "Failed to parse query result"}}.dump();
+        return nlohmann::json{{"success", false}, {"error", "Failed to parse query result"}}.dump();
       }
     }
 
-    return nlohmann::json{
-        {"success", true},
-        {"queryType", query_type},
-        {"data", data},
-        {"tabIndex", static_cast<int>(target_tab)}}.dump();
+    return nlohmann::json{{"success", true},
+                          {"queryType", query_type},
+                          {"data", data},
+                          {"tabIndex", static_cast<int>(target_tab)}}
+        .dump();
 
   } catch (const std::exception& e) {
-    return nlohmann::json{
-        {"success", false},
-        {"error", e.what()}}.dump();
+    return nlohmann::json{{"success", false}, {"error", e.what()}}.dump();
   }
 }
 
 std::string BrowserControlServer::HandleGetAnnotatedScreenshot(std::optional<size_t> tab_index) {
   auto window = window_.lock();
   if (!running_ || !window) {
-    return nlohmann::json{
-        {"success", false},
-        {"error", "Server is shutting down"}}.dump();
+    return nlohmann::json{{"success", false}, {"error", "Server is shutting down"}}.dump();
   }
 
   try {
     std::string error;
     if (!SwitchToRequestedTab(window, tab_index, error)) {
-      return nlohmann::json{
-          {"success", false},
-          {"error", error}}.dump();
+      return nlohmann::json{{"success", false}, {"error", error}}.dump();
     }
 
     size_t target_tab = window->GetActiveTabIndex();
     if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
-      return nlohmann::json{
-          {"success", false},
-          {"error", "Page is still loading"}}.dump();
+      return nlohmann::json{{"success", false}, {"error", "Page is still loading"}}.dump();
     }
 
     // Get screenshot
     QString screenshot_base64 = window->TakeScreenshot();
     if (screenshot_base64.isEmpty()) {
-      return nlohmann::json{
-          {"success", false},
-          {"error", "Failed to capture screenshot"}}.dump();
+      return nlohmann::json{{"success", false}, {"error", "Failed to capture screenshot"}}.dump();
     }
 
     // Get interactive element positions
@@ -529,7 +516,7 @@ std::string BrowserControlServer::HandleGetAnnotatedScreenshot(std::optional<siz
           }
         });
 
-        return JSON.stringify(elements.slice(0, 50)); // Limit to 50 elements
+        return elements.slice(0, 50);  // Return array directly (limited to 50 elements)
       })();
     )";
 
@@ -560,16 +547,14 @@ std::string BrowserControlServer::HandleGetAnnotatedScreenshot(std::optional<siz
       }
     }
 
-    return nlohmann::json{
-        {"success", true},
-        {"screenshot", screenshot_base64.toStdString()},
-        {"elements", elements_json},
-        {"tabIndex", static_cast<int>(target_tab)}}.dump();
+    return nlohmann::json{{"success", true},
+                          {"screenshot", screenshot_base64.toStdString()},
+                          {"elements", elements_json},
+                          {"tabIndex", static_cast<int>(target_tab)}}
+        .dump();
 
   } catch (const std::exception& e) {
-    return nlohmann::json{
-        {"success", false},
-        {"error", e.what()}}.dump();
+    return nlohmann::json{{"success", false}, {"error", e.what()}}.dump();
   }
 }
 

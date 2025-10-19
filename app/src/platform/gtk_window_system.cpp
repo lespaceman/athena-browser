@@ -4,9 +4,10 @@
  * Manages GTK initialization and the main event loop.
  * Integrates CEF message loop with GTK's event loop.
  */
-#include "platform/gtk_window.h"
 #include "browser/browser_engine.h"
 #include "include/cef_app.h"
+#include "platform/gtk_window.h"
+
 #include <iostream>
 
 namespace athena {
@@ -17,17 +18,15 @@ namespace platform {
 // ============================================================================
 
 GtkWindowSystem::GtkWindowSystem()
-    : initialized_(false),
-      running_(false),
-      engine_(nullptr),
-      message_loop_source_id_(0) {}
+    : initialized_(false), running_(false), engine_(nullptr), message_loop_source_id_(0) {}
 
 GtkWindowSystem::~GtkWindowSystem() {
   Shutdown();
 }
 
-utils::Result<void> GtkWindowSystem::Initialize(int& argc, char* argv[],
-                                                 browser::BrowserEngine* engine) {
+utils::Result<void> GtkWindowSystem::Initialize(int& argc,
+                                                char* argv[],
+                                                browser::BrowserEngine* engine) {
   if (initialized_) {
     return utils::Error("WindowSystem already initialized");
   }
@@ -52,7 +51,8 @@ utils::Result<void> GtkWindowSystem::Initialize(int& argc, char* argv[],
 }
 
 void GtkWindowSystem::Shutdown() {
-  if (!initialized_) return;
+  if (!initialized_)
+    return;
 
   // Remove CEF message loop callback
   if (message_loop_source_id_ != 0) {
@@ -70,8 +70,7 @@ bool GtkWindowSystem::IsInitialized() const {
 }
 
 utils::Result<std::shared_ptr<Window>> GtkWindowSystem::CreateWindow(
-    const WindowConfig& config,
-    const WindowCallbacks& callbacks) {
+    const WindowConfig& config, const WindowCallbacks& callbacks) {
   if (!initialized_) {
     return utils::Error("WindowSystem not initialized");
   }

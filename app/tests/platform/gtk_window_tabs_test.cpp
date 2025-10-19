@@ -11,18 +11,19 @@
  * They will pass once the bugs are fixed.
  */
 
-#include "platform/gtk_window.h"
-#include "mocks/mock_browser_engine.h"
 #include "browser/cef_client.h"
-#include <gtest/gtest.h>
-#include <gmock/gmock.h>
-#include <thread>
+#include "mocks/mock_browser_engine.h"
+#include "platform/gtk_window.h"
+
 #include <chrono>
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include <thread>
 
 using ::testing::_;
-using ::testing::Return;
-using ::testing::Invoke;
 using ::testing::AtLeast;
+using ::testing::Invoke;
+using ::testing::Return;
 
 namespace athena {
 namespace platform {
@@ -51,10 +52,8 @@ class GtkWindowTabsTest : public ::testing::Test {
     config_.url = "https://google.com";
 
     // Setup mock engine expectations
-    ON_CALL(mock_engine_, Initialize(_))
-        .WillByDefault(Return(utils::Ok()));
-    ON_CALL(mock_engine_, IsInitialized())
-        .WillByDefault(Return(true));
+    ON_CALL(mock_engine_, Initialize(_)).WillByDefault(Return(utils::Ok()));
+    ON_CALL(mock_engine_, IsInitialized()).WillByDefault(Return(true));
   }
 
   void TearDown() override {
@@ -119,8 +118,7 @@ TEST_F(GtkWindowTabsTest, DISABLED_DISABLED_TabIndexInvalidationOnClose) {
         return utils::Result<browser::BrowserId>(id++);
       }));
 
-  EXPECT_CALL(mock_engine_, CloseBrowser(_, _))
-      .Times(AtLeast(1));
+  EXPECT_CALL(mock_engine_, CloseBrowser(_, _)).Times(AtLeast(1));
 
   auto window = CreateTestWindow();
   RealizeWindow(window.get());
@@ -205,8 +203,7 @@ TEST_F(GtkWindowTabsTest, DISABLED_CallbackIndexStaleAfterMultipleClosures) {
         return utils::Result<browser::BrowserId>(id++);
       }));
 
-  EXPECT_CALL(mock_engine_, CloseBrowser(_, _))
-      .Times(AtLeast(3));
+  EXPECT_CALL(mock_engine_, CloseBrowser(_, _)).Times(AtLeast(3));
 
   auto window = CreateTestWindow();
   RealizeWindow(window.get());
@@ -269,8 +266,7 @@ TEST_F(GtkWindowTabsTest, DISABLED_OnlyActiveTabGetsResized) {
       }));
 
   // Key expectation: SetSize should be called for ALL browsers, not just one
-  EXPECT_CALL(mock_engine_, SetSize(_, _, _))
-      .Times(AtLeast(3));  // Once for each tab
+  EXPECT_CALL(mock_engine_, SetSize(_, _, _)).Times(AtLeast(3));  // Once for each tab
 
   auto window = CreateTestWindow();
   RealizeWindow(window.get());
@@ -400,8 +396,7 @@ TEST_F(GtkWindowTabsTest, DISABLED_TabsVectorNotThreadSafe) {
         return utils::Result<browser::BrowserId>(id++);
       }));
 
-  EXPECT_CALL(mock_engine_, CloseBrowser(_, _))
-      .Times(AtLeast(5));
+  EXPECT_CALL(mock_engine_, CloseBrowser(_, _)).Times(AtLeast(5));
 
   auto window = CreateTestWindow();
   RealizeWindow(window.get());
@@ -508,8 +503,7 @@ TEST_F(GtkWindowTabsTest, DISABLED_CloseButtonDataStaleAfterTabClosure) {
         return utils::Result<browser::BrowserId>(id++);
       }));
 
-  EXPECT_CALL(mock_engine_, CloseBrowser(_, _))
-      .Times(AtLeast(1));
+  EXPECT_CALL(mock_engine_, CloseBrowser(_, _)).Times(AtLeast(1));
 
   auto window = CreateTestWindow();
   RealizeWindow(window.get());
@@ -756,8 +750,7 @@ TEST_F(GtkWindowTabsTest, TitleCallbackUseAfterFree) {
       }));
 
   // We'll close one tab, so CloseBrowser should be called
-  EXPECT_CALL(mock_engine_, CloseBrowser(_, _))
-      .Times(AtLeast(1));
+  EXPECT_CALL(mock_engine_, CloseBrowser(_, _)).Times(AtLeast(1));
 
   auto window = CreateTestWindow();
   RealizeWindow(window.get());

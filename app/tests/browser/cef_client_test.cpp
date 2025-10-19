@@ -1,5 +1,7 @@
 #include "browser/cef_client.h"
+
 #include "rendering/gl_renderer.h"
+
 #include <gtest/gtest.h>
 
 /**
@@ -17,9 +19,7 @@
  */
 class CefClientTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    window_handle_ = nullptr;
-  }
+  void SetUp() override { window_handle_ = nullptr; }
 
   void* window_handle_;
 };

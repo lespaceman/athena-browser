@@ -20,12 +20,13 @@
 #ifndef ATHENA_RUNTIME_BROWSER_CONTROL_SERVER_H_
 #define ATHENA_RUNTIME_BROWSER_CONTROL_SERVER_H_
 
-#include <string>
-#include <vector>
+#include "utils/error.h"
+
 #include <functional>
 #include <memory>
 #include <optional>
-#include "utils/error.h"
+#include <string>
+#include <vector>
 
 // Forward declare Qt types
 class QSocketNotifier;
@@ -34,7 +35,7 @@ namespace athena {
 namespace platform {
 class QtMainWindow;
 }
-}
+}  // namespace athena
 
 namespace athena {
 namespace runtime {
@@ -64,10 +65,20 @@ struct BrowserControlServerConfig {
  * 4. Main loop handles requests via platform-specific I/O watches
  * 5. Shutdown() to stop server
  *
- * Thread Safety:
- * - All methods must be called from UI main thread
- * - No threading - all operations run synchronously on main thread
- * - Non-blocking I/O prevents stalling the event loop
+ * Thread Safety & Threading Model:
+ * - ALL operations run on Qt's main UI thread (required by CEF)
+ * - No threading introduced - operations are truly synchronous
+ * - Non-blocking sockets prevent blocking the UI thread during I/O
+ * - QSocketNotifier integrates Unix socket I/O with Qt's event loop
+ * - WaitForLoadToComplete() processes Qt events via QCoreApplication::processEvents()
+ *   to prevent UI freezing during navigation waits
+ * - JavaScript execution uses CefDoMessageLoopWork() to pump CEF events
+ * - All CEF browser operations execute on the main thread (CEF requirement)
+ *
+ * Performance Optimizations:
+ * - Socket buffer management parses headers only once (cached position)
+ * - JavaScript execution returns objects directly (no double JSON encoding)
+ * - Request size limited to 1MB to prevent DoS attacks
  */
 class BrowserControlServer {
  public:
@@ -150,16 +161,11 @@ class BrowserControlServer {
   std::string HandleGetUrl(std::optional<size_t> tab_index);
   std::string HandleGetTabCount();
   std::string HandleGetPageHtml(std::optional<size_t> tab_index);
-  std::string HandleExecuteJavaScript(const std::string& code,
-                                     std::optional<size_t> tab_index);
-  std::string HandleTakeScreenshot(std::optional<size_t> tab_index,
-                                   std::optional<bool> full_page);
-  std::string HandleNavigate(const std::string& url,
-                             std::optional<size_t> tab_index);
-  std::string HandleHistory(const std::string& action,
-                            std::optional<size_t> tab_index);
-  std::string HandleReload(std::optional<size_t> tab_index,
-                           std::optional<bool> ignore_cache);
+  std::string HandleExecuteJavaScript(const std::string& code, std::optional<size_t> tab_index);
+  std::string HandleTakeScreenshot(std::optional<size_t> tab_index, std::optional<bool> full_page);
+  std::string HandleNavigate(const std::string& url, std::optional<size_t> tab_index);
+  std::string HandleHistory(const std::string& action, std::optional<size_t> tab_index);
+  std::string HandleReload(std::optional<size_t> tab_index, std::optional<bool> ignore_cache);
   std::string HandleCreateTab(const std::string& url);
   std::string HandleCloseTab(size_t tab_index);
   std::string HandleSwitchTab(size_t tab_index);
@@ -169,8 +175,7 @@ class BrowserControlServer {
   std::string HandleGetPageSummary(std::optional<size_t> tab_index);
   std::string HandleGetInteractiveElements(std::optional<size_t> tab_index);
   std::string HandleGetAccessibilityTree(std::optional<size_t> tab_index);
-  std::string HandleQueryContent(const std::string& query_type,
-                                 std::optional<size_t> tab_index);
+  std::string HandleQueryContent(const std::string& query_type, std::optional<size_t> tab_index);
   std::string HandleGetAnnotatedScreenshot(std::optional<size_t> tab_index);
 
   // HTTP helpers

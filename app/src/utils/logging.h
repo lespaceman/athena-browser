@@ -1,25 +1,19 @@
 #ifndef ATHENA_UTILS_LOGGING_H_
 #define ATHENA_UTILS_LOGGING_H_
 
-#include <string>
-#include <memory>
-#include <sstream>
-#include <iostream>
-#include <fstream>
 #include <chrono>
+#include <fstream>
 #include <iomanip>
+#include <iostream>
+#include <memory>
 #include <mutex>
+#include <sstream>
+#include <string>
 
 namespace athena {
 namespace utils {
 
-enum class LogLevel {
-  kDebug = 0,
-  kInfo = 1,
-  kWarn = 2,
-  kError = 3,
-  kFatal = 4
-};
+enum class LogLevel { kDebug = 0, kInfo = 1, kWarn = 2, kError = 3, kFatal = 4 };
 
 class Logger {
  public:
@@ -40,27 +34,27 @@ class Logger {
   void Fatal(const std::string& message);
 
   // Template methods for formatting
-  template<typename... Args>
+  template <typename... Args>
   void Debug(const std::string& format, Args&&... args) {
     Log(LogLevel::kDebug, Format(format, std::forward<Args>(args)...));
   }
 
-  template<typename... Args>
+  template <typename... Args>
   void Info(const std::string& format, Args&&... args) {
     Log(LogLevel::kInfo, Format(format, std::forward<Args>(args)...));
   }
 
-  template<typename... Args>
+  template <typename... Args>
   void Warn(const std::string& format, Args&&... args) {
     Log(LogLevel::kWarn, Format(format, std::forward<Args>(args)...));
   }
 
-  template<typename... Args>
+  template <typename... Args>
   void Error(const std::string& format, Args&&... args) {
     Log(LogLevel::kError, Format(format, std::forward<Args>(args)...));
   }
 
-  template<typename... Args>
+  template <typename... Args>
   void Fatal(const std::string& format, Args&&... args) {
     Log(LogLevel::kFatal, Format(format, std::forward<Args>(args)...));
   }
@@ -75,7 +69,7 @@ class Logger {
   std::string CurrentTimestamp();
 
   // Simple format implementation
-  template<typename T>
+  template <typename T>
   std::string Format(const std::string& format, T&& value) {
     size_t pos = format.find("{}");
     if (pos == std::string::npos) {
@@ -86,7 +80,7 @@ class Logger {
     return oss.str();
   }
 
-  template<typename T, typename... Args>
+  template <typename T, typename... Args>
   std::string Format(const std::string& format, T&& value, Args&&... args) {
     size_t pos = format.find("{}");
     if (pos == std::string::npos) {

@@ -1,19 +1,20 @@
 #ifndef ATHENA_CORE_BROWSER_WINDOW_H_
 #define ATHENA_CORE_BROWSER_WINDOW_H_
 
-#include <string>
-#include <memory>
-#include <functional>
-#include "core/types.h"
-#include "utils/error.h"
 #include "browser/browser_engine.h"
+#include "core/types.h"
 #include "platform/window_system.h"
+#include "utils/error.h"
+
+#include <functional>
+#include <memory>
+#include <string>
 
 namespace athena {
 
 // Forward declaration
 namespace runtime {
-  class NodeRuntime;
+class NodeRuntime;
 }
 
 namespace core {

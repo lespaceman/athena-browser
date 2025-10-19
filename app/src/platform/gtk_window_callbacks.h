@@ -57,12 +57,12 @@ void RegisterInputCallbacks(GtkWidget* gl_area, GtkWindow* self);
  * - new tab button
  */
 void RegisterToolbarCallbacks(GtkWidget* back_btn,
-                               GtkWidget* forward_btn,
-                               GtkWidget* reload_btn,
-                               GtkWidget* stop_btn,
-                               GtkWidget* address_entry,
-                               GtkWidget* new_tab_btn,
-                               GtkWindow* self);
+                              GtkWidget* forward_btn,
+                              GtkWidget* reload_btn,
+                              GtkWidget* stop_btn,
+                              GtkWidget* address_entry,
+                              GtkWidget* new_tab_btn,
+                              GtkWindow* self);
 
 /**
  * Register tab event callbacks.
@@ -77,9 +77,9 @@ void RegisterTabCallbacks(GtkWidget* notebook, GtkWindow* self);
  * - sidebar toggle button clicked
  */
 void RegisterSidebarCallbacks(GtkWidget* chat_input,
-                               GtkWidget* send_btn,
-                               GtkWidget* toggle_btn,
-                               GtkWindow* self);
+                              GtkWidget* send_btn,
+                              GtkWidget* toggle_btn,
+                              GtkWindow* self);
 
 }  // namespace callbacks
 }  // namespace platform

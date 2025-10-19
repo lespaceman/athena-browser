@@ -9,17 +9,19 @@
  */
 
 #include "runtime/browser_control_server.h"
-#include "runtime/browser_control_server_internal.h"
+
 #include "platform/qt_mainwindow.h"
+#include "runtime/browser_control_server_internal.h"
 #include "utils/logging.h"
+
+#include <cstring>
+#include <fcntl.h>
+#include <filesystem>
+#include <QObject>
+#include <QSocketNotifier>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <cstring>
-#include <filesystem>
-#include <QSocketNotifier>
-#include <QObject>
 
 namespace athena {
 namespace runtime {
@@ -37,13 +39,15 @@ struct ClientConnection {
   std::string buffer;
   bool headers_complete;
   size_t content_length;
+  size_t header_end_pos;  // Cache position where headers end
 
   ClientConnection(BrowserControlServer* s, int client_fd)
       : server(s),
         fd(client_fd),
         notifier(nullptr),
         headers_complete(false),
-        content_length(0) {
+        content_length(0),
+        header_end_pos(0) {
     // Set non-blocking
     int flags = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
@@ -63,12 +67,8 @@ struct ClientConnection {
 // Constructor / Destructor
 // ============================================================================
 
-BrowserControlServer::BrowserControlServer(
-    const BrowserControlServerConfig& config)
-    : config_(config),
-      server_fd_(-1),
-      server_watch_id_(nullptr),
-      running_(false) {
+BrowserControlServer::BrowserControlServer(const BrowserControlServerConfig& config)
+    : config_(config), server_fd_(-1), server_watch_id_(nullptr), running_(false) {
   logger.Debug("BrowserControlServer created");
 }
 
@@ -113,8 +113,7 @@ utils::Result<void> BrowserControlServer::Initialize() {
   // Create Unix socket
   server_fd_ = socket(AF_UNIX, SOCK_STREAM, 0);
   if (server_fd_ < 0) {
-    return utils::Error("Failed to create socket: " +
-                       std::string(strerror(errno)));
+    return utils::Error("Failed to create socket: " + std::string(strerror(errno)));
   }
 
   // Set non-blocking
@@ -125,14 +124,12 @@ utils::Result<void> BrowserControlServer::Initialize() {
   struct sockaddr_un addr;
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, config_.socket_path.c_str(),
-          sizeof(addr.sun_path) - 1);
+  strncpy(addr.sun_path, config_.socket_path.c_str(), sizeof(addr.sun_path) - 1);
 
   if (bind(server_fd_, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
     close(server_fd_);
     server_fd_ = -1;
-    return utils::Error("Failed to bind socket: " +
-                       std::string(strerror(errno)));
+    return utils::Error("Failed to bind socket: " + std::string(strerror(errno)));
   }
 
   // Listen for connections
@@ -140,14 +137,12 @@ utils::Result<void> BrowserControlServer::Initialize() {
     close(server_fd_);
     server_fd_ = -1;
     std::filesystem::remove(config_.socket_path);
-    return utils::Error("Failed to listen on socket: " +
-                       std::string(strerror(errno)));
+    return utils::Error("Failed to listen on socket: " + std::string(strerror(errno)));
   }
 
   // Create Qt socket notifier
   server_watch_id_ = new QSocketNotifier(server_fd_, QSocketNotifier::Read);
-  QObject::connect(server_watch_id_, &QSocketNotifier::activated,
-                   [this](QSocketDescriptor) {
+  QObject::connect(server_watch_id_, &QSocketNotifier::activated, [this](QSocketDescriptor) {
     AcceptConnection();
   });
   server_watch_id_->setEnabled(true);
@@ -186,8 +181,7 @@ void BrowserControlServer::Shutdown() {
   }
 
   // Remove socket file
-  if (!config_.socket_path.empty() &&
-      std::filesystem::exists(config_.socket_path)) {
+  if (!config_.socket_path.empty() && std::filesystem::exists(config_.socket_path)) {
     try {
       std::filesystem::remove(config_.socket_path);
       logger.Debug("Socket file removed");
@@ -230,13 +224,13 @@ void BrowserControlServer::AcceptConnection() {
 
   // Set up Qt socket notifier for client data
   client->notifier = new QSocketNotifier(client_fd, QSocketNotifier::Read);
-  QObject::connect(client->notifier, &QSocketNotifier::activated,
-                   [this, client](QSocketDescriptor) {
-    if (!HandleClientData(client)) {
-      // Error or request complete - close connection
-      CloseClient(client);
-    }
-  });
+  QObject::connect(
+      client->notifier, &QSocketNotifier::activated, [this, client](QSocketDescriptor) {
+        if (!HandleClientData(client)) {
+          // Error or request complete - close connection
+          CloseClient(client);
+        }
+      });
   client->notifier->setEnabled(true);
 
   active_clients_.push_back(client);
@@ -260,17 +254,18 @@ bool BrowserControlServer::HandleClientData(void* client_ptr) {
   // Enforce size limit while reading
   if (client->buffer.size() > MAX_REQUEST_SIZE) {
     logger.Error("Request size exceeds maximum allowed");
-    std::string error_response = BuildHttpResponse(413, "Payload Too Large",
-                                                   R"({"success":false,"error":"Request too large"})");
+    std::string error_response = BuildHttpResponse(
+        413, "Payload Too Large", R"({"success":false,"error":"Request too large"})");
     send(client->fd, error_response.c_str(), error_response.size(), 0);
     return false;
   }
 
-  // Check if we have complete headers
+  // Check if we have complete headers (only parse once)
   if (!client->headers_complete) {
     size_t header_end = client->buffer.find("\r\n\r\n");
     if (header_end != std::string::npos) {
       client->headers_complete = true;
+      client->header_end_pos = header_end;  // Cache position
 
       // Parse Content-Length
       size_t cl_pos = client->buffer.find("Content-Length:");
@@ -298,13 +293,8 @@ bool BrowserControlServer::HandleClientData(void* client_ptr) {
     }
   }
 
-  // Check if we have complete body
-  size_t header_end = client->buffer.find("\r\n\r\n");
-  if (header_end == std::string::npos) {
-    return true;  // Should not happen, but be safe
-  }
-
-  size_t body_start = header_end + 4;
+  // Check if we have complete body (use cached header position)
+  size_t body_start = client->header_end_pos + 4;
   size_t body_received = client->buffer.size() - body_start;
 
   if (client->content_length > 0 && body_received < client->content_length) {

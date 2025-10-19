@@ -1,15 +1,16 @@
 #include "platform/gtk_window.h"
-#include "platform/gtk_window_callbacks.h"
+
 #include "browser/browser_engine.h"
-#include "browser/cef_engine.h"
 #include "browser/cef_client.h"
+#include "browser/cef_engine.h"
+#include "include/cef_app.h"
+#include "include/cef_browser.h"
+#include "platform/gtk_window_callbacks.h"
 #include "rendering/gl_renderer.h"
 #include "runtime/node_runtime.h"
 
-#include "include/cef_browser.h"
-#include "include/cef_app.h"
-
 #include <GL/gl.h>
+
 #include <iostream>
 #include <thread>
 
@@ -91,7 +92,8 @@ void GtkWindow::InitializeWindow() {
   // Create GTK window
   window_ = gtk_window_new(GTK_WINDOW_TOPLEVEL);
   gtk_window_set_title(reinterpret_cast<::GtkWindow*>(window_), config_.title.c_str());
-  gtk_window_set_default_size(reinterpret_cast<::GtkWindow*>(window_), config_.size.width, config_.size.height);
+  gtk_window_set_default_size(
+      reinterpret_cast<::GtkWindow*>(window_), config_.size.width, config_.size.height);
 
   if (config_.resizable) {
     gtk_window_set_resizable(reinterpret_cast<::GtkWindow*>(window_), TRUE);
@@ -127,8 +129,10 @@ void GtkWindow::InitializeWindow() {
 
   // Create sidebar (right pane)
   CreateSidebar();
-  gtk_paned_pack2(GTK_PANED(hpaned_), sidebar_container_, FALSE, TRUE);  // Not resizable, shrinkable
-  gtk_paned_set_position(GTK_PANED(hpaned_), config_.size.width);  // Initially hide sidebar (position at far right)
+  gtk_paned_pack2(
+      GTK_PANED(hpaned_), sidebar_container_, FALSE, TRUE);  // Not resizable, shrinkable
+  gtk_paned_set_position(GTK_PANED(hpaned_),
+                         config_.size.width);  // Initially hide sidebar (position at far right)
 
   if (config_.enable_input) {
     // Enable focus for keyboard events
@@ -136,14 +140,9 @@ void GtkWindow::InitializeWindow() {
 
     // Add event masks
     gtk_widget_add_events(gl_area_,
-      GDK_BUTTON_PRESS_MASK |
-      GDK_BUTTON_RELEASE_MASK |
-      GDK_POINTER_MOTION_MASK |
-      GDK_SCROLL_MASK |
-      GDK_KEY_PRESS_MASK |
-      GDK_KEY_RELEASE_MASK |
-      GDK_FOCUS_CHANGE_MASK |
-      GDK_LEAVE_NOTIFY_MASK);
+                          GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
+                              GDK_POINTER_MOTION_MASK | GDK_SCROLL_MASK | GDK_KEY_PRESS_MASK |
+                              GDK_KEY_RELEASE_MASK | GDK_FOCUS_CHANGE_MASK | GDK_LEAVE_NOTIFY_MASK);
   }
 }
 
@@ -226,9 +225,8 @@ void GtkWindow::CreateSidebar() {
 
   // Chat history (scrollable text view)
   chat_scrolled_window_ = gtk_scrolled_window_new(nullptr, nullptr);
-  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(chat_scrolled_window_),
-                                  GTK_POLICY_AUTOMATIC,
-                                  GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_policy(
+      GTK_SCROLLED_WINDOW(chat_scrolled_window_), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
 
   chat_text_view_ = gtk_text_view_new();
   gtk_text_view_set_editable(GTK_TEXT_VIEW(chat_text_view_), FALSE);
@@ -242,17 +240,16 @@ void GtkWindow::CreateSidebar() {
   chat_text_buffer_ = gtk_text_view_get_buffer(GTK_TEXT_VIEW(chat_text_view_));
 
   // Create text tags for styling
-  gtk_text_buffer_create_tag(chat_text_buffer_, "user",
-                              "weight", PANGO_WEIGHT_BOLD,
-                              "foreground", "#2563eb",
-                              nullptr);
-  gtk_text_buffer_create_tag(chat_text_buffer_, "assistant",
-                              "weight", PANGO_WEIGHT_BOLD,
-                              "foreground", "#16a34a",
-                              nullptr);
-  gtk_text_buffer_create_tag(chat_text_buffer_, "message",
-                              "left-margin", 10,
-                              nullptr);
+  gtk_text_buffer_create_tag(
+      chat_text_buffer_, "user", "weight", PANGO_WEIGHT_BOLD, "foreground", "#2563eb", nullptr);
+  gtk_text_buffer_create_tag(chat_text_buffer_,
+                             "assistant",
+                             "weight",
+                             PANGO_WEIGHT_BOLD,
+                             "foreground",
+                             "#16a34a",
+                             nullptr);
+  gtk_text_buffer_create_tag(chat_text_buffer_, "message", "left-margin", 10, nullptr);
 
   gtk_container_add(GTK_CONTAINER(chat_scrolled_window_), chat_text_view_);
   gtk_box_pack_start(GTK_BOX(sidebar_container_), chat_scrolled_window_, TRUE, TRUE, 0);
@@ -275,14 +272,14 @@ void GtkWindow::CreateSidebar() {
   gtk_box_pack_start(GTK_BOX(sidebar_container_), chat_input_box_, FALSE, FALSE, 0);
 
   // Connect close button to toggle
-  g_signal_connect_swapped(close_button, "clicked",
-                            G_CALLBACK(+[](GtkWindow* self) { self->ToggleSidebar(); }),
-                            this);
+  g_signal_connect_swapped(
+      close_button, "clicked", G_CALLBACK(+[](GtkWindow* self) { self->ToggleSidebar(); }), this);
 
   // Connect clear button to ClearChatHistory
-  g_signal_connect_swapped(sidebar_clear_button_, "clicked",
-                            G_CALLBACK(+[](GtkWindow* self) { self->ClearChatHistory(); }),
-                            this);
+  g_signal_connect_swapped(sidebar_clear_button_,
+                           "clicked",
+                           G_CALLBACK(+[](GtkWindow* self) { self->ClearChatHistory(); }),
+                           this);
 
   std::cout << "[GtkWindow] Sidebar created" << std::endl;
 }
@@ -296,12 +293,15 @@ void GtkWindow::SetupEventHandlers() {
     callbacks::RegisterInputCallbacks(gl_area_, this);
   }
 
-  callbacks::RegisterToolbarCallbacks(
-    back_button_, forward_button_, reload_button_,
-    stop_button_, address_entry_, new_tab_button_, this);
+  callbacks::RegisterToolbarCallbacks(back_button_,
+                                      forward_button_,
+                                      reload_button_,
+                                      stop_button_,
+                                      address_entry_,
+                                      new_tab_button_,
+                                      this);
 
-  callbacks::RegisterSidebarCallbacks(
-    chat_input_, chat_send_button_, sidebar_toggle_button_, this);
+  callbacks::RegisterSidebarCallbacks(chat_input_, chat_send_button_, sidebar_toggle_button_, this);
 }
 
 utils::Result<void> GtkWindow::CreateBrowser(const std::string& url) {
@@ -327,7 +327,8 @@ browser::CefClient* GtkWindow::GetCefClient() const {
 }
 
 std::string GtkWindow::GetTitle() const {
-  if (!window_) return config_.title;
+  if (!window_)
+    return config_.title;
   const char* title = gtk_window_get_title(reinterpret_cast<::GtkWindow*>(window_));
   return title ? std::string(title) : std::string();
 }
@@ -340,7 +341,8 @@ void GtkWindow::SetTitle(const std::string& title) {
 }
 
 core::Size GtkWindow::GetSize() const {
-  if (!window_) return config_.size;
+  if (!window_)
+    return config_.size;
 
   GtkAllocation allocation;
   gtk_widget_get_allocation(gl_area_, &allocation);
@@ -355,7 +357,8 @@ void GtkWindow::SetSize(const core::Size& size) {
 }
 
 float GtkWindow::GetScaleFactor() const {
-  if (!gl_area_) return 1.0f;
+  if (!gl_area_)
+    return 1.0f;
   return static_cast<float>(gtk_widget_get_scale_factor(gl_area_));
 }
 
@@ -433,7 +436,8 @@ browser::BrowserId GtkWindow::GetBrowser() const {
 // ============================================================================
 
 void GtkWindow::Close(bool force) {
-  if (closed_) return;
+  if (closed_)
+    return;
 
   auto* client = GetCefClient();
   if (!force && client && client->GetBrowser()) {
@@ -616,8 +620,8 @@ struct NavigationButtonsUpdateData {
 // GTK idle callback to update address bar on main thread
 gboolean update_address_bar_idle(gpointer user_data) {
   auto* data = static_cast<AddressBarUpdateData*>(user_data);
-  if (data && data->window && !data->window->IsClosed() &&
-      data->window->address_entry_ && GTK_IS_WIDGET(data->window->address_entry_)) {
+  if (data && data->window && !data->window->IsClosed() && data->window->address_entry_ &&
+      GTK_IS_WIDGET(data->window->address_entry_)) {
     gtk_entry_set_text(GTK_ENTRY(data->window->address_entry_), data->url.c_str());
   }
   delete data;
@@ -660,16 +664,14 @@ void GtkWindow::UpdateNavigationButtons(bool is_loading, bool can_go_back, bool 
   g_idle_add(update_navigation_buttons_idle, data);
 }
 
-void GtkWindow::HandleTabRenderInvalidated(
-    browser::BrowserId browser_id,
-    CefRenderHandler::PaintElementType type) {
+void GtkWindow::HandleTabRenderInvalidated(browser::BrowserId browser_id,
+                                           CefRenderHandler::PaintElementType type) {
   (void)type;
 
   bool should_render = false;
   {
     std::lock_guard<std::mutex> lock(tabs_mutex_);
-    if (active_tab_index_ < tabs_.size() &&
-        tabs_[active_tab_index_].browser_id == browser_id) {
+    if (active_tab_index_ < tabs_.size() && tabs_[active_tab_index_].browser_id == browser_id) {
       should_render = true;
     }
   }

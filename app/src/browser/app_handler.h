@@ -6,24 +6,18 @@
 #include "cef_render_process_handler.h"
 #include "wrapper/cef_message_router.h"
 
-class AppHandler : public CefApp,
-                   public CefBrowserProcessHandler,
-                   public CefRenderProcessHandler {
+class AppHandler : public CefApp, public CefBrowserProcessHandler, public CefRenderProcessHandler {
  public:
   AppHandler();
 
   // CefApp methods
-  CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override {
-    return this;
-  }
-  CefRefPtr<CefRenderProcessHandler> GetRenderProcessHandler() override {
-    return this;
-  }
+  CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override { return this; }
+  CefRefPtr<CefRenderProcessHandler> GetRenderProcessHandler() override { return this; }
 
-  // CefApp methods  
+  // CefApp methods
   void OnBeforeCommandLineProcessing(const CefString& process_type,
                                      CefRefPtr<CefCommandLine> command_line) override;
-  
+
   // CefBrowserProcessHandler methods
   void OnContextInitialized() override;
   void OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) override;

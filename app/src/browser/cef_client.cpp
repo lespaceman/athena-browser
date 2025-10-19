@@ -1,7 +1,9 @@
 #include "browser/cef_client.h"
-#include "utils/logging.h"
+
 #include "include/cef_app.h"
 #include "include/wrapper/cef_helpers.h"
+#include "utils/logging.h"
+
 #include <iostream>
 #include <utility>
 
@@ -15,8 +17,7 @@ CefClient::CefClient(void* native_window, rendering::GLRenderer* gl_renderer)
       gl_renderer_(gl_renderer),
       width_(0),
       height_(0),
-      device_scale_factor_(1.0f) {
-}
+      device_scale_factor_(1.0f) {}
 
 CefClient::~CefClient() {
   // GL resources cleaned up by GLRenderer (owned externally)
@@ -61,8 +62,8 @@ void CefClient::OnTitleChange(CefRefPtr<::CefBrowser> browser, const CefString& 
 }
 
 void CefClient::OnAddressChange(CefRefPtr<::CefBrowser> browser,
-                                 CefRefPtr<::CefFrame> frame,
-                                 const CefString& url) {
+                                CefRefPtr<::CefFrame> frame,
+                                const CefString& url) {
   CEF_REQUIRE_UI_THREAD();
 
   // Only update for the main frame
@@ -76,9 +77,9 @@ void CefClient::OnAddressChange(CefRefPtr<::CefBrowser> browser,
 // ============================================================================
 
 void CefClient::OnLoadingStateChange(CefRefPtr<::CefBrowser> browser,
-                                      bool isLoading,
-                                      bool canGoBack,
-                                      bool canGoForward) {
+                                     bool isLoading,
+                                     bool canGoBack,
+                                     bool canGoForward) {
   CEF_REQUIRE_UI_THREAD();
 
   if (on_loading_state_change_) {

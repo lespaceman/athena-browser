@@ -7,26 +7,26 @@
  * - TakeScreenshot() - Capture page screenshot as PNG
  */
 
-#include "platform/gtk_window.h"
 #include "browser/cef_client.h"
+#include "include/cef_app.h"
+#include "include/cef_browser.h"
+#include "include/cef_frame.h"
+#include "include/wrapper/cef_helpers.h"
+#include "platform/gtk_window.h"
 #include "rendering/gl_renderer.h"
 #include "utils/logging.h"
 
-#include "include/cef_browser.h"
-#include "include/cef_frame.h"
-#include "include/cef_app.h"
-#include "include/wrapper/cef_helpers.h"
-
-#include <condition_variable>
-#include <chrono>
-#include <mutex>
-#include <thread>
 #include <GL/gl.h>
-#include <png.h>
+
+#include <chrono>
+#include <condition_variable>
 #include <cstring>
-#include <vector>
-#include <sstream>
 #include <iomanip>
+#include <mutex>
+#include <png.h>
+#include <sstream>
+#include <thread>
+#include <vector>
 
 namespace athena {
 namespace platform {
@@ -59,7 +59,8 @@ class StringVisitor : public CefStringVisitor {
     while (!complete_) {
       // Check timeout
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - start).count();
+                         std::chrono::steady_clock::now() - start)
+                         .count();
       if (elapsed >= timeout_ms) {
         return false;
       }
@@ -102,17 +103,17 @@ static std::string EncodePNGToBase64(const unsigned char* buffer, int width, int
   // and then base64 encode it
 
   // Base64 encoding table
-  static const char* base64_chars =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-      "abcdefghijklmnopqrstuvwxyz"
-      "0123456789+/";
+  static const char* base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                    "abcdefghijklmnopqrstuvwxyz"
+                                    "0123456789+/";
 
   // Simple base64 encoding (proper implementation would use a library)
   std::string result;
   result.reserve(((width * height * 4) / 3) + 4);
 
   // For now, return a placeholder that indicates screenshot was captured
-  return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+"
+         "M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 }
 
 // ============================================================================
@@ -232,17 +233,15 @@ std::string GtkWindow::TakeScreenshot() {
   // Flip image vertically (OpenGL's origin is bottom-left, images expect top-left)
   std::vector<unsigned char> flipped(width * height * 4);
   for (int y = 0; y < height; y++) {
-    std::memcpy(
-        flipped.data() + (y * width * 4),
-        pixels.data() + ((height - 1 - y) * width * 4),
-        width * 4);
+    std::memcpy(flipped.data() + (y * width * 4),
+                pixels.data() + ((height - 1 - y) * width * 4),
+                width * 4);
   }
 
   // Encode to PNG and base64
   std::string base64 = EncodePNGToBase64(flipped.data(), width, height);
 
-  logger.Info("Screenshot captured (" + std::to_string(width) + "x" +
-              std::to_string(height) + ")");
+  logger.Info("Screenshot captured (" + std::to_string(width) + "x" + std::to_string(height) + ")");
 
   return base64;
 }

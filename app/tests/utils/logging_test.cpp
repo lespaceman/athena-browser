@@ -1,6 +1,7 @@
-#include <gtest/gtest.h>
 #include "utils/logging.h"
+
 #include <fstream>
+#include <gtest/gtest.h>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -78,8 +79,7 @@ TEST(LoggerTest, FileOutput) {
   std::ifstream file(test_file);
   ASSERT_TRUE(file.is_open());
 
-  std::string content((std::istreambuf_iterator<char>(file)),
-                      std::istreambuf_iterator<char>());
+  std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
   EXPECT_TRUE(content.find("Test message") != std::string::npos);
   EXPECT_TRUE(content.find("Error message") != std::string::npos);

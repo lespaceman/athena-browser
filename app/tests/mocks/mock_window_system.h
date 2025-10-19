@@ -2,9 +2,10 @@
 #define ATHENA_TESTS_MOCKS_MOCK_WINDOW_SYSTEM_H_
 
 #include "platform/window_system.h"
+
 #include <gmock/gmock.h>
-#include <memory>
 #include <map>
+#include <memory>
 
 namespace athena {
 namespace platform {
@@ -15,7 +16,8 @@ namespace testing {
  */
 class MockWindow : public Window {
  public:
-  MockWindow(const WindowConfig& config, const WindowCallbacks& callbacks,
+  MockWindow(const WindowConfig& config,
+             const WindowCallbacks& callbacks,
              browser::BrowserEngine* engine)
       : config_(config),
         callbacks_(callbacks),
@@ -96,9 +98,7 @@ class MockWindow : public Window {
   }
 
   // Browser Integration
-  void SetBrowser(browser::BrowserId browser_id) override {
-    browser_id_ = browser_id;
-  }
+  void SetBrowser(browser::BrowserId browser_id) override { browser_id_ = browser_id; }
 
   browser::BrowserId GetBrowser() const override { return browser_id_; }
 
@@ -151,8 +151,7 @@ class MockWindowSystem : public WindowSystem {
   MockWindowSystem() : initialized_(false), running_(false), engine_(nullptr) {}
 
   // Lifecycle Management
-  utils::Result<void> Initialize(int argc, char* argv[],
-                                  browser::BrowserEngine* engine) override {
+  utils::Result<void> Initialize(int argc, char* argv[], browser::BrowserEngine* engine) override {
     (void)argc;
     (void)argv;
     if (initialized_) {
@@ -175,9 +174,8 @@ class MockWindowSystem : public WindowSystem {
   bool IsInitialized() const override { return initialized_; }
 
   // Window Management
-  utils::Result<std::shared_ptr<Window>> CreateWindow(
-      const WindowConfig& config,
-      const WindowCallbacks& callbacks) override {
+  utils::Result<std::shared_ptr<Window>> CreateWindow(const WindowConfig& config,
+                                                      const WindowCallbacks& callbacks) override {
     if (!initialized_) {
       return utils::Error("WindowSystem not initialized");
     }
@@ -199,9 +197,7 @@ class MockWindowSystem : public WindowSystem {
     // In real tests, you would call Quit() explicitly
   }
 
-  void Quit() override {
-    running_ = false;
-  }
+  void Quit() override { running_ = false; }
 
   bool IsRunning() const override { return running_; }
 

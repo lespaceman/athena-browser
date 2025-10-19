@@ -1,5 +1,7 @@
 #include "browser/cef_engine.h"
+
 #include "browser/app_handler.h"
+
 #include <gtest/gtest.h>
 
 using namespace athena::browser;
@@ -22,9 +24,7 @@ using namespace athena::utils;
  */
 class CefEngineTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    engine_ = std::make_unique<CefEngine>();
-  }
+  void SetUp() override { engine_ = std::make_unique<CefEngine>(); }
 
   void TearDown() override {
     // Ensure shutdown if initialized

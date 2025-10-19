@@ -8,11 +8,12 @@
 #ifndef ATHENA_RUNTIME_BROWSER_CONTROL_SERVER_INTERNAL_H_
 #define ATHENA_RUNTIME_BROWSER_CONTROL_SERVER_INTERNAL_H_
 
+#include "platform/qt_mainwindow.h"
+#include "utils/logging.h"
+
 #include <memory>
 #include <optional>
 #include <string>
-#include "platform/qt_mainwindow.h"
-#include "utils/logging.h"
 
 namespace athena {
 namespace runtime {
@@ -44,8 +45,8 @@ static constexpr int kDefaultContentTimeoutMs = 5000;
  * @return true on success, false on error (check error_message)
  */
 inline bool SwitchToRequestedTab(const std::shared_ptr<platform::QtMainWindow>& window,
-                                  std::optional<size_t> tab_index,
-                                  std::string& error_message) {
+                                 std::optional<size_t> tab_index,
+                                 std::string& error_message) {
   if (!tab_index.has_value()) {
     return true;
   }

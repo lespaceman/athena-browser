@@ -4,15 +4,15 @@
 #ifndef ATHENA_RENDERING_GL_RENDERER_H_
 #define ATHENA_RENDERING_GL_RENDERER_H_
 
-#include <memory>
-#include <vector>
-
+#include "core/types.h"
 #include "include/cef_browser.h"
 #include "include/cef_render_handler.h"
 #include "tests/cefclient/browser/osr_renderer.h"
 #include "tests/cefclient/browser/osr_renderer_settings.h"
-#include "core/types.h"
 #include "utils/error.h"
+
+#include <memory>
+#include <vector>
 
 // Platform-specific forward declarations
 #ifdef ATHENA_USE_QT

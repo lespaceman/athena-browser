@@ -1,15 +1,16 @@
 #ifndef ATHENA_CORE_APPLICATION_H_
 #define ATHENA_CORE_APPLICATION_H_
 
-#include <string>
-#include <memory>
-#include <vector>
-#include "core/browser_window.h"
 #include "browser/browser_engine.h"
+#include "core/browser_window.h"
 #include "platform/window_system.h"
-#include "runtime/node_runtime.h"
 #include "runtime/browser_control_server.h"
+#include "runtime/node_runtime.h"
 #include "utils/error.h"
+
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace athena {
 namespace core {
@@ -156,8 +157,7 @@ class Application {
    * @return Window instance on success, error on failure
    */
   utils::Result<std::unique_ptr<BrowserWindow>> CreateWindow(
-      const BrowserWindowConfig& config,
-      const BrowserWindowCallbacks& callbacks = {});
+      const BrowserWindowConfig& config, const BrowserWindowCallbacks& callbacks = {});
 
   /**
    * Get the number of open windows.

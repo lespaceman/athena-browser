@@ -5,9 +5,10 @@
  * All callbacks forward to GtkWindow methods for testability.
  */
 #include "platform/gtk_window_callbacks.h"
-#include "platform/gtk_window.h"
+
 #include "browser/cef_client.h"
 #include "include/cef_browser.h"
+#include "platform/gtk_window.h"
 
 #include <iostream>
 #include <string>
@@ -35,47 +36,75 @@ inline GtkWindow* GetWindowFromUserData(gpointer user_data) {
 
 static guint32 GetCefModifiers(guint state) {
   guint32 modifiers = 0;
-  if (state & GDK_SHIFT_MASK)   modifiers |= EVENTFLAG_SHIFT_DOWN;
-  if (state & GDK_CONTROL_MASK) modifiers |= EVENTFLAG_CONTROL_DOWN;
-  if (state & GDK_MOD1_MASK)    modifiers |= EVENTFLAG_ALT_DOWN;
-  if (state & GDK_BUTTON1_MASK) modifiers |= EVENTFLAG_LEFT_MOUSE_BUTTON;
-  if (state & GDK_BUTTON2_MASK) modifiers |= EVENTFLAG_MIDDLE_MOUSE_BUTTON;
-  if (state & GDK_BUTTON3_MASK) modifiers |= EVENTFLAG_RIGHT_MOUSE_BUTTON;
+  if (state & GDK_SHIFT_MASK)
+    modifiers |= EVENTFLAG_SHIFT_DOWN;
+  if (state & GDK_CONTROL_MASK)
+    modifiers |= EVENTFLAG_CONTROL_DOWN;
+  if (state & GDK_MOD1_MASK)
+    modifiers |= EVENTFLAG_ALT_DOWN;
+  if (state & GDK_BUTTON1_MASK)
+    modifiers |= EVENTFLAG_LEFT_MOUSE_BUTTON;
+  if (state & GDK_BUTTON2_MASK)
+    modifiers |= EVENTFLAG_MIDDLE_MOUSE_BUTTON;
+  if (state & GDK_BUTTON3_MASK)
+    modifiers |= EVENTFLAG_RIGHT_MOUSE_BUTTON;
   return modifiers;
 }
 
 static int GetWindowsKeyCode(guint keyval) {
-  if (keyval >= GDK_KEY_0 && keyval <= GDK_KEY_9) return keyval;
-  if (keyval >= GDK_KEY_A && keyval <= GDK_KEY_Z) return keyval;
-  if (keyval >= GDK_KEY_a && keyval <= GDK_KEY_z) return keyval - 32;
+  if (keyval >= GDK_KEY_0 && keyval <= GDK_KEY_9)
+    return keyval;
+  if (keyval >= GDK_KEY_A && keyval <= GDK_KEY_Z)
+    return keyval;
+  if (keyval >= GDK_KEY_a && keyval <= GDK_KEY_z)
+    return keyval - 32;
 
   if (keyval >= GDK_KEY_F1 && keyval <= GDK_KEY_F24) {
     return 0x70 + (keyval - GDK_KEY_F1);
   }
 
   switch (keyval) {
-    case GDK_KEY_Return: return 0x0D;
-    case GDK_KEY_Escape: return 0x1B;
-    case GDK_KEY_BackSpace: return 0x08;
-    case GDK_KEY_Tab: return 0x09;
-    case GDK_KEY_space: return 0x20;
-    case GDK_KEY_Delete: return 0x2E;
-    case GDK_KEY_Home: return 0x24;
-    case GDK_KEY_End: return 0x23;
-    case GDK_KEY_Page_Up: return 0x21;
-    case GDK_KEY_Page_Down: return 0x22;
-    case GDK_KEY_Left: return 0x25;
-    case GDK_KEY_Up: return 0x26;
-    case GDK_KEY_Right: return 0x27;
-    case GDK_KEY_Down: return 0x28;
-    case GDK_KEY_Insert: return 0x2D;
+    case GDK_KEY_Return:
+      return 0x0D;
+    case GDK_KEY_Escape:
+      return 0x1B;
+    case GDK_KEY_BackSpace:
+      return 0x08;
+    case GDK_KEY_Tab:
+      return 0x09;
+    case GDK_KEY_space:
+      return 0x20;
+    case GDK_KEY_Delete:
+      return 0x2E;
+    case GDK_KEY_Home:
+      return 0x24;
+    case GDK_KEY_End:
+      return 0x23;
+    case GDK_KEY_Page_Up:
+      return 0x21;
+    case GDK_KEY_Page_Down:
+      return 0x22;
+    case GDK_KEY_Left:
+      return 0x25;
+    case GDK_KEY_Up:
+      return 0x26;
+    case GDK_KEY_Right:
+      return 0x27;
+    case GDK_KEY_Down:
+      return 0x28;
+    case GDK_KEY_Insert:
+      return 0x2D;
     case GDK_KEY_Shift_L:
-    case GDK_KEY_Shift_R: return 0x10;
+    case GDK_KEY_Shift_R:
+      return 0x10;
     case GDK_KEY_Control_L:
-    case GDK_KEY_Control_R: return 0x11;
+    case GDK_KEY_Control_R:
+      return 0x11;
     case GDK_KEY_Alt_L:
-    case GDK_KEY_Alt_R: return 0x12;
-    default: return keyval;
+    case GDK_KEY_Alt_R:
+      return 0x12;
+    default:
+      return keyval;
   }
 }
 
@@ -83,8 +112,7 @@ static int GetWindowsKeyCode(guint keyval) {
 // Window Lifecycle Callbacks
 // ============================================================================
 
-static gboolean on_delete(GtkWidget* widget, GdkEvent* event,
-                           gpointer user_data) {
+static gboolean on_delete(GtkWidget* widget, GdkEvent* event, gpointer user_data) {
   (void)widget;
   (void)event;
   GtkWindow* window = GetWindowFromUserData(user_data);
@@ -99,11 +127,11 @@ static void on_destroy(GtkWidget* widget, gpointer user_data) {
   }
 }
 
-static gboolean on_window_key_press(GtkWidget* widget, GdkEventKey* event,
-                                     gpointer user_data) {
+static gboolean on_window_key_press(GtkWidget* widget, GdkEventKey* event, gpointer user_data) {
   (void)widget;
   GtkWindow* window = GetWindowFromUserData(user_data);
-  if (!window) return FALSE;
+  if (!window)
+    return FALSE;
 
   // Check for keyboard shortcuts with Ctrl modifier
   if (event->state & GDK_CONTROL_MASK) {
@@ -174,8 +202,7 @@ static void on_gl_realize(GtkGLArea* gl_area, gpointer user_data) {
   }
 }
 
-static gboolean on_gl_render(GtkGLArea* gl_area, GdkGLContext* context,
-                              gpointer user_data) {
+static gboolean on_gl_render(GtkGLArea* gl_area, GdkGLContext* context, gpointer user_data) {
   (void)gl_area;
   (void)context;
   GtkWindow* window = GetWindowFromUserData(user_data);
@@ -190,8 +217,7 @@ static void on_realize(GtkWidget* widget, gpointer user_data) {
   }
 }
 
-static void on_size_allocate(GtkWidget* widget, GdkRectangle* allocation,
-                              gpointer user_data) {
+static void on_size_allocate(GtkWidget* widget, GdkRectangle* allocation, gpointer user_data) {
   (void)widget;
   GtkWindow* window = GetWindowFromUserData(user_data);
   if (window && allocation) {
@@ -203,11 +229,11 @@ static void on_size_allocate(GtkWidget* widget, GdkRectangle* allocation,
 // Input Event Callbacks - Mouse
 // ============================================================================
 
-static gboolean on_button_press(GtkWidget* widget, GdkEventButton* event,
-                                 gpointer user_data) {
+static gboolean on_button_press(GtkWidget* widget, GdkEventButton* event, gpointer user_data) {
   (void)widget;
   GtkWindow* window = GetWindowFromUserData(user_data);
-  if (!window || !window->GetCefClient()) return FALSE;
+  if (!window || !window->GetCefClient())
+    return FALSE;
 
   // Ensure the GL area gains keyboard focus when the user clicks into the page.
   if (gtk_widget_get_can_focus(widget)) {
@@ -216,7 +242,8 @@ static gboolean on_button_press(GtkWidget* widget, GdkEventButton* event,
 
   auto* client = window->GetCefClient();
   auto browser = client->GetBrowser();
-  if (!browser) return FALSE;
+  if (!browser)
+    return FALSE;
 
   CefMouseEvent mouse_event;
   mouse_event.x = (int)event->x;
@@ -225,29 +252,39 @@ static gboolean on_button_press(GtkWidget* widget, GdkEventButton* event,
 
   CefBrowserHost::MouseButtonType button_type;
   switch (event->button) {
-    case 1: button_type = MBT_LEFT; break;
-    case 2: button_type = MBT_MIDDLE; break;
-    case 3: button_type = MBT_RIGHT; break;
-    default: return FALSE;
+    case 1:
+      button_type = MBT_LEFT;
+      break;
+    case 2:
+      button_type = MBT_MIDDLE;
+      break;
+    case 3:
+      button_type = MBT_RIGHT;
+      break;
+    default:
+      return FALSE;
   }
 
   int click_count = 1;
-  if (event->type == GDK_2BUTTON_PRESS) click_count = 2;
-  else if (event->type == GDK_3BUTTON_PRESS) click_count = 3;
+  if (event->type == GDK_2BUTTON_PRESS)
+    click_count = 2;
+  else if (event->type == GDK_3BUTTON_PRESS)
+    click_count = 3;
 
   browser->GetHost()->SendMouseClickEvent(mouse_event, button_type, false, click_count);
   return TRUE;
 }
 
-static gboolean on_button_release(GtkWidget* widget, GdkEventButton* event,
-                                   gpointer user_data) {
+static gboolean on_button_release(GtkWidget* widget, GdkEventButton* event, gpointer user_data) {
   (void)widget;
   GtkWindow* window = GetWindowFromUserData(user_data);
-  if (!window || !window->GetCefClient()) return FALSE;
+  if (!window || !window->GetCefClient())
+    return FALSE;
 
   auto* client = window->GetCefClient();
   auto browser = client->GetBrowser();
-  if (!browser) return FALSE;
+  if (!browser)
+    return FALSE;
 
   CefMouseEvent mouse_event;
   mouse_event.x = (int)event->x;
@@ -256,25 +293,33 @@ static gboolean on_button_release(GtkWidget* widget, GdkEventButton* event,
 
   CefBrowserHost::MouseButtonType button_type;
   switch (event->button) {
-    case 1: button_type = MBT_LEFT; break;
-    case 2: button_type = MBT_MIDDLE; break;
-    case 3: button_type = MBT_RIGHT; break;
-    default: return FALSE;
+    case 1:
+      button_type = MBT_LEFT;
+      break;
+    case 2:
+      button_type = MBT_MIDDLE;
+      break;
+    case 3:
+      button_type = MBT_RIGHT;
+      break;
+    default:
+      return FALSE;
   }
 
   browser->GetHost()->SendMouseClickEvent(mouse_event, button_type, true, 1);
   return TRUE;
 }
 
-static gboolean on_motion_notify(GtkWidget* widget, GdkEventMotion* event,
-                                  gpointer user_data) {
+static gboolean on_motion_notify(GtkWidget* widget, GdkEventMotion* event, gpointer user_data) {
   (void)widget;
   GtkWindow* window = GetWindowFromUserData(user_data);
-  if (!window || !window->GetCefClient()) return FALSE;
+  if (!window || !window->GetCefClient())
+    return FALSE;
 
   auto* client = window->GetCefClient();
   auto browser = client->GetBrowser();
-  if (!browser) return FALSE;
+  if (!browser)
+    return FALSE;
 
   CefMouseEvent mouse_event;
   mouse_event.x = (int)event->x;
@@ -285,15 +330,16 @@ static gboolean on_motion_notify(GtkWidget* widget, GdkEventMotion* event,
   return TRUE;
 }
 
-static gboolean on_scroll(GtkWidget* widget, GdkEventScroll* event,
-                           gpointer user_data) {
+static gboolean on_scroll(GtkWidget* widget, GdkEventScroll* event, gpointer user_data) {
   (void)widget;
   GtkWindow* window = GetWindowFromUserData(user_data);
-  if (!window || !window->GetCefClient()) return FALSE;
+  if (!window || !window->GetCefClient())
+    return FALSE;
 
   auto* client = window->GetCefClient();
   auto browser = client->GetBrowser();
-  if (!browser) return FALSE;
+  if (!browser)
+    return FALSE;
 
   CefMouseEvent mouse_event;
   mouse_event.x = (int)event->x;
@@ -304,10 +350,18 @@ static gboolean on_scroll(GtkWidget* widget, GdkEventScroll* event,
   int delta_y = 0;
 
   switch (event->direction) {
-    case GDK_SCROLL_UP: delta_y = 40; break;
-    case GDK_SCROLL_DOWN: delta_y = -40; break;
-    case GDK_SCROLL_LEFT: delta_x = 40; break;
-    case GDK_SCROLL_RIGHT: delta_x = -40; break;
+    case GDK_SCROLL_UP:
+      delta_y = 40;
+      break;
+    case GDK_SCROLL_DOWN:
+      delta_y = -40;
+      break;
+    case GDK_SCROLL_LEFT:
+      delta_x = 40;
+      break;
+    case GDK_SCROLL_RIGHT:
+      delta_x = -40;
+      break;
     case GDK_SCROLL_SMOOTH:
       delta_x = (int)(-event->delta_x * 40);
       delta_y = (int)(-event->delta_y * 40);
@@ -318,15 +372,16 @@ static gboolean on_scroll(GtkWidget* widget, GdkEventScroll* event,
   return TRUE;
 }
 
-static gboolean on_leave_notify(GtkWidget* widget, GdkEventCrossing* event,
-                                 gpointer user_data) {
+static gboolean on_leave_notify(GtkWidget* widget, GdkEventCrossing* event, gpointer user_data) {
   (void)widget;
   GtkWindow* window = GetWindowFromUserData(user_data);
-  if (!window || !window->GetCefClient()) return FALSE;
+  if (!window || !window->GetCefClient())
+    return FALSE;
 
   auto* client = window->GetCefClient();
   auto browser = client->GetBrowser();
-  if (!browser) return FALSE;
+  if (!browser)
+    return FALSE;
 
   CefMouseEvent mouse_event;
   mouse_event.x = (int)event->x;
@@ -341,18 +396,17 @@ static gboolean on_leave_notify(GtkWidget* widget, GdkEventCrossing* event,
 // Input Event Callbacks - Keyboard
 // ============================================================================
 
-static gboolean on_key_press(GtkWidget* widget, GdkEventKey* event,
-                              gpointer user_data) {
+static gboolean on_key_press(GtkWidget* widget, GdkEventKey* event, gpointer user_data) {
   (void)widget;
   GtkWindow* window = GetWindowFromUserData(user_data);
-  if (!window || !window->GetCefClient()) return FALSE;
+  if (!window || !window->GetCefClient())
+    return FALSE;
 
   // Check for keyboard shortcuts with Ctrl - let them propagate to window handler
   if (event->state & GDK_CONTROL_MASK) {
     // Ctrl+T, Ctrl+W, Ctrl+Tab: Tab management shortcuts
-    if (event->keyval == GDK_KEY_t || event->keyval == GDK_KEY_T ||
-        event->keyval == GDK_KEY_w || event->keyval == GDK_KEY_W ||
-        event->keyval == GDK_KEY_Tab) {
+    if (event->keyval == GDK_KEY_t || event->keyval == GDK_KEY_T || event->keyval == GDK_KEY_w ||
+        event->keyval == GDK_KEY_W || event->keyval == GDK_KEY_Tab) {
       return FALSE;  // Let window handler process these
     }
 
@@ -364,7 +418,8 @@ static gboolean on_key_press(GtkWidget* widget, GdkEventKey* event,
 
   auto* client = window->GetCefClient();
   auto browser = client->GetBrowser();
-  if (!browser) return FALSE;
+  if (!browser)
+    return FALSE;
 
   CefKeyEvent key_event;
   key_event.type = KEYEVENT_RAWKEYDOWN;
@@ -391,15 +446,16 @@ static gboolean on_key_press(GtkWidget* widget, GdkEventKey* event,
   return TRUE;
 }
 
-static gboolean on_key_release(GtkWidget* widget, GdkEventKey* event,
-                                gpointer user_data) {
+static gboolean on_key_release(GtkWidget* widget, GdkEventKey* event, gpointer user_data) {
   (void)widget;
   GtkWindow* window = GetWindowFromUserData(user_data);
-  if (!window || !window->GetCefClient()) return FALSE;
+  if (!window || !window->GetCefClient())
+    return FALSE;
 
   auto* client = window->GetCefClient();
   auto browser = client->GetBrowser();
-  if (!browser) return FALSE;
+  if (!browser)
+    return FALSE;
 
   CefKeyEvent key_event;
   key_event.type = KEYEVENT_KEYUP;
@@ -415,8 +471,7 @@ static gboolean on_key_release(GtkWidget* widget, GdkEventKey* event,
   return TRUE;
 }
 
-static gboolean on_focus_in(GtkWidget* widget, GdkEventFocus* event,
-                             gpointer user_data) {
+static gboolean on_focus_in(GtkWidget* widget, GdkEventFocus* event, gpointer user_data) {
   (void)widget;
   (void)event;
   GtkWindow* window = GetWindowFromUserData(user_data);
@@ -426,8 +481,7 @@ static gboolean on_focus_in(GtkWidget* widget, GdkEventFocus* event,
   return FALSE;
 }
 
-static gboolean on_focus_out(GtkWidget* widget, GdkEventFocus* event,
-                              gpointer user_data) {
+static gboolean on_focus_out(GtkWidget* widget, GdkEventFocus* event, gpointer user_data) {
   (void)widget;
   (void)event;
   GtkWindow* window = GetWindowFromUserData(user_data);
@@ -476,10 +530,12 @@ static void on_stop_clicked(GtkButton* button, gpointer user_data) {
 static void on_address_activate(GtkEntry* entry, gpointer user_data) {
   (void)entry;
   GtkWindow* window = GetWindowFromUserData(user_data);
-  if (!window) return;
+  if (!window)
+    return;
 
   const char* url_text = gtk_entry_get_text(entry);
-  if (!url_text || strlen(url_text) == 0) return;
+  if (!url_text || strlen(url_text) == 0)
+    return;
 
   std::string url(url_text);
 
@@ -502,7 +558,10 @@ static void on_address_activate(GtkEntry* entry, gpointer user_data) {
 // Tab Management Callbacks
 // ============================================================================
 
-static void on_tab_switch(GtkNotebook* notebook, GtkWidget* page, guint page_num, gpointer user_data) {
+static void on_tab_switch(GtkNotebook* notebook,
+                          GtkWidget* page,
+                          guint page_num,
+                          gpointer user_data) {
   (void)notebook;
   (void)page;
   GtkWindow* window = GetWindowFromUserData(user_data);
@@ -586,12 +645,12 @@ void RegisterInputCallbacks(GtkWidget* gl_area, GtkWindow* self) {
 }
 
 void RegisterToolbarCallbacks(GtkWidget* back_btn,
-                               GtkWidget* forward_btn,
-                               GtkWidget* reload_btn,
-                               GtkWidget* stop_btn,
-                               GtkWidget* address_entry,
-                               GtkWidget* new_tab_btn,
-                               GtkWindow* self) {
+                              GtkWidget* forward_btn,
+                              GtkWidget* reload_btn,
+                              GtkWidget* stop_btn,
+                              GtkWidget* address_entry,
+                              GtkWidget* new_tab_btn,
+                              GtkWindow* self) {
   g_signal_connect(back_btn, "clicked", G_CALLBACK(on_back_clicked), self);
   g_signal_connect(forward_btn, "clicked", G_CALLBACK(on_forward_clicked), self);
   g_signal_connect(reload_btn, "clicked", G_CALLBACK(on_reload_clicked), self);
@@ -605,9 +664,9 @@ void RegisterTabCallbacks(GtkWidget* notebook, GtkWindow* self) {
 }
 
 void RegisterSidebarCallbacks(GtkWidget* chat_input,
-                               GtkWidget* send_btn,
-                               GtkWidget* toggle_btn,
-                               GtkWindow* self) {
+                              GtkWidget* send_btn,
+                              GtkWidget* toggle_btn,
+                              GtkWindow* self) {
   g_signal_connect(chat_input, "activate", G_CALLBACK(on_chat_input_activate), self);
   g_signal_connect(send_btn, "clicked", G_CALLBACK(on_chat_send_clicked), self);
   g_signal_connect(toggle_btn, "clicked", G_CALLBACK(on_sidebar_toggle_clicked), self);

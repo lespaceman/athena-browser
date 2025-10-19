@@ -2,8 +2,8 @@
 #define ATHENA_CORE_TYPES_H_
 
 #include <ostream>
-#include <string>
 #include <sstream>
+#include <string>
 
 namespace athena {
 namespace core {
@@ -16,13 +16,9 @@ struct Point {
   Point() : x(0), y(0) {}
   Point(int x_val, int y_val) : x(x_val), y(y_val) {}
 
-  bool operator==(const Point& other) const {
-    return x == other.x && y == other.y;
-  }
+  bool operator==(const Point& other) const { return x == other.x && y == other.y; }
 
-  bool operator!=(const Point& other) const {
-    return !(*this == other);
-  }
+  bool operator!=(const Point& other) const { return !(*this == other); }
 
   std::string ToString() const {
     std::ostringstream oss;
@@ -47,17 +43,11 @@ struct Size {
     return width == other.width && height == other.height;
   }
 
-  bool operator!=(const Size& other) const {
-    return !(*this == other);
-  }
+  bool operator!=(const Size& other) const { return !(*this == other); }
 
-  bool IsEmpty() const {
-    return width <= 0 || height <= 0;
-  }
+  bool IsEmpty() const { return width <= 0 || height <= 0; }
 
-  int Area() const {
-    return width * height;
-  }
+  int Area() const { return width * height; }
 
   std::string ToString() const {
     std::ostringstream oss;
@@ -78,57 +68,39 @@ struct Rect {
   int height;
 
   Rect() : x(0), y(0), width(0), height(0) {}
-  Rect(int x_val, int y_val, int w, int h)
-      : x(x_val), y(y_val), width(w), height(h) {}
+  Rect(int x_val, int y_val, int w, int h) : x(x_val), y(y_val), width(w), height(h) {}
   Rect(const Point& origin, const Size& size)
       : x(origin.x), y(origin.y), width(size.width), height(size.height) {}
 
   bool operator==(const Rect& other) const {
-    return x == other.x && y == other.y &&
-           width == other.width && height == other.height;
+    return x == other.x && y == other.y && width == other.width && height == other.height;
   }
 
-  bool operator!=(const Rect& other) const {
-    return !(*this == other);
-  }
+  bool operator!=(const Rect& other) const { return !(*this == other); }
 
-  Point Origin() const {
-    return Point(x, y);
-  }
+  Point Origin() const { return Point(x, y); }
 
-  Size GetSize() const {
-    return Size(width, height);
-  }
+  Size GetSize() const { return Size(width, height); }
 
-  int Right() const {
-    return x + width;
-  }
+  int Right() const { return x + width; }
 
-  int Bottom() const {
-    return y + height;
-  }
+  int Bottom() const { return y + height; }
 
-  bool IsEmpty() const {
-    return width <= 0 || height <= 0;
-  }
+  bool IsEmpty() const { return width <= 0 || height <= 0; }
 
-  int Area() const {
-    return width * height;
-  }
+  int Area() const { return width * height; }
 
   bool Contains(const Point& point) const {
-    return point.x >= x && point.x < Right() &&
-           point.y >= y && point.y < Bottom();
+    return point.x >= x && point.x < Right() && point.y >= y && point.y < Bottom();
   }
 
   bool Contains(const Rect& other) const {
-    return other.x >= x && other.Right() <= Right() &&
-           other.y >= y && other.Bottom() <= Bottom();
+    return other.x >= x && other.Right() <= Right() && other.y >= y && other.Bottom() <= Bottom();
   }
 
   bool Intersects(const Rect& other) const {
-    return !(other.x >= Right() || other.Right() <= x ||
-             other.y >= Bottom() || other.Bottom() <= y);
+    return !(other.x >= Right() || other.Right() <= x || other.y >= Bottom() ||
+             other.Bottom() <= y);
   }
 
   Rect Intersection(const Rect& other) const {
@@ -178,62 +150,36 @@ struct ScaleFactor {
   ScaleFactor() : value(1.0f) {}
   explicit ScaleFactor(float v) : value(v) {}
 
-  bool operator==(const ScaleFactor& other) const {
-    return value == other.value;
-  }
+  bool operator==(const ScaleFactor& other) const { return value == other.value; }
 
-  bool operator!=(const ScaleFactor& other) const {
-    return value != other.value;
-  }
+  bool operator!=(const ScaleFactor& other) const { return value != other.value; }
 
-  bool operator<(const ScaleFactor& other) const {
-    return value < other.value;
-  }
+  bool operator<(const ScaleFactor& other) const { return value < other.value; }
 
-  bool operator>(const ScaleFactor& other) const {
-    return value > other.value;
-  }
+  bool operator>(const ScaleFactor& other) const { return value > other.value; }
 
-  ScaleFactor operator*(const ScaleFactor& other) const {
-    return ScaleFactor(value * other.value);
-  }
+  ScaleFactor operator*(const ScaleFactor& other) const { return ScaleFactor(value * other.value); }
 
-  ScaleFactor operator/(const ScaleFactor& other) const {
-    return ScaleFactor(value / other.value);
-  }
+  ScaleFactor operator/(const ScaleFactor& other) const { return ScaleFactor(value / other.value); }
 
-  int Scale(int dimension) const {
-    return static_cast<int>(dimension * value);
-  }
+  int Scale(int dimension) const { return static_cast<int>(dimension * value); }
 
-  int Unscale(int dimension) const {
-    return static_cast<int>(dimension / value);
-  }
+  int Unscale(int dimension) const { return static_cast<int>(dimension / value); }
 
-  Point Scale(const Point& point) const {
-    return Point(Scale(point.x), Scale(point.y));
-  }
+  Point Scale(const Point& point) const { return Point(Scale(point.x), Scale(point.y)); }
 
-  Point Unscale(const Point& point) const {
-    return Point(Unscale(point.x), Unscale(point.y));
-  }
+  Point Unscale(const Point& point) const { return Point(Unscale(point.x), Unscale(point.y)); }
 
-  Size Scale(const Size& size) const {
-    return Size(Scale(size.width), Scale(size.height));
-  }
+  Size Scale(const Size& size) const { return Size(Scale(size.width), Scale(size.height)); }
 
-  Size Unscale(const Size& size) const {
-    return Size(Unscale(size.width), Unscale(size.height));
-  }
+  Size Unscale(const Size& size) const { return Size(Unscale(size.width), Unscale(size.height)); }
 
   Rect Scale(const Rect& rect) const {
-    return Rect(Scale(rect.x), Scale(rect.y),
-                Scale(rect.width), Scale(rect.height));
+    return Rect(Scale(rect.x), Scale(rect.y), Scale(rect.width), Scale(rect.height));
   }
 
   Rect Unscale(const Rect& rect) const {
-    return Rect(Unscale(rect.x), Unscale(rect.y),
-                Unscale(rect.width), Unscale(rect.height));
+    return Rect(Unscale(rect.x), Unscale(rect.y), Unscale(rect.width), Unscale(rect.height));
   }
 
   std::string ToString() const {

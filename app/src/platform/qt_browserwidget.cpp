@@ -6,14 +6,16 @@
  */
 
 #include "platform/qt_browserwidget.h"
-#include "platform/qt_mainwindow.h"
+
 #include "browser/cef_client.h"
+#include "include/cef_browser.h"
+#include "platform/qt_mainwindow.h"
 #include "rendering/gl_renderer.h"
 #include "utils/logging.h"
-#include "include/cef_browser.h"
+
+#include <GL/gl.h>
 
 #include <QDebug>
-#include <GL/gl.h>
 
 namespace athena {
 namespace platform {
@@ -29,12 +31,11 @@ static Logger logger("BrowserWidget");
 // ============================================================================
 
 BrowserWidget::BrowserWidget(QtMainWindow* window, size_t tab_index, QWidget* parent)
-    : QOpenGLWidget(parent)
-    , window_(window)
-    , tab_index_(tab_index)
-    , renderer_(nullptr)
-    , gl_initialized_(false)
-{
+    : QOpenGLWidget(parent),
+      window_(window),
+      tab_index_(tab_index),
+      renderer_(nullptr),
+      gl_initialized_(false) {
   setFocusPolicy(Qt::StrongFocus);
   setMouseTracking(true);
 
@@ -160,10 +161,17 @@ void BrowserWidget::mousePressEvent(QMouseEvent* event) {
 
   CefBrowserHost::MouseButtonType buttonType;
   switch (event->button()) {
-    case Qt::LeftButton:   buttonType = MBT_LEFT; break;
-    case Qt::MiddleButton: buttonType = MBT_MIDDLE; break;
-    case Qt::RightButton:  buttonType = MBT_RIGHT; break;
-    default: return;
+    case Qt::LeftButton:
+      buttonType = MBT_LEFT;
+      break;
+    case Qt::MiddleButton:
+      buttonType = MBT_MIDDLE;
+      break;
+    case Qt::RightButton:
+      buttonType = MBT_RIGHT;
+      break;
+    default:
+      return;
   }
 
   int clickCount = 1;
@@ -171,9 +179,7 @@ void BrowserWidget::mousePressEvent(QMouseEvent* event) {
     clickCount = 2;
   }
 
-  client->GetBrowser()->GetHost()->SendMouseClickEvent(
-      mouseEvent, buttonType, false, clickCount
-  );
+  client->GetBrowser()->GetHost()->SendMouseClickEvent(mouseEvent, buttonType, false, clickCount);
 }
 
 void BrowserWidget::mouseReleaseEvent(QMouseEvent* event) {
@@ -191,15 +197,20 @@ void BrowserWidget::mouseReleaseEvent(QMouseEvent* event) {
 
   CefBrowserHost::MouseButtonType buttonType;
   switch (event->button()) {
-    case Qt::LeftButton:   buttonType = MBT_LEFT; break;
-    case Qt::MiddleButton: buttonType = MBT_MIDDLE; break;
-    case Qt::RightButton:  buttonType = MBT_RIGHT; break;
-    default: return;
+    case Qt::LeftButton:
+      buttonType = MBT_LEFT;
+      break;
+    case Qt::MiddleButton:
+      buttonType = MBT_MIDDLE;
+      break;
+    case Qt::RightButton:
+      buttonType = MBT_RIGHT;
+      break;
+    default:
+      return;
   }
 
-  client->GetBrowser()->GetHost()->SendMouseClickEvent(
-      mouseEvent, buttonType, true, 1
-  );
+  client->GetBrowser()->GetHost()->SendMouseClickEvent(mouseEvent, buttonType, true, 1);
 }
 
 void BrowserWidget::wheelEvent(QWheelEvent* event) {
@@ -225,9 +236,7 @@ void BrowserWidget::wheelEvent(QWheelEvent* event) {
   int deltaX = event->angleDelta().x() / 8 * 5;
   int deltaY = event->angleDelta().y() / 8 * 5;
 
-  client->GetBrowser()->GetHost()->SendMouseWheelEvent(
-      mouseEvent, deltaX, deltaY
-  );
+  client->GetBrowser()->GetHost()->SendMouseWheelEvent(mouseEvent, deltaX, deltaY);
 }
 
 void BrowserWidget::keyPressEvent(QKeyEvent* event) {
@@ -314,18 +323,24 @@ void BrowserWidget::focusOutEvent(QFocusEvent* event) {
 // ============================================================================
 
 uint32_t BrowserWidget::getCefModifiers(Qt::KeyboardModifiers qtMods,
-                                       Qt::MouseButtons qtButtons) const {
+                                        Qt::MouseButtons qtButtons) const {
   uint32_t cefMods = 0;
 
   // Keyboard modifiers
-  if (qtMods & Qt::ShiftModifier)   cefMods |= EVENTFLAG_SHIFT_DOWN;
-  if (qtMods & Qt::ControlModifier) cefMods |= EVENTFLAG_CONTROL_DOWN;
-  if (qtMods & Qt::AltModifier)     cefMods |= EVENTFLAG_ALT_DOWN;
+  if (qtMods & Qt::ShiftModifier)
+    cefMods |= EVENTFLAG_SHIFT_DOWN;
+  if (qtMods & Qt::ControlModifier)
+    cefMods |= EVENTFLAG_CONTROL_DOWN;
+  if (qtMods & Qt::AltModifier)
+    cefMods |= EVENTFLAG_ALT_DOWN;
 
   // Mouse button modifiers
-  if (qtButtons & Qt::LeftButton)   cefMods |= EVENTFLAG_LEFT_MOUSE_BUTTON;
-  if (qtButtons & Qt::MiddleButton) cefMods |= EVENTFLAG_MIDDLE_MOUSE_BUTTON;
-  if (qtButtons & Qt::RightButton)  cefMods |= EVENTFLAG_RIGHT_MOUSE_BUTTON;
+  if (qtButtons & Qt::LeftButton)
+    cefMods |= EVENTFLAG_LEFT_MOUSE_BUTTON;
+  if (qtButtons & Qt::MiddleButton)
+    cefMods |= EVENTFLAG_MIDDLE_MOUSE_BUTTON;
+  if (qtButtons & Qt::RightButton)
+    cefMods |= EVENTFLAG_RIGHT_MOUSE_BUTTON;
 
   return cefMods;
 }
@@ -346,25 +361,44 @@ int BrowserWidget::getWindowsKeyCode(int qtKey) const {
   }
 
   switch (qtKey) {
-    case Qt::Key_Return:     return 0x0D;
-    case Qt::Key_Escape:     return 0x1B;
-    case Qt::Key_Backspace:  return 0x08;
-    case Qt::Key_Tab:        return 0x09;
-    case Qt::Key_Space:      return 0x20;
-    case Qt::Key_Delete:     return 0x2E;
-    case Qt::Key_Home:       return 0x24;
-    case Qt::Key_End:        return 0x23;
-    case Qt::Key_PageUp:     return 0x21;
-    case Qt::Key_PageDown:   return 0x22;
-    case Qt::Key_Left:       return 0x25;
-    case Qt::Key_Up:         return 0x26;
-    case Qt::Key_Right:      return 0x27;
-    case Qt::Key_Down:       return 0x28;
-    case Qt::Key_Insert:     return 0x2D;
-    case Qt::Key_Shift:      return 0x10;
-    case Qt::Key_Control:    return 0x11;
-    case Qt::Key_Alt:        return 0x12;
-    default:                 return qtKey;
+    case Qt::Key_Return:
+      return 0x0D;
+    case Qt::Key_Escape:
+      return 0x1B;
+    case Qt::Key_Backspace:
+      return 0x08;
+    case Qt::Key_Tab:
+      return 0x09;
+    case Qt::Key_Space:
+      return 0x20;
+    case Qt::Key_Delete:
+      return 0x2E;
+    case Qt::Key_Home:
+      return 0x24;
+    case Qt::Key_End:
+      return 0x23;
+    case Qt::Key_PageUp:
+      return 0x21;
+    case Qt::Key_PageDown:
+      return 0x22;
+    case Qt::Key_Left:
+      return 0x25;
+    case Qt::Key_Up:
+      return 0x26;
+    case Qt::Key_Right:
+      return 0x27;
+    case Qt::Key_Down:
+      return 0x28;
+    case Qt::Key_Insert:
+      return 0x2D;
+    case Qt::Key_Shift:
+      return 0x10;
+    case Qt::Key_Control:
+      return 0x11;
+    case Qt::Key_Alt:
+      return 0x12;
+    default:
+      return qtKey;
   }
 }
 

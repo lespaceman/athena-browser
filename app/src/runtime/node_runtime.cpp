@@ -1,15 +1,17 @@
 #include "runtime/node_runtime.h"
+
 #include "utils/logging.h"
-#include <unistd.h>
+
+#include <cstring>
+#include <fcntl.h>
+#include <filesystem>
 #include <signal.h>
-#include <sys/wait.h>
+#include <sstream>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <fcntl.h>
-#include <cstring>
-#include <sstream>
+#include <sys/wait.h>
 #include <thread>
-#include <filesystem>
+#include <unistd.h>
 
 // Platform-specific includes for timers
 #ifdef ATHENA_USE_QT
@@ -67,8 +69,7 @@ utils::Result<void> NodeRuntime::Initialize() {
   }
 
   if (access(config_.runtime_script_path.c_str(), R_OK) != 0) {
-    return utils::Error("Runtime script not found or not readable: " +
-                       config_.runtime_script_path);
+    return utils::Error("Runtime script not found or not readable: " + config_.runtime_script_path);
   }
 
   // Clean up stale socket file BEFORE spawning
@@ -78,7 +79,8 @@ utils::Result<void> NodeRuntime::Initialize() {
       std::filesystem::remove(config_.socket_path);
       logger.Debug("NodeRuntime::Initialize - Stale socket removed successfully");
     } catch (const std::filesystem::filesystem_error& e) {
-      logger.Warn("NodeRuntime::Initialize - Failed to remove stale socket: " + std::string(e.what()));
+      logger.Warn("NodeRuntime::Initialize - Failed to remove stale socket: " +
+                  std::string(e.what()));
       // Continue anyway - socket might be in use by another instance
     }
   }
@@ -204,8 +206,8 @@ static gboolean health_check_callback(gpointer user_data) {
     return G_SOURCE_CONTINUE;  // Keep checking
   }
 
-  logger.Debug("NodeRuntime - Health check passed (uptime: " +
-               std::to_string(health.uptime_ms) + "ms)");
+  logger.Debug("NodeRuntime - Health check passed (uptime: " + std::to_string(health.uptime_ms) +
+               "ms)");
   return G_SOURCE_CONTINUE;  // Keep checking
 }
 #endif
@@ -253,18 +255,16 @@ void NodeRuntime::StartHealthMonitoring() {
       return;
     }
 
-    logger.Debug("NodeRuntime - Health check passed (uptime: " +
-                 std::to_string(health.uptime_ms) + "ms)");
+    logger.Debug("NodeRuntime - Health check passed (uptime: " + std::to_string(health.uptime_ms) +
+                 "ms)");
   });
 
   timer->start();
   health_check_timer_handle_ = static_cast<void*>(timer);
 #else
   // GTK: Use GLib timeout for periodic health checks
-  unsigned int timer_id = g_timeout_add(
-      config_.health_check_interval_ms,
-      health_check_callback,
-      this);
+  unsigned int timer_id =
+      g_timeout_add(config_.health_check_interval_ms, health_check_callback, this);
   health_check_timer_handle_ = reinterpret_cast<void*>(static_cast<uintptr_t>(timer_id));
 #endif
 
@@ -290,7 +290,8 @@ void NodeRuntime::StopHealthMonitoring() {
 #else
   // GTK: Remove GLib timeout
   if (health_check_timer_handle_) {
-    unsigned int timer_id = static_cast<unsigned int>(reinterpret_cast<uintptr_t>(health_check_timer_handle_));
+    unsigned int timer_id =
+        static_cast<unsigned int>(reinterpret_cast<uintptr_t>(health_check_timer_handle_));
     g_source_remove(timer_id);
     health_check_timer_handle_ = nullptr;
   }
@@ -304,9 +305,9 @@ void NodeRuntime::StopHealthMonitoring() {
 // ============================================================================
 
 utils::Result<std::string> NodeRuntime::Call(const std::string& method,
-                                              const std::string& path,
-                                              const std::string& body,
-                                              const std::string& request_id) {
+                                             const std::string& path,
+                                             const std::string& body,
+                                             const std::string& request_id) {
   if (state_ != RuntimeState::READY) {
     return utils::Error("Runtime not ready");
   }
@@ -378,8 +379,8 @@ utils::Result<std::string> NodeRuntime::Call(const std::string& method,
     response += buffer;
     read_attempts++;
 
-    logger.Debug("NodeRuntime::Call - Received " + std::to_string(received) +
-                 " bytes (attempt " + std::to_string(read_attempts) + ")");
+    logger.Debug("NodeRuntime::Call - Received " + std::to_string(received) + " bytes (attempt " +
+                 std::to_string(read_attempts) + ")");
 
     // Check if we got the headers (end with \r\n\r\n)
     if (response.find("\r\n\r\n") != std::string::npos) {
@@ -389,8 +390,8 @@ utils::Result<std::string> NodeRuntime::Call(const std::string& method,
 
   if (received <= 0) {
     close(sock);
-    std::string error_msg = "Failed to receive response headers after " +
-                           std::to_string(read_attempts) + " attempts";
+    std::string error_msg =
+        "Failed to receive response headers after " + std::to_string(read_attempts) + " attempts";
     if (received < 0) {
       error_msg += ": " + std::string(strerror(errno));
     } else {
@@ -400,7 +401,8 @@ utils::Result<std::string> NodeRuntime::Call(const std::string& method,
     return utils::Error(error_msg);
   }
 
-  logger.Debug("NodeRuntime::Call - Received full headers (" + std::to_string(response.length()) + " bytes)");
+  logger.Debug("NodeRuntime::Call - Received full headers (" + std::to_string(response.length()) +
+               " bytes)");
 
   // Parse Content-Length from headers
   size_t content_length = 0;
@@ -719,9 +721,9 @@ void NodeRuntime::HandleCrash() {
 
   // Attempt restart if within limits
   if (restart_attempts_ < config_.restart_max_attempts) {
-    logger.Info("NodeRuntime - Attempting restart: attempt=" +
-                std::to_string(restart_attempts_ + 1) + "/" +
-                std::to_string(config_.restart_max_attempts));
+    logger.Info(
+        "NodeRuntime - Attempting restart: attempt=" + std::to_string(restart_attempts_ + 1) + "/" +
+        std::to_string(config_.restart_max_attempts));
 
     auto result = Restart();
     if (!result) {
@@ -737,8 +739,8 @@ utils::Result<void> NodeRuntime::Restart() {
 
   // Calculate backoff
   int backoff_ms = CalculateBackoff();
-  logger.Debug("NodeRuntime - Waiting backoff before restart: " +
-               std::to_string(backoff_ms) + "ms");
+  logger.Debug("NodeRuntime - Waiting backoff before restart: " + std::to_string(backoff_ms) +
+               "ms");
 
   std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
 

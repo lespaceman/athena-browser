@@ -2,12 +2,13 @@
 #define ATHENA_BROWSER_CEF_CLIENT_H_
 
 #include "include/cef_client.h"
-#include "include/cef_life_span_handler.h"
 #include "include/cef_display_handler.h"
+#include "include/cef_life_span_handler.h"
 #include "include/cef_load_handler.h"
-#include "include/cef_render_handler.h"
 #include "include/cef_process_message.h"
+#include "include/cef_render_handler.h"
 #include "rendering/gl_renderer.h"
+
 #include <atomic>
 #include <functional>
 #include <mutex>
@@ -199,17 +200,17 @@ class CefClient : public ::CefClient,
   }
 
  private:
-  void* native_window_;              // Platform-specific window handle (non-owning)
-  CefRefPtr<::CefBrowser> browser_;  // CEF browser instance
+  void* native_window_;                 // Platform-specific window handle (non-owning)
+  CefRefPtr<::CefBrowser> browser_;     // CEF browser instance
   rendering::GLRenderer* gl_renderer_;  // GL renderer (non-owning)
-  int width_;                        // Logical view width
-  int height_;                       // Logical view height
-  float device_scale_factor_;        // HiDPI scale factor (1.0, 2.0, etc.)
+  int width_;                           // Logical view width
+  int height_;                          // Logical view height
+  float device_scale_factor_;           // HiDPI scale factor (1.0, 2.0, etc.)
 
   // Callbacks for UI updates
-  std::function<void(const std::string&)> on_address_change_;         // URL changed
-  std::function<void(bool, bool, bool)> on_loading_state_change_;     // Loading state changed
-  std::function<void(const std::string&)> on_title_change_;           // Title changed
+  std::function<void(const std::string&)> on_address_change_;      // URL changed
+  std::function<void(bool, bool, bool)> on_loading_state_change_;  // Loading state changed
+  std::function<void(const std::string&)> on_title_change_;        // Title changed
   std::function<void(CefRenderHandler::PaintElementType)> on_render_invalidated_;
 
   struct JavaScriptRequest {

@@ -1,16 +1,18 @@
 #include "core/browser_window.h"
-#include "mocks/mock_window_system.h"
+
 #include "mocks/mock_browser_engine.h"
-#include <gtest/gtest.h>
+#include "mocks/mock_window_system.h"
+
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 using namespace athena::core;
 using namespace athena::platform;
 using namespace athena::browser;
 using namespace athena::utils;
 using ::testing::_;
-using ::testing::Return;
 using ::testing::Invoke;
+using ::testing::Return;
 
 class BrowserWindowTest : public ::testing::Test {
  protected:
@@ -23,13 +25,10 @@ class BrowserWindowTest : public ::testing::Test {
     char** dummy_argv = nullptr;
     window_system_->Initialize(dummy_argc, dummy_argv, browser_engine_.get());
 
-    ON_CALL(*browser_engine_, IsInitialized())
-        .WillByDefault(Return(true));
+    ON_CALL(*browser_engine_, IsInitialized()).WillByDefault(Return(true));
   }
 
-  void TearDown() override {
-    window_system_->Shutdown();
-  }
+  void TearDown() override { window_system_->Shutdown(); }
 
   std::unique_ptr<athena::platform::testing::MockWindowSystem> window_system_;
   std::unique_ptr<athena::browser::testing::MockBrowserEngine> browser_engine_;
@@ -73,8 +72,7 @@ TEST_F(BrowserWindowTest, ShowInitializesWindow) {
   BrowserWindowCallbacks callbacks;
 
   // Expect browser creation
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
 
@@ -89,8 +87,7 @@ TEST_F(BrowserWindowTest, ShowLoadsInitialURL) {
   config.url = "https://example.com";
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   // Expect LoadURL to be called with initial URL
   EXPECT_CALL(*browser_engine_, LoadURL(1, "https://example.com"));
@@ -104,8 +101,7 @@ TEST_F(BrowserWindowTest, ShowWithEmptyURLDoesNotLoad) {
   config.url = "";
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   // LoadURL should NOT be called
   EXPECT_CALL(*browser_engine_, LoadURL(_, _)).Times(0);
@@ -128,8 +124,7 @@ TEST_F(BrowserWindowTest, ShowFailsWhenWindowSystemNotInitialized) {
 }
 
 TEST_F(BrowserWindowTest, ShowFailsWhenBrowserEngineNotInitialized) {
-  ON_CALL(*browser_engine_, IsInitialized())
-      .WillByDefault(Return(false));
+  ON_CALL(*browser_engine_, IsInitialized()).WillByDefault(Return(false));
 
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
@@ -169,8 +164,7 @@ TEST_F(BrowserWindowTest, HideHidesWindow) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -189,8 +183,7 @@ TEST_F(BrowserWindowTest, CloseClosesWindowAndBrowser) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   EXPECT_CALL(*browser_engine_, CloseBrowser(1, false));
 
@@ -205,8 +198,7 @@ TEST_F(BrowserWindowTest, CloseWithForceFlag) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   EXPECT_CALL(*browser_engine_, CloseBrowser(1, true));
 
@@ -226,8 +218,7 @@ TEST_F(BrowserWindowTest, GetSetTitle) {
   config.title = "Initial Title";
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -243,15 +234,14 @@ TEST_F(BrowserWindowTest, GetSetSize) {
   config.size = {800, 600};
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   // Expect LoadURL to be called with default "about:blank"
   EXPECT_CALL(*browser_engine_, LoadURL(1, "about:blank"));
 
-  // Expect browser to be notified of size change (called twice - once from callback, once from explicit SetSize)
-  EXPECT_CALL(*browser_engine_, SetSize(1, 1024, 768))
-      .Times(2);
+  // Expect browser to be notified of size change (called twice - once from callback, once from
+  // explicit SetSize)
+  EXPECT_CALL(*browser_engine_, SetSize(1, 1024, 768)).Times(2);
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -268,8 +258,7 @@ TEST_F(BrowserWindowTest, GetScaleFactor) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -281,8 +270,7 @@ TEST_F(BrowserWindowTest, FocusRequestsFocus) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -301,14 +289,11 @@ TEST_F(BrowserWindowTest, LoadURL) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   // Expect LoadURL to be called with default "about:blank" first, then with "https://example.com"
-  EXPECT_CALL(*browser_engine_, LoadURL(1, "about:blank"))
-      .Times(1);
-  EXPECT_CALL(*browser_engine_, LoadURL(1, "https://example.com"))
-      .Times(1);
+  EXPECT_CALL(*browser_engine_, LoadURL(1, "about:blank")).Times(1);
+  EXPECT_CALL(*browser_engine_, LoadURL(1, "https://example.com")).Times(1);
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -320,8 +305,7 @@ TEST_F(BrowserWindowTest, GoBack) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   EXPECT_CALL(*browser_engine_, GoBack(1));
 
@@ -335,8 +319,7 @@ TEST_F(BrowserWindowTest, GoForward) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   EXPECT_CALL(*browser_engine_, GoForward(1));
 
@@ -350,8 +333,7 @@ TEST_F(BrowserWindowTest, Reload) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   EXPECT_CALL(*browser_engine_, Reload(1, false));
 
@@ -365,8 +347,7 @@ TEST_F(BrowserWindowTest, ReloadIgnoreCache) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   EXPECT_CALL(*browser_engine_, Reload(1, true));
 
@@ -380,8 +361,7 @@ TEST_F(BrowserWindowTest, StopLoad) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   EXPECT_CALL(*browser_engine_, StopLoad(1));
 
@@ -399,11 +379,9 @@ TEST_F(BrowserWindowTest, CanGoBack) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
-  EXPECT_CALL(*browser_engine_, CanGoBack(1))
-      .WillOnce(Return(true));
+  EXPECT_CALL(*browser_engine_, CanGoBack(1)).WillOnce(Return(true));
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -415,11 +393,9 @@ TEST_F(BrowserWindowTest, CanGoForward) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
-  EXPECT_CALL(*browser_engine_, CanGoForward(1))
-      .WillOnce(Return(false));
+  EXPECT_CALL(*browser_engine_, CanGoForward(1)).WillOnce(Return(false));
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -431,11 +407,9 @@ TEST_F(BrowserWindowTest, IsLoading) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
-  EXPECT_CALL(*browser_engine_, IsLoading(1))
-      .WillOnce(Return(true));
+  EXPECT_CALL(*browser_engine_, IsLoading(1)).WillOnce(Return(true));
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -447,11 +421,9 @@ TEST_F(BrowserWindowTest, GetURL) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
-  EXPECT_CALL(*browser_engine_, GetURL(1))
-      .WillOnce(Return("https://example.com"));
+  EXPECT_CALL(*browser_engine_, GetURL(1)).WillOnce(Return("https://example.com"));
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -474,15 +446,13 @@ TEST_F(BrowserWindowTest, ResizeCallback) {
     callback_height = h;
   };
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   // Expect LoadURL to be called with default "about:blank"
   EXPECT_CALL(*browser_engine_, LoadURL(1, "about:blank"));
 
   // Expect SetSize to be called twice (once from callback, once from explicit SetSize)
-  EXPECT_CALL(*browser_engine_, SetSize(1, 1024, 768))
-      .Times(2);
+  EXPECT_CALL(*browser_engine_, SetSize(1, 1024, 768)).Times(2);
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -498,12 +468,9 @@ TEST_F(BrowserWindowTest, CloseCallback) {
   BrowserWindowCallbacks callbacks;
 
   bool close_called = false;
-  callbacks.on_close = [&]() {
-    close_called = true;
-  };
+  callbacks.on_close = [&]() { close_called = true; };
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   EXPECT_CALL(*browser_engine_, CloseBrowser(1, false));
 
@@ -520,12 +487,9 @@ TEST_F(BrowserWindowTest, FocusChangeCallback) {
   BrowserWindowCallbacks callbacks;
 
   bool focus_state = false;
-  callbacks.on_focus_changed = [&](bool focused) {
-    focus_state = focused;
-  };
+  callbacks.on_focus_changed = [&](bool focused) { focus_state = focused; };
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   EXPECT_CALL(*browser_engine_, SetFocus(1, true));
 
@@ -545,8 +509,7 @@ TEST_F(BrowserWindowTest, GetBrowserId) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(42)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(42)));
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -558,8 +521,7 @@ TEST_F(BrowserWindowTest, GetWindow) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   BrowserWindow window(config, callbacks, window_system_.get(), browser_engine_.get());
   window.Show();
@@ -594,8 +556,7 @@ TEST_F(BrowserWindowTest, DestructorClosesBrowser) {
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
 
-  EXPECT_CALL(*browser_engine_, CreateBrowser(_))
-      .WillOnce(Return(Result<BrowserId>(1)));
+  EXPECT_CALL(*browser_engine_, CreateBrowser(_)).WillOnce(Return(Result<BrowserId>(1)));
 
   EXPECT_CALL(*browser_engine_, CloseBrowser(1, true));
 

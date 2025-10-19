@@ -1,23 +1,23 @@
 #ifndef ATHENA_PLATFORM_QT_CLAUDE_PANEL_H_
 #define ATHENA_PLATFORM_QT_CLAUDE_PANEL_H_
 
-#include <QWidget>
-#include <QVBoxLayout>
-#include <QScrollArea>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QTextEdit>
-#include <QLabel>
-#include <QFrame>
-#include <QPropertyAnimation>
-#include <QGraphicsOpacityEffect>
-#include <QTimer>
-#include <memory>
 #include <deque>
+#include <memory>
+#include <QFrame>
+#include <QGraphicsOpacityEffect>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPropertyAnimation>
+#include <QPushButton>
+#include <QScrollArea>
+#include <QTextEdit>
+#include <QTimer>
+#include <QVBoxLayout>
+#include <QWidget>
 
 namespace athena {
 namespace runtime {
-  class NodeRuntime;
+class NodeRuntime;
 }
 
 namespace platform {
@@ -147,7 +147,7 @@ class ClaudePanel : public QWidget {
   // Member Variables
   // ============================================================================
 
-  QtMainWindow* window_;  // Non-owning
+  QtMainWindow* window_;                // Non-owning
   runtime::NodeRuntime* node_runtime_;  // Non-owning
 
   // State
@@ -240,10 +240,7 @@ class ChatBubble : public QFrame {
   Q_OBJECT
 
  public:
-  enum class Role {
-    User,
-    Assistant
-  };
+  enum class Role { User, Assistant };
 
   explicit ChatBubble(Role role, const QString& message, QWidget* parent = nullptr);
 
@@ -281,7 +278,7 @@ class ChatBubble : public QFrame {
 
   // UI Components
   QVBoxLayout* layout_;
-  QLabel* roleLabel_;        // "You" or "Claude"
+  QLabel* roleLabel_;         // "You" or "Claude"
   QTextEdit* contentWidget_;  // Message content (read-only)
   QPushButton* copyButton_;   // Copy message button
 

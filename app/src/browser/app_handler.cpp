@@ -1,10 +1,12 @@
 #include "browser/app_handler.h"
-#include "resources/scheme_handler.h"
-#include "cef_scheme.h"
+
 #include "cef_command_line.h"
+#include "cef_scheme.h"
+#include "resources/scheme_handler.h"
 #include "wrapper/cef_helpers.h"
 // For message router renderer side
 #include "wrapper/cef_message_router.h"
+
 #include <cstdio>
 
 AppHandler::AppHandler() {}
@@ -33,17 +35,16 @@ void AppHandler::OnBeforeCommandLineProcessing(const CefString& process_type,
 
 void AppHandler::OnContextInitialized() {
   CEF_REQUIRE_UI_THREAD();
-  
+
   // Register the custom scheme handler factory for app://
   CefRegisterSchemeHandlerFactory("app", "", new AppSchemeHandlerFactory());
 }
 
 void AppHandler::OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) {
   // Register app:// as a standard, secure scheme with CORS support
-  registrar->AddCustomScheme("app", 
-    CEF_SCHEME_OPTION_STANDARD | 
-    CEF_SCHEME_OPTION_SECURE | 
-    CEF_SCHEME_OPTION_CORS_ENABLED);
+  registrar->AddCustomScheme(
+      "app",
+      CEF_SCHEME_OPTION_STANDARD | CEF_SCHEME_OPTION_SECURE | CEF_SCHEME_OPTION_CORS_ENABLED);
 }
 
 void AppHandler::OnContextCreated(CefRefPtr<CefBrowser> browser,
@@ -85,7 +86,8 @@ bool AppHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
                                           CefProcessId source_process,
                                           CefRefPtr<CefProcessMessage> message) {
   CEF_REQUIRE_RENDERER_THREAD();
-  if (renderer_router_ && renderer_router_->OnProcessMessageReceived(browser, frame, source_process, message)) {
+  if (renderer_router_ &&
+      renderer_router_->OnProcessMessageReceived(browser, frame, source_process, message)) {
     return true;
   }
 
@@ -111,11 +113,21 @@ bool AppHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
     out.reserve(input.size());
     for (char c : input) {
       switch (c) {
-        case '\\': out += "\\\\"; break;
-        case '"':  out += "\\\""; break;
-        case '\n': out += "\\n"; break;
-        case '\r': out += "\\r"; break;
-        case '\t': out += "\\t"; break;
+        case '\\':
+          out += "\\\\";
+          break;
+        case '"':
+          out += "\\\"";
+          break;
+        case '\n':
+          out += "\\n";
+          break;
+        case '\r':
+          out += "\\r";
+          break;
+        case '\t':
+          out += "\\t";
+          break;
         default:
           if (static_cast<unsigned char>(c) < 0x20) {
             char buffer[7];
@@ -130,7 +142,8 @@ bool AppHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
     return out;
   };
 
-  std::string payload = R"({"success":false,"error":{"message":"Unable to enter V8 context","stack":""}})";
+  std::string payload =
+      R"({"success":false,"error":{"message":"Unable to enter V8 context","stack":""}})";
   CefRefPtr<CefV8Context> context = frame->GetV8Context();
   if (context && context->Enter()) {
     CefRefPtr<CefV8Value> retval;
@@ -200,7 +213,8 @@ bool AppHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
     context->Exit();
   }
 
-  CefRefPtr<CefProcessMessage> response = CefProcessMessage::Create("Athena.ExecuteJavaScriptResult");
+  CefRefPtr<CefProcessMessage> response =
+      CefProcessMessage::Create("Athena.ExecuteJavaScriptResult");
   CefRefPtr<CefListValue> response_args = response->GetArgumentList();
   response_args->SetString(0, request_id);
   response_args->SetString(1, payload);

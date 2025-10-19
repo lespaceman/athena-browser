@@ -2,28 +2,29 @@
 #define ATHENA_PLATFORM_QT_MAINWINDOW_H_
 
 #include "platform/window_system.h"
-#include <QMainWindow>
-#include <QToolBar>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QTabWidget>
+
 #include <memory>
 #include <mutex>
+#include <QLineEdit>
+#include <QMainWindow>
+#include <QPushButton>
+#include <QTabWidget>
+#include <QToolBar>
 #include <vector>
 
 namespace athena {
 namespace rendering {
-  class GLRenderer;
+class GLRenderer;
 }
 
 namespace browser {
-  class CefClient;
-  class BrowserEngine;
-  using BrowserId = uint64_t;
-}
+class CefClient;
+class BrowserEngine;
+using BrowserId = uint64_t;
+}  // namespace browser
 
 namespace runtime {
-  class NodeRuntime;
+class NodeRuntime;
 }
 
 namespace platform {
@@ -41,14 +42,14 @@ class ClaudePanel;
  *   - CefClient reference (non-owning, managed by BrowserEngine)
  */
 struct QtTab {
-  browser::BrowserId browser_id;       // Browser instance ID
-  browser::CefClient* cef_client;      // Non-owning pointer to CefClient
-  BrowserWidget* browser_widget;       // Owned by QTabWidget, non-owning pointer here
-  QString title;                       // Page title
-  QString url;                         // Current URL
-  bool is_loading;                     // Loading state
-  bool can_go_back;                    // Can navigate back
-  bool can_go_forward;                 // Can navigate forward
+  browser::BrowserId browser_id;                    // Browser instance ID
+  browser::CefClient* cef_client;                   // Non-owning pointer to CefClient
+  BrowserWidget* browser_widget;                    // Owned by QTabWidget, non-owning pointer here
+  QString title;                                    // Page title
+  QString url;                                      // Current URL
+  bool is_loading;                                  // Loading state
+  bool can_go_back;                                 // Can navigate back
+  bool can_go_forward;                              // Can navigate forward
   std::unique_ptr<rendering::GLRenderer> renderer;  // Dedicated renderer surface
 };
 
@@ -71,8 +72,20 @@ struct QtTab {
  *   - GLRenderer (manages textures and rendering)
  *   - CefClient (browser instance)
  *
- * Future phases will add:
- *   - Claude sidebar (Phase 3)
+ * Thread Safety & Threading Model:
+ *   - All public methods MUST be called from Qt's main UI thread
+ *   - tabs_mutex_ protects tab state accessed from both UI and CEF threads
+ *   - CEF callbacks may arrive on different threads - use QMetaObject::invokeMethod
+ *     with Qt::QueuedConnection to marshal calls back to the main thread
+ *   - WaitForLoadToComplete() processes Qt events (QCoreApplication::processEvents())
+ *     and CEF events (CefDoMessageLoopWork()) to prevent UI freezing during waits
+ *   - ExecuteJavaScript() polls for results while processing events - does not block UI
+ *
+ * Performance Characteristics:
+ *   - Event processing in WaitForLoadToComplete() keeps UI responsive during navigation
+ *   - JavaScript execution returns structured objects directly (no double JSON parsing)
+ *   - Lock scope minimization: extract data while holding lock, then release before
+ *     calling external code (CEF, Qt widgets) to avoid deadlocks
  */
 class QtMainWindow : public QMainWindow, public Window {
   Q_OBJECT
@@ -356,7 +369,7 @@ class QtMainWindow : public QMainWindow, public Window {
   // Window configuration and state
   WindowConfig config_;
   WindowCallbacks callbacks_;
-  browser::BrowserEngine* engine_;  // Non-owning
+  browser::BrowserEngine* engine_;      // Non-owning
   runtime::NodeRuntime* node_runtime_;  // Non-owning
   bool closed_;
   bool visible_;
@@ -370,15 +383,15 @@ class QtMainWindow : public QMainWindow, public Window {
   QPushButton* forwardButton_;
   QPushButton* reloadButton_;
   QPushButton* stopButton_;
-  QPushButton* newTabButton_;       // "+" button to create new tabs
-  QPushButton* claudeButton_;       // Toggle Claude sidebar
-  QTabWidget* tabWidget_;           // Tab container (replaces single browserWidget_)
-  ClaudePanel* claudePanel_;        // Claude chat sidebar
+  QPushButton* newTabButton_;  // "+" button to create new tabs
+  QPushButton* claudeButton_;  // Toggle Claude sidebar
+  QTabWidget* tabWidget_;      // Tab container (replaces single browserWidget_)
+  ClaudePanel* claudePanel_;   // Claude chat sidebar
 
   // Tab management (Phase 2: full multi-tab support)
-  std::vector<QtTab> tabs_;         // All open tabs
-  size_t active_tab_index_;         // Index of currently active tab
-  mutable std::mutex tabs_mutex_;   // Protects tabs_ and active_tab_index_
+  std::vector<QtTab> tabs_;        // All open tabs
+  size_t active_tab_index_;        // Index of currently active tab
+  mutable std::mutex tabs_mutex_;  // Protects tabs_ and active_tab_index_
 
   QString current_url_;
 };
@@ -404,8 +417,7 @@ class QtWindowSystem : public WindowSystem {
   // Lifecycle Management
   // ============================================================================
 
-  utils::Result<void> Initialize(int& argc, char* argv[],
-                                  browser::BrowserEngine* engine) override;
+  utils::Result<void> Initialize(int& argc, char* argv[], browser::BrowserEngine* engine) override;
   void Shutdown() override;
   bool IsInitialized() const override;
 
@@ -413,9 +425,8 @@ class QtWindowSystem : public WindowSystem {
   // Window Management
   // ============================================================================
 
-  utils::Result<std::shared_ptr<Window>> CreateWindow(
-      const WindowConfig& config,
-      const WindowCallbacks& callbacks) override;
+  utils::Result<std::shared_ptr<Window>> CreateWindow(const WindowConfig& config,
+                                                      const WindowCallbacks& callbacks) override;
 
   // ============================================================================
   // Event Loop
@@ -428,9 +439,9 @@ class QtWindowSystem : public WindowSystem {
  private:
   bool initialized_;
   bool running_;
-  browser::BrowserEngine* engine_;  // Non-owning
-  class QApplication* app_;         // Qt application instance (owned)
-  class QTimer* cef_timer_;         // CEF message pump timer (owned by app_)
+  browser::BrowserEngine* engine_;        // Non-owning
+  class QApplication* app_;               // Qt application instance (owned)
+  class QTimer* cef_timer_;               // CEF message pump timer (owned by app_)
   std::shared_ptr<QtMainWindow> window_;  // Main window instance
 };
 

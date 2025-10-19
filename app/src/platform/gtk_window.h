@@ -1,24 +1,26 @@
 #ifndef ATHENA_PLATFORM_GTK_WINDOW_H_
 #define ATHENA_PLATFORM_GTK_WINDOW_H_
 
+#include "include/cef_render_handler.h"
 #include "platform/window_system.h"
+
 #include <gtk/gtk.h>
+
 #include <memory>
 #include <mutex>
-#include "include/cef_render_handler.h"
 
 namespace athena {
 namespace rendering {
-  class GLRenderer;
+class GLRenderer;
 }
 
 namespace browser {
-  class CefClient;
-  class BrowserEngine;
-}
+class CefClient;
+class BrowserEngine;
+}  // namespace browser
 
 namespace runtime {
-  class NodeRuntime;
+class NodeRuntime;
 }
 
 namespace platform {
@@ -27,15 +29,15 @@ namespace platform {
  * Represents a single browser tab.
  */
 struct Tab {
-  browser::BrowserId browser_id;       // Browser instance ID
-  browser::CefClient* cef_client;      // Non-owning pointer to CefClient
-  GtkWidget* tab_label;                // Tab label widget (for notebook)
-  GtkWidget* close_button;             // Close button for this tab
-  std::string title;                   // Page title
-  std::string url;                     // Current URL
-  bool is_loading;                     // Loading state
-  bool can_go_back;                    // Can navigate back
-  bool can_go_forward;                 // Can navigate forward
+  browser::BrowserId browser_id;                    // Browser instance ID
+  browser::CefClient* cef_client;                   // Non-owning pointer to CefClient
+  GtkWidget* tab_label;                             // Tab label widget (for notebook)
+  GtkWidget* close_button;                          // Close button for this tab
+  std::string title;                                // Page title
+  std::string url;                                  // Current URL
+  bool is_loading;                                  // Loading state
+  bool can_go_back;                                 // Can navigate back
+  bool can_go_forward;                              // Can navigate forward
   std::unique_ptr<rendering::GLRenderer> renderer;  // Dedicated renderer surface
 };
 
@@ -353,25 +355,25 @@ class GtkWindow : public Window {
   // Window configuration and state
   WindowConfig config_;
   WindowCallbacks callbacks_;
-  browser::BrowserEngine* engine_;  // Non-owning
+  browser::BrowserEngine* engine_;      // Non-owning
   runtime::NodeRuntime* node_runtime_;  // Non-owning
   bool closed_;
   bool visible_;
   bool has_focus_;
 
   // GTK widgets
-  GtkWidget* window_;      // GtkWindow
-  GtkWidget* vbox_;        // Main vertical container
-  GtkWidget* toolbar_;     // Toolbar container (HBox)
+  GtkWidget* window_;   // GtkWindow
+  GtkWidget* vbox_;     // Main vertical container
+  GtkWidget* toolbar_;  // Toolbar container (HBox)
   GtkWidget* back_button_;
   GtkWidget* forward_button_;
   GtkWidget* reload_button_;
   GtkWidget* stop_button_;
-  GtkWidget* address_entry_;  // URL input field
-  GtkWidget* notebook_;    // GtkNotebook (tab container)
+  GtkWidget* address_entry_;   // URL input field
+  GtkWidget* notebook_;        // GtkNotebook (tab container)
   GtkWidget* new_tab_button_;  // New tab button
-  GtkWidget* hpaned_;      // Horizontal split container (browser | sidebar)
-  GtkWidget* gl_area_;     // GtkGLArea (rendering widget) - shared across tabs
+  GtkWidget* hpaned_;          // Horizontal split container (browser | sidebar)
+  GtkWidget* gl_area_;         // GtkGLArea (rendering widget) - shared across tabs
 
   // Claude Chat Sidebar widgets
   GtkWidget* sidebar_container_;      // Main sidebar VBox
@@ -386,13 +388,13 @@ class GtkWindow : public Window {
   GtkWidget* chat_send_button_;       // Send button
 
   // Tab management
-  std::vector<Tab> tabs_;         // All open tabs
-  size_t active_tab_index_;       // Index of currently active tab
-  mutable std::mutex tabs_mutex_; // Protects tabs_ and active_tab_index_
+  std::vector<Tab> tabs_;          // All open tabs
+  size_t active_tab_index_;        // Index of currently active tab
+  mutable std::mutex tabs_mutex_;  // Protects tabs_ and active_tab_index_
 
   // Claude Chat Sidebar state
-  bool sidebar_visible_;          // Track sidebar visibility
-  std::string current_session_id_; // Claude conversation session ID
+  bool sidebar_visible_;            // Track sidebar visibility
+  std::string current_session_id_;  // Claude conversation session ID
 
   /**
    * Initialize the GTK window and widgets.
@@ -447,8 +449,7 @@ class GtkWindowSystem : public WindowSystem {
   // Lifecycle Management
   // ============================================================================
 
-  utils::Result<void> Initialize(int& argc, char* argv[],
-                                  browser::BrowserEngine* engine) override;
+  utils::Result<void> Initialize(int& argc, char* argv[], browser::BrowserEngine* engine) override;
   void Shutdown() override;
   bool IsInitialized() const override;
 
@@ -456,9 +457,8 @@ class GtkWindowSystem : public WindowSystem {
   // Window Management
   // ============================================================================
 
-  utils::Result<std::shared_ptr<Window>> CreateWindow(
-      const WindowConfig& config,
-      const WindowCallbacks& callbacks) override;
+  utils::Result<std::shared_ptr<Window>> CreateWindow(const WindowConfig& config,
+                                                      const WindowCallbacks& callbacks) override;
 
   // ============================================================================
   // Event Loop

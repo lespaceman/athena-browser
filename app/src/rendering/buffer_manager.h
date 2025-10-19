@@ -1,11 +1,12 @@
 #ifndef ATHENA_RENDERING_BUFFER_MANAGER_H_
 #define ATHENA_RENDERING_BUFFER_MANAGER_H_
 
+#include "core/types.h"
+#include "utils/error.h"
+
 #include <cstdint>
 #include <memory>
 #include <vector>
-#include "core/types.h"
-#include "utils/error.h"
 
 namespace athena {
 namespace rendering {
@@ -18,7 +19,7 @@ class BufferManager {
   struct Buffer {
     std::unique_ptr<uint8_t[]> data;  // Automatic cleanup, no manual delete needed
     core::Size physical_size;         // Size in physical pixels
-    int stride;                        // Bytes per row (may be padded)
+    int stride;                       // Bytes per row (may be padded)
 
     // Construct a buffer with the given size
     // Stride is calculated to be 4-byte aligned (width * 4 bytes per pixel)
@@ -37,14 +38,10 @@ class BufferManager {
     const uint8_t* GetData() const { return data.get(); }
 
     // Get buffer size in bytes
-    size_t GetSizeInBytes() const {
-      return stride * physical_size.height;
-    }
+    size_t GetSizeInBytes() const { return stride * physical_size.height; }
 
     // Check if buffer is valid
-    bool IsValid() const {
-      return data != nullptr && !physical_size.IsEmpty();
-    }
+    bool IsValid() const { return data != nullptr && !physical_size.IsEmpty(); }
   };
 
   BufferManager() = default;
@@ -58,26 +55,21 @@ class BufferManager {
 
   // Allocate a new buffer with the given physical size
   // Returns Error if size is invalid or allocation fails
-  utils::Result<std::unique_ptr<Buffer>> AllocateBuffer(
-      const core::Size& physical_size);
+  utils::Result<std::unique_ptr<Buffer>> AllocateBuffer(const core::Size& physical_size);
 
   // Copy data from CEF buffer to our buffer
   // src: Source buffer (from CEF OnPaint)
   // dest: Destination buffer (must be already allocated)
   // size: Size in pixels (not bytes)
   // Returns Error if copy fails or sizes don't match
-  utils::Result<void> CopyFromCEF(
-      Buffer& dest,
-      const void* src,
-      const core::Size& size);
+  utils::Result<void> CopyFromCEF(Buffer& dest, const void* src, const core::Size& size);
 
   // Copy data from CEF buffer with dirty rects optimization
   // Only copies the specified dirty rectangles instead of the entire buffer
-  utils::Result<void> CopyFromCEFDirty(
-      Buffer& dest,
-      const void* src,
-      const core::Size& size,
-      const std::vector<core::Rect>& dirty_rects);
+  utils::Result<void> CopyFromCEFDirty(Buffer& dest,
+                                       const void* src,
+                                       const core::Size& size,
+                                       const std::vector<core::Rect>& dirty_rects);
 
  private:
   // Calculate stride (bytes per row) with 4-byte alignment

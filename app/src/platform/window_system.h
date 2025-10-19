@@ -1,24 +1,25 @@
 #ifndef ATHENA_PLATFORM_WINDOW_SYSTEM_H_
 #define ATHENA_PLATFORM_WINDOW_SYSTEM_H_
 
-#include <string>
-#include <functional>
-#include <memory>
 #include "core/types.h"
 #include "utils/error.h"
 
+#include <functional>
+#include <memory>
+#include <string>
+
 namespace athena {
 namespace browser {
-  class BrowserEngine;
-  using BrowserId = uint64_t;
-}
+class BrowserEngine;
+using BrowserId = uint64_t;
+}  // namespace browser
 
 namespace rendering {
-  class GLRenderer;
+class GLRenderer;
 }
 
 namespace runtime {
-  class NodeRuntime;
+class NodeRuntime;
 }
 
 namespace platform {
@@ -34,7 +35,7 @@ struct WindowConfig {
   core::Size size = {1200, 800};
   bool resizable = true;
   bool enable_input = true;
-  std::string url = "about:blank";  // Initial URL to load
+  std::string url = "about:blank";               // Initial URL to load
   runtime::NodeRuntime* node_runtime = nullptr;  // Optional Node runtime for Claude chat
 };
 
@@ -86,8 +87,9 @@ class WindowSystem {
    * @param engine Browser engine instance (non-owning pointer)
    * @return Ok on success, error on failure
    */
-  virtual utils::Result<void> Initialize(int& argc, char* argv[],
-                                          browser::BrowserEngine* engine) = 0;
+  virtual utils::Result<void> Initialize(int& argc,
+                                         char* argv[],
+                                         browser::BrowserEngine* engine) = 0;
 
   /**
    * Shutdown the window system.
@@ -111,9 +113,8 @@ class WindowSystem {
    * @param callbacks Event callbacks
    * @return Window instance on success, error on failure
    */
-  virtual utils::Result<std::shared_ptr<Window>> CreateWindow(
-      const WindowConfig& config,
-      const WindowCallbacks& callbacks) = 0;
+  virtual utils::Result<std::shared_ptr<Window>> CreateWindow(const WindowConfig& config,
+                                                              const WindowCallbacks& callbacks) = 0;
 
   // ============================================================================
   // Event Loop

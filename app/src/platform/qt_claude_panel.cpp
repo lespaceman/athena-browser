@@ -1,15 +1,17 @@
 #include "qt_claude_panel.h"
+
 #include "qt_mainwindow.h"
 #include "runtime/node_runtime.h"
-#include <QScrollBar>
+
 #include <QApplication>
 #include <QClipboard>
-#include <QPainter>
-#include <QKeyEvent>
 #include <QDebug>
-#include <QThread>
 #include <QFontMetrics>
+#include <QKeyEvent>
+#include <QPainter>
 #include <QRegularExpression>
+#include <QScrollBar>
+#include <QThread>
 #include <thread>
 
 namespace athena {
@@ -20,12 +22,11 @@ namespace platform {
 // ============================================================================
 
 ClaudePanel::ClaudePanel(QtMainWindow* window, QWidget* parent)
-    : QWidget(parent)
-    , window_(window)
-    , node_runtime_(nullptr)
-    , panel_visible_(true)
-    , waiting_for_response_(false)
-{
+    : QWidget(parent),
+      window_(window),
+      node_runtime_(nullptr),
+      panel_visible_(true),
+      waiting_for_response_(false) {
   setupUI();
   setupStyles();
   connectSignals();
@@ -77,8 +78,8 @@ void ClaudePanel::setupUI() {
   messagesContainer_->setStyleSheet("background-color: #FFFFFF;");  // Ensure white background
   messagesLayout_ = new QVBoxLayout(messagesContainer_);
   messagesLayout_->setContentsMargins(20, 20, 20, 20);  // Increased padding
-  messagesLayout_->setSpacing(20);  // Increased spacing between messages
-  messagesLayout_->addStretch();  // Push messages to top
+  messagesLayout_->setSpacing(20);                      // Increased spacing between messages
+  messagesLayout_->addStretch();                        // Push messages to top
 
   scrollArea_->setWidget(messagesContainer_);
   mainLayout_->addWidget(scrollArea_, 1);  // Stretch factor 1
@@ -257,20 +258,15 @@ void ClaudePanel::setupStyles() {
 }
 
 void ClaudePanel::connectSignals() {
-  connect(sendButton_, &QPushButton::clicked,
-          this, &ClaudePanel::onSendClicked);
+  connect(sendButton_, &QPushButton::clicked, this, &ClaudePanel::onSendClicked);
 
-  connect(clearButton_, &QPushButton::clicked,
-          this, &ClaudePanel::onClearClicked);
+  connect(clearButton_, &QPushButton::clicked, this, &ClaudePanel::onClearClicked);
 
-  connect(regenerateButton_, &QPushButton::clicked,
-          this, &ClaudePanel::onRegenerateClicked);
+  connect(regenerateButton_, &QPushButton::clicked, this, &ClaudePanel::onRegenerateClicked);
 
-  connect(inputWidget_, &ChatInputWidget::sendRequested,
-          this, &ClaudePanel::onSendClicked);
+  connect(inputWidget_, &ChatInputWidget::sendRequested, this, &ClaudePanel::onSendClicked);
 
-  connect(inputWidget_, &QTextEdit::textChanged,
-          this, &ClaudePanel::onInputTextChanged);
+  connect(inputWidget_, &QTextEdit::textChanged, this, &ClaudePanel::onInputTextChanged);
 }
 
 void ClaudePanel::SetNodeRuntime(runtime::NodeRuntime* runtime) {
@@ -299,7 +295,10 @@ void ClaudePanel::SendMessage(const QString& message) {
   if (!node_runtime_ || !node_runtime_->IsReady()) {
     qWarning() << "[ClaudePanel] Node runtime not available";
     showThinkingIndicator(false);
-    addMessage("assistant", "❌ **Error:** Claude Agent is not available. Please ensure the Node.js runtime is running.", true);
+    addMessage("assistant",
+               "❌ **Error:** Claude Agent is not available. Please ensure the Node.js runtime is "
+               "running.",
+               true);
     waiting_for_response_ = false;
     return;
   }
@@ -335,14 +334,17 @@ void ClaudePanel::SendMessage(const QString& message) {
 
     // Parse SSE streaming response
     if (!response.IsOk()) {
-      QMetaObject::invokeMethod(this, [this, response]() {
-        showThinkingIndicator(false);
-        waiting_for_response_ = false;
-        QString error_msg = QString::fromStdString(
-            "❌ **Error:** Failed to communicate with Claude Agent: " +
-            response.GetError().Message());
-        replaceLastAssistantMessage(error_msg);
-      }, Qt::QueuedConnection);
+      QMetaObject::invokeMethod(
+          this,
+          [this, response]() {
+            showThinkingIndicator(false);
+            waiting_for_response_ = false;
+            QString error_msg =
+                QString::fromStdString("❌ **Error:** Failed to communicate with Claude Agent: " +
+                                       response.GetError().Message());
+            replaceLastAssistantMessage(error_msg);
+          },
+          Qt::QueuedConnection);
       return;
     }
 
@@ -361,21 +363,26 @@ void ClaudePanel::SendMessage(const QString& message) {
     while (parse_pos < response_body.length()) {
       // Find "data: " prefix
       size_t data_start = response_body.find("data: ", parse_pos);
-      if (data_start == std::string::npos) break;
+      if (data_start == std::string::npos)
+        break;
 
       data_start += 6;  // Skip "data: "
       size_t data_end = response_body.find("\n", data_start);
-      if (data_end == std::string::npos) data_end = response_body.length();
+      if (data_end == std::string::npos)
+        data_end = response_body.length();
 
       std::string json_line = response_body.substr(data_start, data_end - data_start);
       parse_pos = data_end + 1;
 
-      qDebug() << "[ClaudePanel] Parsing chunk" << ++chunk_count << ":" << QString::fromStdString(json_line);
+      qDebug() << "[ClaudePanel] Parsing chunk" << ++chunk_count << ":"
+               << QString::fromStdString(json_line);
 
       // Parse JSON chunk
-      // Format: {"type":"chunk","content":"text"} or {"type":"done"} or {"type":"error","error":"msg"}
+      // Format: {"type":"chunk","content":"text"} or {"type":"done"} or
+      // {"type":"error","error":"msg"}
       size_t type_pos = json_line.find("\"type\":\"");
-      if (type_pos == std::string::npos) continue;
+      if (type_pos == std::string::npos)
+        continue;
 
       size_t type_start = type_pos + 8;
       size_t type_end = json_line.find("\"", type_start);
@@ -406,7 +413,8 @@ void ClaudePanel::SendMessage(const QString& message) {
 
           std::string chunk_content = json_line.substr(content_start, content_end - content_start);
 
-          qDebug() << "[ClaudePanel] Extracted content (escaped):" << QString::fromStdString(chunk_content);
+          qDebug() << "[ClaudePanel] Extracted content (escaped):"
+                   << QString::fromStdString(chunk_content);
 
           // Unescape JSON sequences
           size_t esc_pos = 0;
@@ -430,10 +438,14 @@ void ClaudePanel::SendMessage(const QString& message) {
           qDebug() << "[ClaudePanel] Accumulated text length:" << accumulated_text.length();
 
           // Update UI with accumulated text so far
-          QMetaObject::invokeMethod(this, [this, accumulated_text]() {
-            qDebug() << "[ClaudePanel] Updating UI with text (length=" << accumulated_text.length() << ")";
-            replaceLastAssistantMessage(QString::fromStdString(accumulated_text));
-          }, Qt::QueuedConnection);
+          QMetaObject::invokeMethod(
+              this,
+              [this, accumulated_text]() {
+                qDebug() << "[ClaudePanel] Updating UI with text (length="
+                         << accumulated_text.length() << ")";
+                replaceLastAssistantMessage(QString::fromStdString(accumulated_text));
+              },
+              Qt::QueuedConnection);
         } else {
           qDebug() << "[ClaudePanel] ERROR: content field not found in chunk!";
         }
@@ -453,29 +465,31 @@ void ClaudePanel::SendMessage(const QString& message) {
     }
 
     // Final UI update
-    QMetaObject::invokeMethod(this, [this, accumulated_text, had_error, error_message]() {
-      showThinkingIndicator(false);
-      waiting_for_response_ = false;
+    QMetaObject::invokeMethod(
+        this,
+        [this, accumulated_text, had_error, error_message]() {
+          showThinkingIndicator(false);
+          waiting_for_response_ = false;
 
-      if (had_error) {
-        QString error_msg = QString::fromStdString("❌ **Error:** " + error_message);
-        replaceLastAssistantMessage(error_msg);
-      } else if (!accumulated_text.empty()) {
-        replaceLastAssistantMessage(QString::fromStdString(accumulated_text));
-      } else {
-        replaceLastAssistantMessage("❌ **Error:** No response received from Claude");
-      }
+          if (had_error) {
+            QString error_msg = QString::fromStdString("❌ **Error:** " + error_message);
+            replaceLastAssistantMessage(error_msg);
+          } else if (!accumulated_text.empty()) {
+            replaceLastAssistantMessage(QString::fromStdString(accumulated_text));
+          } else {
+            replaceLastAssistantMessage("❌ **Error:** No response received from Claude");
+          }
 
-      // Show regenerate button
-      regenerateButton_->show();
-
-    }, Qt::QueuedConnection);
-
+          // Show regenerate button
+          regenerateButton_->show();
+        },
+        Qt::QueuedConnection);
   }).detach();
 }
 
 void ClaudePanel::addMessage(const QString& role, const QString& message, bool animate) {
-  ChatBubble::Role bubbleRole = (role == "user") ? ChatBubble::Role::User : ChatBubble::Role::Assistant;
+  ChatBubble::Role bubbleRole =
+      (role == "user") ? ChatBubble::Role::User : ChatBubble::Role::Assistant;
 
   auto* bubble = new ChatBubble(bubbleRole, message, messagesContainer_);
   messageBubbles_.push_back(bubble);
@@ -494,13 +508,15 @@ void ClaudePanel::addMessage(const QString& role, const QString& message, bool a
 }
 
 void ClaudePanel::replaceLastAssistantMessage(const QString& message) {
-  qDebug() << "[ClaudePanel::replaceLastAssistantMessage] Called with message length:" << message.length();
+  qDebug() << "[ClaudePanel::replaceLastAssistantMessage] Called with message length:"
+           << message.length();
   qDebug() << "[ClaudePanel::replaceLastAssistantMessage] Message preview:" << message.left(100);
 
   // Find the last assistant message
   for (auto it = messageBubbles_.rbegin(); it != messageBubbles_.rend(); ++it) {
     if ((*it)->GetRole() == ChatBubble::Role::Assistant) {
-      qDebug() << "[ClaudePanel::replaceLastAssistantMessage] Found assistant bubble, updating message";
+      qDebug()
+          << "[ClaudePanel::replaceLastAssistantMessage] Found assistant bubble, updating message";
       (*it)->SetMessage(message);
       scrollToBottom(true);
       return;
@@ -508,7 +524,8 @@ void ClaudePanel::replaceLastAssistantMessage(const QString& message) {
   }
 
   // If no assistant message found, add a new one
-  qDebug() << "[ClaudePanel::replaceLastAssistantMessage] No assistant bubble found, adding new one";
+  qDebug()
+      << "[ClaudePanel::replaceLastAssistantMessage] No assistant bubble found, adding new one";
   addMessage("assistant", message, true);
 }
 
@@ -620,9 +637,7 @@ void ClaudePanel::onRegenerateClicked() {
 // ChatInputWidget Implementation
 // ============================================================================
 
-ChatInputWidget::ChatInputWidget(QWidget* parent)
-    : QTextEdit(parent)
-{
+ChatInputWidget::ChatInputWidget(QWidget* parent) : QTextEdit(parent) {
   setupUI();
   connect(this, &QTextEdit::textChanged, this, &ChatInputWidget::adjustHeight);
 }
@@ -710,10 +725,7 @@ void ChatInputWidget::Clear() {
 // ============================================================================
 
 ChatBubble::ChatBubble(Role role, const QString& message, QWidget* parent)
-    : QFrame(parent)
-    , role_(role)
-    , message_(message)
-{
+    : QFrame(parent), role_(role), message_(message) {
   setupUI();
   setupStyles();
   renderMarkdown(message);
@@ -873,35 +885,37 @@ void ChatBubble::renderMarkdown(const QString& markdown) {
   html.replace(QRegularExpression("(?<!\\*)\\*([^*]+)\\*(?!\\*)"), "<i>\\1</i>");
 
   // Code: `code` -> <code>code</code>
-  html.replace(QRegularExpression("`([^`]+)`"), "<code style='background-color: #F3F4F6; padding: 2px 4px; border-radius: 3px; font-family: monospace;'>\\1</code>");
+  html.replace(QRegularExpression("`([^`]+)`"),
+               "<code style='background-color: #F3F4F6; padding: 2px 4px; border-radius: 3px; "
+               "font-family: monospace;'>\\1</code>");
 
   // Preserve newlines
   html.replace("\n", "<br>");
 
   // Wrap in HTML with explicit text color based on role
   QString textColor = (role_ == Role::User) ? "#1E3A8A" : "#111827";
-  QString fullHtml = QString(
-    "<!DOCTYPE html>"
-    "<html>"
-    "<head>"
-    "<style>"
-    "body { "
-    "  color: %1; "
-    "  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; "
-    "  font-size: 14px; "
-    "  line-height: 1.6; "
-    "  margin: 4px; "
-    "  padding: 0; "
-    "  word-wrap: break-word; "
-    "  overflow-wrap: break-word; "
-    "}"
-    "p { margin: 0 0 8px 0; }"
-    "code { font-size: 13px; }"
-    "</style>"
-    "</head>"
-    "<body>%2</body>"
-    "</html>"
-  ).arg(textColor, html);
+  QString fullHtml = QString("<!DOCTYPE html>"
+                             "<html>"
+                             "<head>"
+                             "<style>"
+                             "body { "
+                             "  color: %1; "
+                             "  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', "
+                             "Roboto, 'Helvetica Neue', Arial, sans-serif; "
+                             "  font-size: 14px; "
+                             "  line-height: 1.6; "
+                             "  margin: 4px; "
+                             "  padding: 0; "
+                             "  word-wrap: break-word; "
+                             "  overflow-wrap: break-word; "
+                             "}"
+                             "p { margin: 0 0 8px 0; }"
+                             "code { font-size: 13px; }"
+                             "</style>"
+                             "</head>"
+                             "<body>%2</body>"
+                             "</html>")
+                         .arg(textColor, html);
 
   contentWidget_->setHtml(fullHtml);
 
@@ -936,9 +950,7 @@ void ChatBubble::onCopyClicked() {
   copyButton_->setText("Copied!");
 
   // Reset button text after 1 second
-  QTimer::singleShot(1000, this, [this]() {
-    copyButton_->setText("Copy");
-  });
+  QTimer::singleShot(1000, this, [this]() { copyButton_->setText("Copy"); });
 }
 
 // ============================================================================
@@ -946,10 +958,7 @@ void ChatBubble::onCopyClicked() {
 // ============================================================================
 
 ThinkingIndicator::ThinkingIndicator(QWidget* parent)
-    : QWidget(parent)
-    , animationFrame_(0)
-    , text_("Claude is thinking")
-{
+    : QWidget(parent), animationFrame_(0), text_("Claude is thinking") {
   animationTimer_ = new QTimer(this);
   connect(animationTimer_, &QTimer::timeout, this, &ThinkingIndicator::updateAnimation);
 

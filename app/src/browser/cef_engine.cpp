@@ -1,9 +1,11 @@
 #include "browser/cef_engine.h"
+
 #include "include/cef_browser.h"
 #include "include/wrapper/cef_helpers.h"
+
 #include <iostream>
-#include <unistd.h>
 #include <limits.h>
+#include <unistd.h>
 
 namespace athena {
 namespace browser {
@@ -20,11 +22,7 @@ static std::string GetExecutablePath() {
 }
 
 CefEngine::CefEngine(CefRefPtr<::CefApp> app, const CefMainArgs* main_args)
-    : app_(app),
-      main_args_(main_args),
-      initialized_(false),
-      next_id_(1) {
-}
+    : app_(app), main_args_(main_args), initialized_(false), next_id_(1) {}
 
 CefEngine::~CefEngine() {
   if (initialized_) {
@@ -116,9 +114,7 @@ utils::Result<BrowserId> CefEngine::CreateBrowser(const BrowserConfig& config) {
   BrowserId id = GenerateId();
 
   // Create CEF client
-  CefRefPtr<CefClient> client = new CefClient(
-      config.native_window_handle,
-      config.gl_renderer);
+  CefRefPtr<CefClient> client = new CefClient(config.native_window_handle, config.gl_renderer);
 
   client->SetDeviceScaleFactor(config.device_scale_factor);
   client->SetSize(config.width, config.height);
@@ -138,14 +134,14 @@ utils::Result<BrowserId> CefEngine::CreateBrowser(const BrowserConfig& config) {
   browsers_[id] = info;
 
   // Create browser asynchronously
-  if (!CefBrowserHost::CreateBrowser(window_info, client, config.url,
-                                      browser_settings, nullptr, nullptr)) {
+  if (!CefBrowserHost::CreateBrowser(
+          window_info, client, config.url, browser_settings, nullptr, nullptr)) {
     browsers_.erase(id);
     return utils::Err<BrowserId>("CefBrowserHost::CreateBrowser failed");
   }
 
-  std::cout << "[CefEngine::CreateBrowser] Browser " << id
-            << " created with URL: " << config.url << std::endl;
+  std::cout << "[CefEngine::CreateBrowser] Browser " << id << " created with URL: " << config.url
+            << std::endl;
 
   // Return by value
   return utils::Result<BrowserId>(id);

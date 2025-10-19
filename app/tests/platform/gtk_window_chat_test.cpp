@@ -11,15 +11,16 @@
  * 4. Both user and assistant messages are counted toward the limit
  */
 
-#include "platform/gtk_window.h"
 #include "mocks/mock_browser_engine.h"
-#include <gtest/gtest.h>
+#include "platform/gtk_window.h"
+
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include <regex>
 
 using ::testing::_;
-using ::testing::Return;
 using ::testing::Invoke;
+using ::testing::Return;
 
 namespace athena {
 namespace platform {
@@ -49,10 +50,8 @@ class GtkWindowChatTest : public ::testing::Test {
     config_.url = "https://google.com";
 
     // Setup mock engine expectations
-    ON_CALL(mock_engine_, Initialize(_))
-        .WillByDefault(Return(utils::Ok()));
-    ON_CALL(mock_engine_, IsInitialized())
-        .WillByDefault(Return(true));
+    ON_CALL(mock_engine_, Initialize(_)).WillByDefault(Return(utils::Ok()));
+    ON_CALL(mock_engine_, IsInitialized()).WillByDefault(Return(true));
   }
 
   void TearDown() override {
@@ -132,7 +131,8 @@ class GtkWindowChatTest : public ::testing::Test {
 
   // Helper: Recursively find chat text buffer in widget hierarchy
   GtkTextBuffer* FindChatTextBuffer(GtkWidget* widget) {
-    if (!widget) return nullptr;
+    if (!widget)
+      return nullptr;
 
     if (GTK_IS_TEXT_VIEW(widget)) {
       return gtk_text_view_get_buffer(GTK_TEXT_VIEW(widget));
@@ -206,8 +206,7 @@ TEST_F(GtkWindowChatTest, ChatHistoryDoesNotExceedMaxMessages) {
   // Verify messages starting from 5 are still present
   EXPECT_NE(chat_text.find("User message 5"), std::string::npos)
       << "Message 5 should remain after trimming";
-  EXPECT_NE(chat_text.find("User message 29"), std::string::npos)
-      << "Newest message should remain";
+  EXPECT_NE(chat_text.find("User message 29"), std::string::npos) << "Newest message should remain";
 
   std::cout << "\n=== Chat History Trim Test ===" << std::endl;
   std::cout << "Added 60 messages, trimmed to " << message_count << " messages" << std::endl;
@@ -327,8 +326,7 @@ TEST_F(GtkWindowChatTest, NoTrimWhenBelowLimit) {
   int message_count = CountMessages(chat_text);
 
   // All 40 messages should still be present
-  EXPECT_EQ(message_count, 40)
-      << "No trimming should occur when below limit";
+  EXPECT_EQ(message_count, 40) << "No trimming should occur when below limit";
 
   // Verify first message is still present
   EXPECT_NE(chat_text.find("User 0"), std::string::npos)
@@ -368,8 +366,7 @@ TEST_F(GtkWindowChatTest, TrimWorksWithEmptyMessages) {
   int message_count = CountMessages(chat_text);
 
   // All messages should be counted, including empty ones
-  EXPECT_EQ(message_count, 30)
-      << "Empty messages should be counted correctly";
+  EXPECT_EQ(message_count, 30) << "Empty messages should be counted correctly";
 
   std::cout << "\n=== Empty Message Test ===" << std::endl;
   std::cout << "Empty messages handled correctly" << std::endl;
@@ -399,8 +396,7 @@ TEST_F(GtkWindowChatTest, ClearChatHistoryRemovesAllMessages) {
 
   // Verify messages exist
   std::string chat_text_before = GetChatHistoryText(window.get());
-  EXPECT_GT(chat_text_before.length(), 0)
-      << "Chat history should have content before clear";
+  EXPECT_GT(chat_text_before.length(), 0) << "Chat history should have content before clear";
 
   // Clear history
   window->ClearChatHistory();
@@ -414,8 +410,7 @@ TEST_F(GtkWindowChatTest, ClearChatHistoryRemovesAllMessages) {
   std::string chat_text_after = GetChatHistoryText(window.get());
   int message_count = CountMessages(chat_text_after);
 
-  EXPECT_EQ(message_count, 0)
-      << "All messages should be removed after clear";
+  EXPECT_EQ(message_count, 0) << "All messages should be removed after clear";
 
   std::cout << "\n=== Clear History Test ===" << std::endl;
   std::cout << "ClearChatHistory() successfully removes all messages" << std::endl;

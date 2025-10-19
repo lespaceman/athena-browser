@@ -3,18 +3,19 @@
 
 #include "rendering/gl_renderer.h"
 
-#include <GL/gl.h>
-#include <iostream>
-
 #include "include/base/cef_logging.h"
 #include "utils/logging.h"
 
+#include <GL/gl.h>
+
+#include <iostream>
+
 // Platform-specific includes
 #ifdef ATHENA_USE_QT
-#include <QOpenGLWidget>
-#include <QImage>
 #include <QBuffer>
 #include <QByteArray>
+#include <QImage>
+#include <QOpenGLWidget>
 #else
 #include <gtk/gtk.h>
 #endif
@@ -28,8 +29,7 @@ namespace {
 // GTK-specific: Helper to manage GL context
 class ScopedGLContext {
  public:
-  explicit ScopedGLContext(void* gl_widget)
-      : gl_widget_(gl_widget), valid_(false) {
+  explicit ScopedGLContext(void* gl_widget) : gl_widget_(gl_widget), valid_(false) {
     if (!gl_widget_) {
       return;
     }
@@ -49,8 +49,7 @@ class ScopedGLContext {
 // Qt-specific: Make GL context current for CEF threads
 class ScopedGLContext {
  public:
-  explicit ScopedGLContext(void* gl_widget)
-      : gl_widget_(gl_widget), valid_(false) {
+  explicit ScopedGLContext(void* gl_widget) : gl_widget_(gl_widget), valid_(false) {
     if (!gl_widget_) {
       return;
     }
@@ -84,10 +83,10 @@ GLRenderer::GLRenderer()
       view_width_(0),
       view_height_(0) {
   // Configure renderer settings
-  settings_.show_update_rect = false;  // Disable debug rectangles
+  settings_.show_update_rect = false;                                // Disable debug rectangles
   settings_.background_color = CefColorSetARGB(255, 255, 255, 255);  // White background
-  settings_.real_screen_bounds = true;  // Enable correct screen bounds reporting
-  settings_.shared_texture_enabled = false;  // Not supported on Linux
+  settings_.real_screen_bounds = true;             // Enable correct screen bounds reporting
+  settings_.shared_texture_enabled = false;        // Not supported on Linux
   settings_.external_begin_frame_enabled = false;  // Use CEF's internal timing
 }
 
@@ -187,7 +186,8 @@ void GLRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
 
   ScopedGLContext context(gl_widget_);
   if (!context.IsValid()) {
-    std::cerr << "[GLRenderer] Warning: Unable to make GL context current during OnPaint" << std::endl;
+    std::cerr << "[GLRenderer] Warning: Unable to make GL context current during OnPaint"
+              << std::endl;
     return;
   }
 
@@ -203,8 +203,7 @@ void GLRenderer::OnPopupShow(CefRefPtr<CefBrowser> browser, bool show) {
   osr_renderer_->OnPopupShow(browser, show);
 }
 
-void GLRenderer::OnPopupSize(CefRefPtr<CefBrowser> browser,
-                             const core::Rect& rect) {
+void GLRenderer::OnPopupSize(CefRefPtr<CefBrowser> browser, const core::Rect& rect) {
   if (!initialized_ || !osr_renderer_) {
     return;
   }
@@ -232,8 +231,7 @@ utils::Result<void> GLRenderer::Render() {
   // Check for GL errors
   GLenum gl_error = glGetError();
   if (gl_error != GL_NO_ERROR) {
-    std::string error_msg = "OpenGL error during render: " +
-                           std::to_string(gl_error);
+    std::string error_msg = "OpenGL error during render: " + std::to_string(gl_error);
     return utils::Error(error_msg);
   }
 
@@ -271,14 +269,16 @@ CefRect GLRenderer::ToCefRect(const core::Rect& rect) {
 
 std::string GLRenderer::TakeScreenshot() const {
   if (!initialized_ || !osr_renderer_ || !gl_widget_) {
-    std::cerr << "[GLRenderer] Warning: Cannot take screenshot - renderer not initialized" << std::endl;
+    std::cerr << "[GLRenderer] Warning: Cannot take screenshot - renderer not initialized"
+              << std::endl;
     return "";
   }
 
   // Make GL context current
   ScopedGLContext context(gl_widget_);
   if (!context.IsValid()) {
-    std::cerr << "[GLRenderer] Warning: Unable to make GL context current for screenshot" << std::endl;
+    std::cerr << "[GLRenderer] Warning: Unable to make GL context current for screenshot"
+              << std::endl;
     return "";
   }
 
@@ -304,9 +304,7 @@ std::string GLRenderer::TakeScreenshot() const {
   // Flip image vertically (OpenGL bottom-left origin -> PNG top-left origin)
   std::vector<unsigned char> flipped(width * height * 4);
   for (int y = 0; y < height; y++) {
-    memcpy(&flipped[y * width * 4],
-           &pixels[(height - 1 - y) * width * 4],
-           width * 4);
+    memcpy(&flipped[y * width * 4], &pixels[(height - 1 - y) * width * 4], width * 4);
   }
 
 #ifdef ATHENA_USE_QT

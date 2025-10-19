@@ -7,8 +7,9 @@
 #include "runtime/browser_control_server.h"
 #include "runtime/browser_control_server_internal.h"
 #include "utils/logging.h"
-#include <nlohmann/json.hpp>
+
 #include <algorithm>
+#include <nlohmann/json.hpp>
 #include <sstream>
 
 namespace athena {
@@ -94,12 +95,11 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
   if (method == "POST" && path == "/internal/open_url") {
     nlohmann::json json;
     if (!parse_json(json)) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Invalid JSON"})");
+      return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
     }
     if (!json.contains("url") || !json["url"].is_string()) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Missing url parameter"})");
+      return BuildHttpResponse(
+          400, "Bad Request", R"({"success":false,"error":"Missing url parameter"})");
     }
     std::string url = json["url"].get<std::string>();
     return BuildHttpResponse(200, "OK", HandleOpenUrl(url));
@@ -109,8 +109,7 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
     if (method == "POST") {
       nlohmann::json json;
       if (!parse_json(json)) {
-        return BuildHttpResponse(400, "Bad Request",
-                                 R"({"success":false,"error":"Invalid JSON"})");
+        return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
       }
       if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
         tab_index = json["tabIndex"].get<size_t>();
@@ -126,8 +125,7 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
     if (method == "POST") {
       nlohmann::json json;
       if (!parse_json(json)) {
-        return BuildHttpResponse(400, "Bad Request",
-                                 R"({"success":false,"error":"Invalid JSON"})");
+        return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
       }
       if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
         tab_index = json["tabIndex"].get<size_t>();
@@ -138,12 +136,11 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
   } else if (method == "POST" && path == "/internal/execute_js") {
     nlohmann::json json;
     if (!parse_json(json)) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Invalid JSON"})");
+      return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
     }
     if (!json.contains("code") || !json["code"].is_string()) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Missing code parameter"})");
+      return BuildHttpResponse(
+          400, "Bad Request", R"({"success":false,"error":"Missing code parameter"})");
     }
     std::optional<size_t> tab_index;
     if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
@@ -158,8 +155,7 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
     if (method == "POST") {
       nlohmann::json json;
       if (!parse_json(json)) {
-        return BuildHttpResponse(400, "Bad Request",
-                                 R"({"success":false,"error":"Invalid JSON"})");
+        return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
       }
       if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
         tab_index = json["tabIndex"].get<size_t>();
@@ -173,12 +169,11 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
   } else if (method == "POST" && path == "/internal/navigate") {
     nlohmann::json json;
     if (!parse_json(json)) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Invalid JSON"})");
+      return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
     }
     if (!json.contains("url") || !json["url"].is_string()) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Missing url parameter"})");
+      return BuildHttpResponse(
+          400, "Bad Request", R"({"success":false,"error":"Missing url parameter"})");
     }
     std::optional<size_t> tab_index;
     if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
@@ -189,25 +184,23 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
   } else if (method == "POST" && path == "/internal/history") {
     nlohmann::json json;
     if (!parse_json(json)) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Invalid JSON"})");
+      return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
     }
     if (!json.contains("action") || !json["action"].is_string()) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Missing action parameter"})");
+      return BuildHttpResponse(
+          400, "Bad Request", R"({"success":false,"error":"Missing action parameter"})");
     }
     std::optional<size_t> tab_index;
     if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
       tab_index = json["tabIndex"].get<size_t>();
     }
-    return BuildHttpResponse(200, "OK",
-                             HandleHistory(json["action"].get<std::string>(), tab_index));
+    return BuildHttpResponse(
+        200, "OK", HandleHistory(json["action"].get<std::string>(), tab_index));
 
   } else if (method == "POST" && path == "/internal/reload") {
     nlohmann::json json;
     if (!parse_json(json)) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Invalid JSON"})");
+      return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
     }
     std::optional<size_t> tab_index;
     std::optional<bool> ignore_cache;
@@ -222,36 +215,33 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
   } else if (method == "POST" && path == "/internal/tab/create") {
     nlohmann::json json;
     if (!parse_json(json)) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Invalid JSON"})");
+      return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
     }
     if (!json.contains("url") || !json["url"].is_string()) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Missing url parameter"})");
+      return BuildHttpResponse(
+          400, "Bad Request", R"({"success":false,"error":"Missing url parameter"})");
     }
     return BuildHttpResponse(200, "OK", HandleCreateTab(json["url"].get<std::string>()));
 
   } else if (method == "POST" && path == "/internal/tab/close") {
     nlohmann::json json;
     if (!parse_json(json)) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Invalid JSON"})");
+      return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
     }
     if (!json.contains("tabIndex") || !json["tabIndex"].is_number_unsigned()) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Missing tabIndex parameter"})");
+      return BuildHttpResponse(
+          400, "Bad Request", R"({"success":false,"error":"Missing tabIndex parameter"})");
     }
     return BuildHttpResponse(200, "OK", HandleCloseTab(json["tabIndex"].get<size_t>()));
 
   } else if (method == "POST" && path == "/internal/tab/switch") {
     nlohmann::json json;
     if (!parse_json(json)) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Invalid JSON"})");
+      return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
     }
     if (!json.contains("tabIndex") || !json["tabIndex"].is_number_unsigned()) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Missing tabIndex parameter"})");
+      return BuildHttpResponse(
+          400, "Bad Request", R"({"success":false,"error":"Missing tabIndex parameter"})");
     }
     return BuildHttpResponse(200, "OK", HandleSwitchTab(json["tabIndex"].get<size_t>()));
 
@@ -263,8 +253,7 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
     if (method == "POST") {
       nlohmann::json json;
       if (!parse_json(json)) {
-        return BuildHttpResponse(400, "Bad Request",
-                                 R"({"success":false,"error":"Invalid JSON"})");
+        return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
       }
       if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
         tab_index = json["tabIndex"].get<size_t>();
@@ -272,13 +261,13 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
     }
     return BuildHttpResponse(200, "OK", HandleGetPageSummary(tab_index));
 
-  } else if ((method == "GET" || method == "POST") && path == "/internal/get_interactive_elements") {
+  } else if ((method == "GET" || method == "POST") &&
+             path == "/internal/get_interactive_elements") {
     std::optional<size_t> tab_index;
     if (method == "POST") {
       nlohmann::json json;
       if (!parse_json(json)) {
-        return BuildHttpResponse(400, "Bad Request",
-                                 R"({"success":false,"error":"Invalid JSON"})");
+        return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
       }
       if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
         tab_index = json["tabIndex"].get<size_t>();
@@ -291,8 +280,7 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
     if (method == "POST") {
       nlohmann::json json;
       if (!parse_json(json)) {
-        return BuildHttpResponse(400, "Bad Request",
-                                 R"({"success":false,"error":"Invalid JSON"})");
+        return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
       }
       if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
         tab_index = json["tabIndex"].get<size_t>();
@@ -303,27 +291,26 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
   } else if (method == "POST" && path == "/internal/query_content") {
     nlohmann::json json;
     if (!parse_json(json)) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Invalid JSON"})");
+      return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
     }
     if (!json.contains("queryType") || !json["queryType"].is_string()) {
-      return BuildHttpResponse(400, "Bad Request",
-                               R"({"success":false,"error":"Missing queryType parameter"})");
+      return BuildHttpResponse(
+          400, "Bad Request", R"({"success":false,"error":"Missing queryType parameter"})");
     }
     std::optional<size_t> tab_index;
     if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
       tab_index = json["tabIndex"].get<size_t>();
     }
-    return BuildHttpResponse(200, "OK",
-                             HandleQueryContent(json["queryType"].get<std::string>(), tab_index));
+    return BuildHttpResponse(
+        200, "OK", HandleQueryContent(json["queryType"].get<std::string>(), tab_index));
 
-  } else if ((method == "GET" || method == "POST") && path == "/internal/get_annotated_screenshot") {
+  } else if ((method == "GET" || method == "POST") &&
+             path == "/internal/get_annotated_screenshot") {
     std::optional<size_t> tab_index;
     if (method == "POST") {
       nlohmann::json json;
       if (!parse_json(json)) {
-        return BuildHttpResponse(400, "Bad Request",
-                                 R"({"success":false,"error":"Invalid JSON"})");
+        return BuildHttpResponse(400, "Bad Request", R"({"success":false,"error":"Invalid JSON"})");
       }
       if (json.contains("tabIndex") && json["tabIndex"].is_number_unsigned()) {
         tab_index = json["tabIndex"].get<size_t>();
@@ -333,8 +320,7 @@ std::string BrowserControlServer::ProcessRequest(const std::string& request) {
 
   } else {
     logger.Warn("Unknown endpoint: " + path);
-    return BuildHttpResponse(404, "Not Found",
-                             R"({"success":false,"error":"Endpoint not found"})");
+    return BuildHttpResponse(404, "Not Found", R"({"success":false,"error":"Endpoint not found"})");
   }
 }
 

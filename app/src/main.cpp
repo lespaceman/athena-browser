@@ -5,30 +5,33 @@
  * It uses the Application class to manage the browser lifecycle.
  */
 
-#include "core/application.h"
-#include "browser/cef_engine.h"
 #include "browser/app_handler.h"
-#include "runtime/node_runtime.h"
+#include "browser/cef_engine.h"
+#include "core/application.h"
 #include "include/cef_app.h"
+#include "runtime/node_runtime.h"
 
 // Platform-specific includes
 #ifdef ATHENA_USE_QT
 #include "platform/qt_mainwindow.h"
+
 #include <QApplication>
 #include <QTimer>
 // Forward declare GTK function to avoid header conflicts with Qt
 extern "C" void gtk_disable_setlocale();
 #else
 #include "platform/gtk_window.h"
-#include <glib.h>
+
 #include <gtk/gtk.h>
+
+#include <glib.h>
 #endif
 
-#include <iostream>
-#include <cstdlib>
-#include <csignal>
-#include <filesystem>
 #include <atomic>
+#include <csignal>
+#include <cstdlib>
+#include <filesystem>
+#include <iostream>
 
 // ============================================================================
 // Signal Handling for Clean Shutdown
@@ -123,7 +126,8 @@ int main(int argc, char* argv[]) {
     if (!std::filesystem::exists(runtime_script)) {
       std::cerr << "WARNING: Athena Agent script not found at: " << runtime_script << std::endl;
       std::cerr << "         Claude chat integration will not be available." << std::endl;
-      std::cerr << "         Run 'cd athena-agent && npm run build' to build the agent." << std::endl;
+      std::cerr << "         Run 'cd athena-agent && npm run build' to build the agent."
+                << std::endl;
     } else {
       runtime::NodeRuntimeConfig runtime_config;
       runtime_config.runtime_script_path = runtime_script.string();
@@ -154,10 +158,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   auto application = std::make_unique<core::Application>(
-      config,
-      std::move(browser_engine),
-      std::move(window_system),
-      std::move(node_runtime));
+      config, std::move(browser_engine), std::move(window_system), std::move(node_runtime));
 
   // ============================================================================
   // Initialize Application
@@ -165,8 +166,8 @@ int main(int argc, char* argv[]) {
 
   auto init_result = application->Initialize(argc, argv);
   if (!init_result) {
-    std::cerr << "ERROR: Failed to initialize application: "
-              << init_result.GetError().Message() << std::endl;
+    std::cerr << "ERROR: Failed to initialize application: " << init_result.GetError().Message()
+              << std::endl;
     return 1;
   }
 
@@ -194,8 +195,8 @@ int main(int argc, char* argv[]) {
 
   auto window_result = application->CreateWindow(window_config, window_callbacks);
   if (!window_result) {
-    std::cerr << "ERROR: Failed to create window: "
-              << window_result.GetError().Message() << std::endl;
+    std::cerr << "ERROR: Failed to create window: " << window_result.GetError().Message()
+              << std::endl;
     return 1;
   }
 
@@ -204,8 +205,7 @@ int main(int argc, char* argv[]) {
   // Show the window
   auto show_result = window->Show();
   if (!show_result) {
-    std::cerr << "ERROR: Failed to show window: "
-              << show_result.GetError().Message() << std::endl;
+    std::cerr << "ERROR: Failed to show window: " << show_result.GetError().Message() << std::endl;
     return 1;
   }
 
@@ -244,10 +244,13 @@ int main(int argc, char* argv[]) {
   };
 
   static auto check_shutdown_func = check_shutdown;
-  g_timeout_add(100, +[](gpointer data) -> gboolean {
-    auto* func = static_cast<decltype(check_shutdown)*>(data);
-    return (*func)();
-  }, &check_shutdown_func);
+  g_timeout_add(
+      100,
+      +[](gpointer data) -> gboolean {
+        auto* func = static_cast<decltype(check_shutdown)*>(data);
+        return (*func)();
+      },
+      &check_shutdown_func);
 #endif
 
   application->Run();  // Blocking call

@@ -2,6 +2,7 @@
 #define ATHENA_RENDERING_SCALING_MANAGER_H_
 
 #include "core/types.h"
+
 #include <mutex>
 
 namespace athena {

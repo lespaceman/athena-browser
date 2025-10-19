@@ -6,33 +6,33 @@
  */
 
 #include "platform/qt_mainwindow.h"
-#include "platform/qt_browserwidget.h"
-#include "platform/qt_claude_panel.h"
+
 #include "browser/browser_engine.h"
-#include "browser/cef_engine.h"
 #include "browser/cef_client.h"
-#include "rendering/gl_renderer.h"
-#include "utils/logging.h"
+#include "browser/cef_engine.h"
 #include "include/cef_app.h"
 #include "include/cef_browser.h"
-
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QStyle>
-#include <QApplication>
-#include <QCloseEvent>
-#include <QDebug>
-#include <QTimer>
-#include <QMetaObject>
-#include <QUrl>
-#include <QSplitter>
-#include <QShortcut>
-#include <QKeySequence>
-#include <QCoreApplication>
-#include <QEventLoop>
+#include "platform/qt_browserwidget.h"
+#include "platform/qt_claude_panel.h"
+#include "rendering/gl_renderer.h"
+#include "utils/logging.h"
 
 #include <atomic>
 #include <chrono>
+#include <QApplication>
+#include <QCloseEvent>
+#include <QCoreApplication>
+#include <QDebug>
+#include <QEventLoop>
+#include <QHBoxLayout>
+#include <QKeySequence>
+#include <QMetaObject>
+#include <QShortcut>
+#include <QSplitter>
+#include <QStyle>
+#include <QTimer>
+#include <QUrl>
+#include <QVBoxLayout>
 #include <thread>
 
 namespace athena {
@@ -52,28 +52,27 @@ QtMainWindow::QtMainWindow(const WindowConfig& config,
                            const WindowCallbacks& callbacks,
                            BrowserEngine* engine,
                            QWidget* parent)
-    : QMainWindow(parent)
-    , config_(config)
-    , callbacks_(callbacks)
-    , engine_(engine)
-    , node_runtime_(config.node_runtime)
-    , closed_(false)
-    , visible_(false)
-    , has_focus_(false)
-    , browser_initialized_(false)
-    , toolbar_(nullptr)
-    , addressBar_(nullptr)
-    , backButton_(nullptr)
-    , forwardButton_(nullptr)
-    , reloadButton_(nullptr)
-    , stopButton_(nullptr)
-    , newTabButton_(nullptr)
-    , claudeButton_(nullptr)
-    , tabWidget_(nullptr)
-    , claudePanel_(nullptr)
-    , active_tab_index_(0)
-    , current_url_(QString::fromStdString(config.url))
-{
+    : QMainWindow(parent),
+      config_(config),
+      callbacks_(callbacks),
+      engine_(engine),
+      node_runtime_(config.node_runtime),
+      closed_(false),
+      visible_(false),
+      has_focus_(false),
+      browser_initialized_(false),
+      toolbar_(nullptr),
+      addressBar_(nullptr),
+      backButton_(nullptr),
+      forwardButton_(nullptr),
+      reloadButton_(nullptr),
+      stopButton_(nullptr),
+      newTabButton_(nullptr),
+      claudeButton_(nullptr),
+      tabWidget_(nullptr),
+      claudePanel_(nullptr),
+      active_tab_index_(0),
+      current_url_(QString::fromStdString(config.url)) {
   logger.Info("Creating Qt main window");
 
   setWindowTitle(QString::fromStdString(config_.title));
@@ -200,12 +199,12 @@ void QtMainWindow::createCentralWidget() {
 
   // Create horizontal splitter: browser tabs on left, Claude sidebar on right
   QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
-  splitter->addWidget(tabWidget_);      // Browser tabs (left)
-  splitter->addWidget(claudePanel_);    // Claude sidebar (right)
+  splitter->addWidget(tabWidget_);    // Browser tabs (left)
+  splitter->addWidget(claudePanel_);  // Claude sidebar (right)
 
   // Set stretch factors: 70% browser, 30% sidebar (more balanced)
-  splitter->setStretchFactor(0, 7);     // Browser gets 7x weight
-  splitter->setStretchFactor(1, 3);     // Sidebar gets 3x weight
+  splitter->setStretchFactor(0, 7);  // Browser gets 7x weight
+  splitter->setStretchFactor(1, 3);  // Sidebar gets 3x weight
 
   // Set initial sizes: For a 1920px window, sidebar should be ~400px
   QList<int> sizes;
@@ -222,39 +221,29 @@ void QtMainWindow::createCentralWidget() {
 
 void QtMainWindow::connectSignals() {
   // Toolbar signals → slots
-  connect(backButton_, &QPushButton::clicked,
-          this, &QtMainWindow::onBackClicked);
+  connect(backButton_, &QPushButton::clicked, this, &QtMainWindow::onBackClicked);
 
-  connect(forwardButton_, &QPushButton::clicked,
-          this, &QtMainWindow::onForwardClicked);
+  connect(forwardButton_, &QPushButton::clicked, this, &QtMainWindow::onForwardClicked);
 
-  connect(reloadButton_, &QPushButton::clicked,
-          this, &QtMainWindow::onReloadClicked);
+  connect(reloadButton_, &QPushButton::clicked, this, &QtMainWindow::onReloadClicked);
 
-  connect(stopButton_, &QPushButton::clicked,
-          this, &QtMainWindow::onStopClicked);
+  connect(stopButton_, &QPushButton::clicked, this, &QtMainWindow::onStopClicked);
 
-  connect(addressBar_, &QLineEdit::returnPressed,
-          this, &QtMainWindow::onAddressBarReturnPressed);
+  connect(addressBar_, &QLineEdit::returnPressed, this, &QtMainWindow::onAddressBarReturnPressed);
 
-  connect(newTabButton_, &QPushButton::clicked,
-          this, &QtMainWindow::onNewTabClicked);
+  connect(newTabButton_, &QPushButton::clicked, this, &QtMainWindow::onNewTabClicked);
 
   // Tab widget signals
-  connect(tabWidget_, &QTabWidget::tabCloseRequested,
-          this, &QtMainWindow::onTabCloseRequested);
+  connect(tabWidget_, &QTabWidget::tabCloseRequested, this, &QtMainWindow::onTabCloseRequested);
 
-  connect(tabWidget_, &QTabWidget::currentChanged,
-          this, &QtMainWindow::onCurrentTabChanged);
+  connect(tabWidget_, &QTabWidget::currentChanged, this, &QtMainWindow::onCurrentTabChanged);
 
   // Claude button
-  connect(claudeButton_, &QPushButton::clicked,
-          this, &QtMainWindow::onClaudeButtonClicked);
+  connect(claudeButton_, &QPushButton::clicked, this, &QtMainWindow::onClaudeButtonClicked);
 
   // Keyboard shortcut: Ctrl+Shift+C (or Cmd+Shift+C on macOS)
   QShortcut* claudeShortcut = new QShortcut(QKeySequence("Ctrl+Shift+C"), this);
-  connect(claudeShortcut, &QShortcut::activated,
-          this, &QtMainWindow::onClaudeButtonClicked);
+  connect(claudeShortcut, &QShortcut::activated, this, &QtMainWindow::onClaudeButtonClicked);
 }
 
 void QtMainWindow::InitializeBrowser() {
@@ -405,8 +394,7 @@ void QtMainWindow::onAddressBarReturnPressed() {
       url = "https://" + url;
     } else {
       // Treat as search query
-      url = "https://www.google.com/search?q=" +
-            QString(QUrl::toPercentEncoding(url));
+      url = "https://www.google.com/search?q=" + QString(QUrl::toPercentEncoding(url));
     }
   }
 
@@ -489,26 +477,30 @@ void QtMainWindow::LoadURL(const QString& url) {
 
 void QtMainWindow::UpdateAddressBar(const QString& url) {
   // Thread-safe: can be called from CEF thread
-  QMetaObject::invokeMethod(this, [this, url]() {
-    if (!closed_) {
-      addressBar_->setText(url);
-      current_url_ = url;
-    }
-  }, Qt::QueuedConnection);
+  QMetaObject::invokeMethod(
+      this,
+      [this, url]() {
+        if (!closed_) {
+          addressBar_->setText(url);
+          current_url_ = url;
+        }
+      },
+      Qt::QueuedConnection);
 }
 
-void QtMainWindow::UpdateNavigationButtons(bool is_loading,
-                                           bool can_go_back,
-                                           bool can_go_forward) {
+void QtMainWindow::UpdateNavigationButtons(bool is_loading, bool can_go_back, bool can_go_forward) {
   // Thread-safe: can be called from CEF thread
-  QMetaObject::invokeMethod(this, [this, is_loading, can_go_back, can_go_forward]() {
-    if (!closed_) {
-      backButton_->setEnabled(can_go_back);
-      forwardButton_->setEnabled(can_go_forward);
-      reloadButton_->setEnabled(!is_loading);
-      stopButton_->setEnabled(is_loading);
-    }
-  }, Qt::QueuedConnection);
+  QMetaObject::invokeMethod(
+      this,
+      [this, is_loading, can_go_back, can_go_forward]() {
+        if (!closed_) {
+          backButton_->setEnabled(can_go_back);
+          forwardButton_->setEnabled(can_go_forward);
+          reloadButton_->setEnabled(!is_loading);
+          stopButton_->setEnabled(is_loading);
+        }
+      },
+      Qt::QueuedConnection);
 }
 
 void QtMainWindow::GoBack() {
@@ -663,7 +655,8 @@ QString QtMainWindow::GetPageHTML() const {
       while (!complete_.load(std::memory_order_acquire)) {
         // Check timeout
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - start).count();
+                           std::chrono::steady_clock::now() - start)
+                           .count();
         if (elapsed >= timeout_ms) {
           return false;
         }
@@ -720,7 +713,8 @@ QString QtMainWindow::ExecuteJavaScript(const QString& code) const {
   auto request_id_opt = cef_client->RequestJavaScriptEvaluation(code.toStdString());
   if (!request_id_opt.has_value()) {
     logger.Error("ExecuteJavaScript: Failed to dispatch request");
-    return QString(R"({"success":false,"error":{"message":"Failed to dispatch JavaScript to renderer"}})");
+    return QString(
+        R"({"success":false,"error":{"message":"Failed to dispatch JavaScript to renderer"}})");
   }
 
   const std::string request_id = request_id_opt.value();
@@ -737,15 +731,18 @@ QString QtMainWindow::ExecuteJavaScript(const QString& code) const {
     if (closed_) {
       logger.Error("ExecuteJavaScript aborted: window closed while waiting");
       cef_client->CancelJavaScriptEvaluation(request_id);
-      return QString(R"({"success":false,"error":{"message":"Window closed while waiting for result"}})");
+      return QString(
+          R"({"success":false,"error":{"message":"Window closed while waiting for result"}})");
     }
 
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start).count();
+                       std::chrono::steady_clock::now() - start)
+                       .count();
     if (elapsed >= timeout_ms) {
       logger.Error("ExecuteJavaScript timed out after {}ms", timeout_ms);
       cef_client->CancelJavaScriptEvaluation(request_id);
-      return QString(R"({"success":false,"error":{"message":"Timeout waiting for JavaScript result"},"type":"timeout"})");
+      return QString(
+          R"({"success":false,"error":{"message":"Timeout waiting for JavaScript result"},"type":"timeout"})");
     }
 
     CefDoMessageLoopWork();
@@ -842,7 +839,8 @@ int QtMainWindow::CreateTab(const QString& url) {
   // Switch to the new tab
   tabWidget_->setCurrentIndex(qt_index);
 
-  logger.Info("Tab widget created, index: " + std::to_string(new_tab_index) + " (browser will be created when GL is ready)");
+  logger.Info("Tab widget created, index: " + std::to_string(new_tab_index) +
+              " (browser will be created when GL is ready)");
   return static_cast<int>(new_tab_index);
 }
 
@@ -896,8 +894,8 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
 
       tab.cef_client->SetAddressChangeCallback([this, bid](const std::string& url_str) {
         std::lock_guard<std::mutex> lock(tabs_mutex_);
-        auto it = std::find_if(tabs_.begin(), tabs_.end(),
-          [bid](const QtTab& t) { return t.browser_id == bid; });
+        auto it = std::find_if(
+            tabs_.begin(), tabs_.end(), [bid](const QtTab& t) { return t.browser_id == bid; });
         if (it != tabs_.end()) {
           it->url = QString::fromStdString(url_str);
           size_t tab_idx = std::distance(tabs_.begin(), it);
@@ -907,60 +905,70 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
         }
       });
 
-      tab.cef_client->SetLoadingStateChangeCallback([this, bid](bool is_loading, bool can_go_back, bool can_go_forward) {
-        std::lock_guard<std::mutex> lock(tabs_mutex_);
-        auto it = std::find_if(tabs_.begin(), tabs_.end(),
-          [bid](const QtTab& t) { return t.browser_id == bid; });
-        if (it != tabs_.end()) {
-          it->is_loading = is_loading;
-          it->can_go_back = can_go_back;
-          it->can_go_forward = can_go_forward;
-          size_t tab_idx = std::distance(tabs_.begin(), it);
-          if (tab_idx == active_tab_index_) {
-            this->UpdateNavigationButtons(is_loading, can_go_back, can_go_forward);
-          }
-        }
-      });
+      tab.cef_client->SetLoadingStateChangeCallback(
+          [this, bid](bool is_loading, bool can_go_back, bool can_go_forward) {
+            std::lock_guard<std::mutex> lock(tabs_mutex_);
+            auto it = std::find_if(
+                tabs_.begin(), tabs_.end(), [bid](const QtTab& t) { return t.browser_id == bid; });
+            if (it != tabs_.end()) {
+              it->is_loading = is_loading;
+              it->can_go_back = can_go_back;
+              it->can_go_forward = can_go_forward;
+              size_t tab_idx = std::distance(tabs_.begin(), it);
+              if (tab_idx == active_tab_index_) {
+                this->UpdateNavigationButtons(is_loading, can_go_back, can_go_forward);
+              }
+            }
+          });
 
       tab.cef_client->SetTitleChangeCallback([this, bid](const std::string& title_str) {
         std::lock_guard<std::mutex> lock(tabs_mutex_);
-        auto it = std::find_if(tabs_.begin(), tabs_.end(),
-          [bid](const QtTab& t) { return t.browser_id == bid; });
+        auto it = std::find_if(
+            tabs_.begin(), tabs_.end(), [bid](const QtTab& t) { return t.browser_id == bid; });
         if (it != tabs_.end()) {
           it->title = QString::fromStdString(title_str);
 
           // Update tab title on Qt main thread
-          QMetaObject::invokeMethod(this, [this, bid, title_str]() {
-            if (closed_) return;
+          QMetaObject::invokeMethod(
+              this,
+              [this, bid, title_str]() {
+                if (closed_)
+                  return;
 
-            std::lock_guard<std::mutex> lock(tabs_mutex_);
-            auto it2 = std::find_if(tabs_.begin(), tabs_.end(),
-              [bid](const QtTab& t) { return t.browser_id == bid; });
+                std::lock_guard<std::mutex> lock(tabs_mutex_);
+                auto it2 = std::find_if(tabs_.begin(), tabs_.end(), [bid](const QtTab& t) {
+                  return t.browser_id == bid;
+                });
 
-            if (it2 != tabs_.end()) {
-              size_t tab_idx = std::distance(tabs_.begin(), it2);
-              tabWidget_->setTabText(tab_idx, QString::fromStdString(title_str));
-            }
-          }, Qt::QueuedConnection);
+                if (it2 != tabs_.end()) {
+                  size_t tab_idx = std::distance(tabs_.begin(), it2);
+                  tabWidget_->setTabText(tab_idx, QString::fromStdString(title_str));
+                }
+              },
+              Qt::QueuedConnection);
         }
       });
 
       // CRITICAL: Wire up render invalidation callback
       // This tells the widget to repaint when CEF has new content
-      tab.cef_client->SetRenderInvalidatedCallback([this, bid](CefRenderHandler::PaintElementType type) {
-        (void)type;  // Unused parameter
-        std::lock_guard<std::mutex> lock(tabs_mutex_);
-        auto it = std::find_if(tabs_.begin(), tabs_.end(),
-          [bid](const QtTab& t) { return t.browser_id == bid; });
-        if (it != tabs_.end() && it->browser_widget) {
-          // Schedule a repaint of the widget on the Qt main thread
-          QMetaObject::invokeMethod(it->browser_widget, [widget = it->browser_widget]() {
-            if (widget) {
-              widget->update();
+      tab.cef_client->SetRenderInvalidatedCallback(
+          [this, bid](CefRenderHandler::PaintElementType type) {
+            (void)type;  // Unused parameter
+            std::lock_guard<std::mutex> lock(tabs_mutex_);
+            auto it = std::find_if(
+                tabs_.begin(), tabs_.end(), [bid](const QtTab& t) { return t.browser_id == bid; });
+            if (it != tabs_.end() && it->browser_widget) {
+              // Schedule a repaint of the widget on the Qt main thread
+              QMetaObject::invokeMethod(
+                  it->browser_widget,
+                  [widget = it->browser_widget]() {
+                    if (widget) {
+                      widget->update();
+                    }
+                  },
+                  Qt::QueuedConnection);
             }
-          }, Qt::QueuedConnection);
-        }
-      });
+          });
 
       logger.Info("Callbacks wired for browser_id: " + std::to_string(bid));
     }
@@ -1036,14 +1044,15 @@ void QtMainWindow::CloseTabByBrowserId(browser::BrowserId browser_id) {
 
   {
     std::lock_guard<std::mutex> lock(tabs_mutex_);
-    auto it = std::find_if(tabs_.begin(), tabs_.end(),
-      [browser_id](const QtTab& t) { return t.browser_id == browser_id; });
+    auto it = std::find_if(tabs_.begin(), tabs_.end(), [browser_id](const QtTab& t) {
+      return t.browser_id == browser_id;
+    });
 
     if (it != tabs_.end()) {
       found = true;
       index_to_close = std::distance(tabs_.begin(), it);
-      logger.Info("Found tab at index " + std::to_string(index_to_close) +
-                  " for browser_id " + std::to_string(browser_id));
+      logger.Info("Found tab at index " + std::to_string(index_to_close) + " for browser_id " +
+                  std::to_string(browser_id));
     }
   }
 
@@ -1185,7 +1194,8 @@ bool QtMainWindow::WaitForLoadToComplete(size_t tab_index, int timeout_ms) const
     }
 
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start).count();
+                       std::chrono::steady_clock::now() - start)
+                       .count();
     if (elapsed >= timeout_ms) {
       logger.Warn("WaitForLoadToComplete timed out after " + std::to_string(timeout_ms) +
                   "ms for tab " + std::to_string(tab_index));
@@ -1300,20 +1310,18 @@ bool QtMainWindow::IsClosed() const {
 // ============================================================================
 
 QtWindowSystem::QtWindowSystem()
-    : initialized_(false)
-    , running_(false)
-    , engine_(nullptr)
-    , app_(nullptr)
-    , cef_timer_(nullptr)
-    , window_(nullptr)
-{}
+    : initialized_(false),
+      running_(false),
+      engine_(nullptr),
+      app_(nullptr),
+      cef_timer_(nullptr),
+      window_(nullptr) {}
 
 QtWindowSystem::~QtWindowSystem() {
   Shutdown();
 }
 
-Result<void> QtWindowSystem::Initialize(int& argc, char* argv[],
-                                         BrowserEngine* engine) {
+Result<void> QtWindowSystem::Initialize(int& argc, char* argv[], BrowserEngine* engine) {
   if (initialized_) {
     return Error("WindowSystem already initialized");
   }
@@ -1339,7 +1347,8 @@ Result<void> QtWindowSystem::Initialize(int& argc, char* argv[],
 }
 
 void QtWindowSystem::Shutdown() {
-  if (!initialized_) return;
+  if (!initialized_)
+    return;
 
   logger.Info("Shutting down Qt window system");
 
@@ -1368,9 +1377,8 @@ bool QtWindowSystem::IsInitialized() const {
   return initialized_;
 }
 
-Result<std::shared_ptr<Window>> QtWindowSystem::CreateWindow(
-    const WindowConfig& config,
-    const WindowCallbacks& callbacks) {
+Result<std::shared_ptr<Window>> QtWindowSystem::CreateWindow(const WindowConfig& config,
+                                                             const WindowCallbacks& callbacks) {
   if (!initialized_) {
     return Error("WindowSystem not initialized");
   }

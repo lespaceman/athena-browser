@@ -1,19 +1,19 @@
 #ifndef ATHENA_PLATFORM_QT_BROWSERWIDGET_H_
 #define ATHENA_PLATFORM_QT_BROWSERWIDGET_H_
 
-#include <QOpenGLWidget>
-#include <QMouseEvent>
-#include <QKeyEvent>
-#include <QWheelEvent>
 #include <QFocusEvent>
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QOpenGLWidget>
+#include <QWheelEvent>
 
 namespace athena {
 namespace browser {
-  class CefClient;
+class CefClient;
 }
 
 namespace rendering {
-  class GLRenderer;
+class GLRenderer;
 }
 
 namespace platform {
@@ -164,8 +164,7 @@ class BrowserWidget : public QOpenGLWidget {
    * @param qtButtons Qt mouse buttons
    * @return CEF modifier flags
    */
-  uint32_t getCefModifiers(Qt::KeyboardModifiers qtMods,
-                          Qt::MouseButtons qtButtons) const;
+  uint32_t getCefModifiers(Qt::KeyboardModifiers qtMods, Qt::MouseButtons qtButtons) const;
 
   /**
    * Convert Qt key code to Windows virtual key code.
@@ -180,10 +179,10 @@ class BrowserWidget : public QOpenGLWidget {
   // Member Variables
   // ============================================================================
 
-  QtMainWindow* window_;  // Non-owning pointer to parent window
-  size_t tab_index_;      // Index of this tab in the window
+  QtMainWindow* window_;             // Non-owning pointer to parent window
+  size_t tab_index_;                 // Index of this tab in the window
   rendering::GLRenderer* renderer_;  // Non-owning (QtMainWindow owns it)
-  bool gl_initialized_;  // Track GL initialization state
+  bool gl_initialized_;              // Track GL initialization state
 };
 
 }  // namespace platform

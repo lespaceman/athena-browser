@@ -1,4 +1,5 @@
 #include "utils/logging.h"
+
 #include <ctime>
 
 namespace athena {
@@ -7,11 +8,7 @@ namespace utils {
 static Logger* g_global_logger = nullptr;
 
 Logger::Logger(const std::string& name)
-    : name_(name),
-      level_(LogLevel::kInfo),
-      console_output_(true),
-      file_output_(false) {
-}
+    : name_(name), level_(LogLevel::kInfo), console_output_(true), file_output_(false) {}
 
 Logger::~Logger() {
   if (file_stream_ && file_stream_->is_open()) {
@@ -94,27 +91,32 @@ std::string Logger::FormatLogLine(LogLevel level, const std::string& message) {
   std::ostringstream oss;
   oss << "[" << CurrentTimestamp() << "] "
       << "[" << name_ << "] "
-      << "[" << LevelToString(level) << "] "
-      << message;
+      << "[" << LevelToString(level) << "] " << message;
   return oss.str();
 }
 
 std::string Logger::LevelToString(LogLevel level) {
   switch (level) {
-    case LogLevel::kDebug: return "DEBUG";
-    case LogLevel::kInfo:  return "INFO";
-    case LogLevel::kWarn:  return "WARN";
-    case LogLevel::kError: return "ERROR";
-    case LogLevel::kFatal: return "FATAL";
-    default: return "UNKNOWN";
+    case LogLevel::kDebug:
+      return "DEBUG";
+    case LogLevel::kInfo:
+      return "INFO";
+    case LogLevel::kWarn:
+      return "WARN";
+    case LogLevel::kError:
+      return "ERROR";
+    case LogLevel::kFatal:
+      return "FATAL";
+    default:
+      return "UNKNOWN";
   }
 }
 
 std::string Logger::CurrentTimestamp() {
   auto now = std::chrono::system_clock::now();
   auto now_time_t = std::chrono::system_clock::to_time_t(now);
-  auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-      now.time_since_epoch()) % 1000;
+  auto now_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
   std::tm tm_buf;
 #if defined(_WIN32)
@@ -124,8 +126,8 @@ std::string Logger::CurrentTimestamp() {
 #endif
 
   std::ostringstream oss;
-  oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S")
-      << '.' << std::setfill('0') << std::setw(3) << now_ms.count();
+  oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S") << '.' << std::setfill('0') << std::setw(3)
+      << now_ms.count();
   return oss.str();
 }
 

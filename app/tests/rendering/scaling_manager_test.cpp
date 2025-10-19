@@ -1,4 +1,5 @@
 #include "rendering/scaling_manager.h"
+
 #include <gtest/gtest.h>
 #include <thread>
 #include <vector>

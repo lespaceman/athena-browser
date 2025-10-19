@@ -1,14 +1,14 @@
 #include "rendering/buffer_manager.h"
-#include <cstring>
+
 #include <algorithm>
+#include <cstring>
 
 namespace athena {
 namespace rendering {
 
 // Buffer implementation
 BufferManager::Buffer::Buffer(const core::Size& size)
-    : physical_size(size),
-      stride(BufferManager::CalculateStride(size.width)) {
+    : physical_size(size), stride(BufferManager::CalculateStride(size.width)) {
   if (size.IsEmpty()) {
     data = nullptr;
     return;
@@ -53,8 +53,8 @@ bool BufferManager::IsValidSize(const core::Size& size) {
   }
 
   // Check that total size doesn't overflow
-  int64_t total_bytes = static_cast<int64_t>(CalculateStride(size.width)) *
-                        static_cast<int64_t>(size.height);
+  int64_t total_bytes =
+      static_cast<int64_t>(CalculateStride(size.width)) * static_cast<int64_t>(size.height);
 
   // Limit to 256 MB per buffer
   const int64_t MAX_BUFFER_SIZE = 256 * 1024 * 1024;
@@ -65,8 +65,8 @@ bool BufferManager::IsValidSize(const core::Size& size) {
   return true;
 }
 
-utils::Result<std::unique_ptr<BufferManager::Buffer>>
-BufferManager::AllocateBuffer(const core::Size& physical_size) {
+utils::Result<std::unique_ptr<BufferManager::Buffer>> BufferManager::AllocateBuffer(
+    const core::Size& physical_size) {
   // Validate size
   if (!IsValidSize(physical_size)) {
     return utils::Error("Invalid buffer size: " + physical_size.ToString());
@@ -87,10 +87,9 @@ BufferManager::AllocateBuffer(const core::Size& physical_size) {
   }
 }
 
-utils::Result<void> BufferManager::CopyFromCEF(
-    Buffer& dest,
-    const void* src,
-    const core::Size& size) {
+utils::Result<void> BufferManager::CopyFromCEF(Buffer& dest,
+                                               const void* src,
+                                               const core::Size& size) {
   // Validate inputs
   if (!src) {
     return utils::Error("Source buffer is null");
@@ -101,9 +100,8 @@ utils::Result<void> BufferManager::CopyFromCEF(
   }
 
   if (dest.physical_size != size) {
-    return utils::Error(
-        "Size mismatch: dest=" + dest.physical_size.ToString() +
-        ", src=" + size.ToString());
+    return utils::Error("Size mismatch: dest=" + dest.physical_size.ToString() +
+                        ", src=" + size.ToString());
   }
 
   // CEF provides buffers with width*4 stride (BGRA format)
@@ -117,9 +115,7 @@ utils::Result<void> BufferManager::CopyFromCEF(
     int copy_bytes = std::min(src_stride, dest.stride);
 
     for (int y = 0; y < size.height; ++y) {
-      std::memcpy(dest_ptr + y * dest.stride,
-                  src_ptr + y * src_stride,
-                  copy_bytes);
+      std::memcpy(dest_ptr + y * dest.stride, src_ptr + y * src_stride, copy_bytes);
     }
 
     return utils::Ok();
@@ -128,11 +124,10 @@ utils::Result<void> BufferManager::CopyFromCEF(
   }
 }
 
-utils::Result<void> BufferManager::CopyFromCEFDirty(
-    Buffer& dest,
-    const void* src,
-    const core::Size& size,
-    const std::vector<core::Rect>& dirty_rects) {
+utils::Result<void> BufferManager::CopyFromCEFDirty(Buffer& dest,
+                                                    const void* src,
+                                                    const core::Size& size,
+                                                    const std::vector<core::Rect>& dirty_rects) {
   // Validate inputs
   if (!src) {
     return utils::Error("Source buffer is null");
@@ -143,9 +138,8 @@ utils::Result<void> BufferManager::CopyFromCEFDirty(
   }
 
   if (dest.physical_size != size) {
-    return utils::Error(
-        "Size mismatch: dest=" + dest.physical_size.ToString() +
-        ", src=" + size.ToString());
+    return utils::Error("Size mismatch: dest=" + dest.physical_size.ToString() +
+                        ", src=" + size.ToString());
   }
 
   // If no dirty rects, copy everything
@@ -162,8 +156,7 @@ utils::Result<void> BufferManager::CopyFromCEFDirty(
     // Copy only dirty rectangles
     for (const auto& rect : dirty_rects) {
       // Validate rect is within bounds
-      if (rect.x < 0 || rect.y < 0 ||
-          rect.x + rect.width > size.width ||
+      if (rect.x < 0 || rect.y < 0 || rect.x + rect.width > size.width ||
           rect.y + rect.height > size.height) {
         continue;  // Skip invalid rects
       }
@@ -179,9 +172,7 @@ utils::Result<void> BufferManager::CopyFromCEFDirty(
         int src_offset = (rect.y + y) * src_stride + rect.x * 4;
         int dest_offset = (rect.y + y) * dest.stride + rect.x * 4;
 
-        std::memcpy(dest_ptr + dest_offset,
-                    src_ptr + src_offset,
-                    copy_bytes);
+        std::memcpy(dest_ptr + dest_offset, src_ptr + src_offset, copy_bytes);
       }
     }
 

@@ -1,9 +1,9 @@
 #ifndef ATHENA_RUNTIME_JS_EXECUTION_UTILS_H_
 #define ATHENA_RUNTIME_JS_EXECUTION_UTILS_H_
 
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
-#include <nlohmann/json.hpp>
 
 namespace athena {
 namespace runtime {
