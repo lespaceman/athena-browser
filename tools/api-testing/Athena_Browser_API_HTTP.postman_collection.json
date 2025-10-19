@@ -1,0 +1,372 @@
+{
+  "info": {
+    "name": "Athena Browser Control API (HTTP Proxy)",
+    "description": "Complete API collection for controlling Athena Browser via HTTP proxy.\n\n**Setup:**\n1. Start Athena Browser\n2. Start proxy: `python3 proxy-server.py 3333`\n3. Import this collection in Postman\n4. Send requests\n\nBase URL is set to http://localhost:3333",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3333",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Navigation",
+      "description": "Page navigation and history",
+      "item": [
+        {
+          "name": "Navigate to URL",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"url\": \"https://example.com\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/navigate", "host": ["{{base_url}}"], "path": ["internal", "navigate"]},
+            "description": "Navigate to URL in active tab (waits for load)"
+          }
+        },
+        {
+          "name": "Navigate to URL (Specific Tab)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"url\": \"https://github.com\",\n  \"tabIndex\": 1\n}"},
+            "url": {"raw": "{{base_url}}/internal/navigate", "host": ["{{base_url}}"], "path": ["internal", "navigate"]},
+            "description": "Navigate specific tab by index"
+          }
+        },
+        {
+          "name": "Open URL",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"url\": \"https://anthropic.com\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/open_url", "host": ["{{base_url}}"], "path": ["internal", "open_url"]},
+            "description": "Open URL (creates tab if none exist)"
+          }
+        },
+        {
+          "name": "Go Back",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"action\": \"back\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/history", "host": ["{{base_url}}"], "path": ["internal", "history"]},
+            "description": "Navigate back in history"
+          }
+        },
+        {
+          "name": "Go Forward",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"action\": \"forward\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/history", "host": ["{{base_url}}"], "path": ["internal", "history"]},
+            "description": "Navigate forward in history"
+          }
+        },
+        {
+          "name": "Reload Page",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"ignoreCache\": false\n}"},
+            "url": {"raw": "{{base_url}}/internal/reload", "host": ["{{base_url}}"], "path": ["internal", "reload"]},
+            "description": "Reload current page (ignoreCache: true for hard refresh)"
+          }
+        },
+        {
+          "name": "Get Current URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/internal/get_url", "host": ["{{base_url}}"], "path": ["internal", "get_url"]},
+            "description": "Get current URL of active tab"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Content Extraction",
+      "description": "Extract page content in various formats",
+      "item": [
+        {
+          "name": "Get Page HTML",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/internal/get_html", "host": ["{{base_url}}"], "path": ["internal", "get_html"]},
+            "description": "Get full HTML (50-500KB)"
+          }
+        },
+        {
+          "name": "Get Page Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/internal/get_page_summary", "host": ["{{base_url}}"], "path": ["internal", "get_page_summary"]},
+            "description": "Get structured summary (1-2KB) - title, headings, element counts"
+          }
+        },
+        {
+          "name": "Get Interactive Elements",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/internal/get_interactive_elements", "host": ["{{base_url}}"], "path": ["internal", "get_interactive_elements"]},
+            "description": "Get all clickable elements with positions"
+          }
+        },
+        {
+          "name": "Get Accessibility Tree",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/internal/get_accessibility_tree", "host": ["{{base_url}}"], "path": ["internal", "get_accessibility_tree"]},
+            "description": "Get semantic page structure (reduced DOM)"
+          }
+        },
+        {
+          "name": "Query Content - Forms",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"queryType\": \"forms\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/query_content", "host": ["{{base_url}}"], "path": ["internal", "query_content"]},
+            "description": "Extract all forms with field definitions"
+          }
+        },
+        {
+          "name": "Query Content - Navigation",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"queryType\": \"navigation\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/query_content", "host": ["{{base_url}}"], "path": ["internal", "query_content"]},
+            "description": "Extract navigation links and menus"
+          }
+        },
+        {
+          "name": "Query Content - Article",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"queryType\": \"article\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/query_content", "host": ["{{base_url}}"], "path": ["internal", "query_content"]},
+            "description": "Extract main article content with metadata"
+          }
+        },
+        {
+          "name": "Query Content - Tables",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"queryType\": \"tables\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/query_content", "host": ["{{base_url}}"], "path": ["internal", "query_content"]},
+            "description": "Extract table structures with headers and rows"
+          }
+        },
+        {
+          "name": "Query Content - Media",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"queryType\": \"media\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/query_content", "host": ["{{base_url}}"], "path": ["internal", "query_content"]},
+            "description": "Extract images and videos with metadata"
+          }
+        }
+      ]
+    },
+    {
+      "name": "JavaScript Execution",
+      "description": "Execute JavaScript in browser context",
+      "item": [
+        {
+          "name": "Get Page Title",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"code\": \"document.title\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/execute_js", "host": ["{{base_url}}"], "path": ["internal", "execute_js"]},
+            "description": "Get page title via JavaScript"
+          }
+        },
+        {
+          "name": "Count Elements",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"code\": \"(function() { return { links: document.querySelectorAll('a').length, images: document.querySelectorAll('img').length, paragraphs: document.querySelectorAll('p').length }; })()\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/execute_js", "host": ["{{base_url}}"], "path": ["internal", "execute_js"]},
+            "description": "Count various page elements"
+          }
+        },
+        {
+          "name": "Get Current Location",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"code\": \"window.location.href\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/execute_js", "host": ["{{base_url}}"], "path": ["internal", "execute_js"]},
+            "description": "Get current URL via JavaScript"
+          }
+        },
+        {
+          "name": "Modify DOM",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"code\": \"document.querySelector('h1').textContent = 'Modified by API'; 'Success'\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/execute_js", "host": ["{{base_url}}"], "path": ["internal", "execute_js"]},
+            "description": "Modify page DOM"
+          }
+        },
+        {
+          "name": "Scroll Page",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"code\": \"window.scrollTo(0, 500); 'Scrolled'\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/execute_js", "host": ["{{base_url}}"], "path": ["internal", "execute_js"]},
+            "description": "Scroll page programmatically"
+          }
+        },
+        {
+          "name": "Click Element",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"code\": \"document.querySelector('button').click(); 'Clicked'\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/execute_js", "host": ["{{base_url}}"], "path": ["internal", "execute_js"]},
+            "description": "Click element via JavaScript"
+          }
+        },
+        {
+          "name": "Fill Form Input",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"code\": \"document.querySelector('input[type=\\\"text\\\"]').value = 'Test'; 'Filled'\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/execute_js", "host": ["{{base_url}}"], "path": ["internal", "execute_js"]},
+            "description": "Fill form input field"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Screenshots",
+      "description": "Capture page screenshots",
+      "item": [
+        {
+          "name": "Viewport Screenshot",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/internal/screenshot", "host": ["{{base_url}}"], "path": ["internal", "screenshot"]},
+            "description": "Capture visible viewport (base64 PNG)"
+          }
+        },
+        {
+          "name": "Full Page Screenshot",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"fullPage\": true\n}"},
+            "url": {"raw": "{{base_url}}/internal/screenshot", "host": ["{{base_url}}"], "path": ["internal", "screenshot"]},
+            "description": "Capture full page (scrolls and captures)"
+          }
+        },
+        {
+          "name": "Screenshot Specific Tab",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"tabIndex\": 1,\n  \"fullPage\": false\n}"},
+            "url": {"raw": "{{base_url}}/internal/screenshot", "host": ["{{base_url}}"], "path": ["internal", "screenshot"]},
+            "description": "Screenshot specific tab"
+          }
+        },
+        {
+          "name": "Annotated Screenshot",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/internal/get_annotated_screenshot", "host": ["{{base_url}}"], "path": ["internal", "get_annotated_screenshot"]},
+            "description": "Screenshot with element overlays and positions"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tab Management",
+      "description": "Manage browser tabs",
+      "item": [
+        {
+          "name": "Get Tab Count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/internal/tab_count", "host": ["{{base_url}}"], "path": ["internal", "tab_count"]},
+            "description": "Get total number of tabs"
+          }
+        },
+        {
+          "name": "Get Tab Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/internal/tab_info", "host": ["{{base_url}}"], "path": ["internal", "tab_info"]},
+            "description": "Get tab count and active tab index"
+          }
+        },
+        {
+          "name": "Create Tab",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"url\": \"https://github.com\"\n}"},
+            "url": {"raw": "{{base_url}}/internal/tab_create", "host": ["{{base_url}}"], "path": ["internal", "tab_create"]},
+            "description": "Create new tab with URL"
+          }
+        },
+        {
+          "name": "Switch Tab",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"tabIndex\": 1\n}"},
+            "url": {"raw": "{{base_url}}/internal/tab_switch", "host": ["{{base_url}}"], "path": ["internal", "tab_switch"]},
+            "description": "Switch to tab by index"
+          }
+        },
+        {
+          "name": "Close Tab",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"tabIndex\": 1\n}"},
+            "url": {"raw": "{{base_url}}/internal/tab_close", "host": ["{{base_url}}"], "path": ["internal", "tab_close"]},
+            "description": "Close tab by index"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health & Info",
+      "description": "Server health and status",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"]},
+            "description": "Check if browser control server is running"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -74,6 +74,10 @@ add_athena_test(core_types_test core/types_test.cpp)
 # Utils tests (Phase 1)
 add_athena_test(logging_test utils/logging_test.cpp ../src/utils/logging.cpp)
 add_athena_test(error_test utils/error_test.cpp)
+add_athena_test(js_execution_utils_test
+  runtime/js_execution_utils_test.cpp
+  ../src/runtime/js_execution_utils.cpp
+)
 
 # Rendering tests (Phase 2)
 add_athena_test(buffer_manager_test rendering/buffer_manager_test.cpp ../src/rendering/buffer_manager.cpp)
@@ -84,6 +88,7 @@ add_athena_test(cef_client_test
   browser/cef_client_test.cpp
   ../src/browser/cef_client.cpp
   ../src/rendering/gl_renderer.cpp
+  ../src/utils/logging.cpp
   ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
 )
 
@@ -94,6 +99,7 @@ add_athena_test(cef_engine_test
   ../src/browser/app_handler.cpp
   ../src/resources/scheme_handler.cpp
   ../src/rendering/gl_renderer.cpp
+  ../src/utils/logging.cpp
   ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
 )
 

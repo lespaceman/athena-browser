@@ -13,7 +13,7 @@ export function loadConfig(): AthenaAgentConfig {
   const config: AthenaAgentConfig = {
     socketPath: process.env.ATHENA_SOCKET_PATH || `/tmp/athena-${uid}.sock`,
     cwd: process.env.CWD || process.cwd(),
-    model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-5',
+    model: process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
     permissionMode: (process.env.PERMISSION_MODE as any) || 'bypassPermissions',
     logLevel: (process.env.LOG_LEVEL as any) || 'info',
     apiKey: process.env.ANTHROPIC_API_KEY,

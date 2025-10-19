@@ -703,33 +703,55 @@ QString QtMainWindow::GetPageHTML() const {
 }
 
 QString QtMainWindow::ExecuteJavaScript(const QString& code) const {
-  CefRefPtr<CefBrowser> browser;
+  browser::CefClient* cef_client = nullptr;
 
   {
     std::lock_guard<std::mutex> lock(tabs_mutex_);
 
     QtTab* tab = const_cast<QtMainWindow*>(this)->GetActiveTab();
     if (!tab || !tab->cef_client || !tab->cef_client->GetBrowser()) {
-      logger.Error("No active CEF client or browser");
-      return QString(R"({"error":"No active browser"})");
+      logger.Error("ExecuteJavaScript: No active CEF client or browser");
+      return QString(R"({"success":false,"error":{"message":"No active browser"}})");
     }
 
-    browser = tab->cef_client->GetBrowser();
+    cef_client = tab->cef_client;
   }
 
-  auto main_frame = browser->GetMainFrame();
-  if (!main_frame) {
-    logger.Error("No main frame");
-    return QString(R"({"error":"No main frame"})");
+  auto request_id_opt = cef_client->RequestJavaScriptEvaluation(code.toStdString());
+  if (!request_id_opt.has_value()) {
+    logger.Error("ExecuteJavaScript: Failed to dispatch request");
+    return QString(R"({"success":false,"error":{"message":"Failed to dispatch JavaScript to renderer"}})");
   }
 
-  // Execute JavaScript without waiting for result
-  // CEF's ExecuteJavaScript is fire-and-forget
-  // To get a result, we'd need to use a different approach (like evaluating an expression)
-  main_frame->ExecuteJavaScript(code.toStdString(), main_frame->GetURL(), 0);
+  const std::string request_id = request_id_opt.value();
+  const int timeout_ms = 5000;
+  auto start = std::chrono::steady_clock::now();
 
-  logger.Info("JavaScript executed");
-  return QString(R"({"success":true,"message":"JavaScript executed"})");
+  while (true) {
+    auto result = cef_client->TryConsumeJavaScriptResult(request_id);
+    if (result.has_value()) {
+      logger.Info("JavaScript executed ({} bytes)", result->size());
+      return QString::fromStdString(result.value());
+    }
+
+    if (closed_) {
+      logger.Error("ExecuteJavaScript aborted: window closed while waiting");
+      cef_client->CancelJavaScriptEvaluation(request_id);
+      return QString(R"({"success":false,"error":{"message":"Window closed while waiting for result"}})");
+    }
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+    if (elapsed >= timeout_ms) {
+      logger.Error("ExecuteJavaScript timed out after {}ms", timeout_ms);
+      cef_client->CancelJavaScriptEvaluation(request_id);
+      return QString(R"({"success":false,"error":{"message":"Timeout waiting for JavaScript result"},"type":"timeout"})");
+    }
+
+    CefDoMessageLoopWork();
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
 }
 
 QString QtMainWindow::TakeScreenshot() const {

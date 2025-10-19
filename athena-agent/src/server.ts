@@ -12,12 +12,12 @@ import { dirname } from 'path';
 import { Logger } from './logger.js';
 import { config, validateConfig } from './config.js';
 import { ClaudeClient } from './claude-client.js';
-import { createAthenaBrowserMcpServer, setBrowserApiBase } from './mcp-server.js';
 import { healthHandler } from './routes/health.js';
 import {
   createSendHandler,
   createContinueHandler,
   createClearHandler,
+  createStreamHandler,
   capabilitiesHandler
 } from './routes/chat.js';
 import { setBrowserController } from './routes/browser.js';
@@ -50,11 +50,9 @@ async function main() {
       permissionMode: config.permissionMode
     });
 
-    // Configure MCP server to use the Express API exposed on the agent socket
+    // Detect browser control socket
     const uid = process.getuid?.() ?? 1000;
     const controlSocketPath = process.env.ATHENA_CONTROL_SOCKET_PATH || `/tmp/athena-${uid}-control.sock`;
-    setBrowserApiBase(config.socketPath);
-    logger.info('MCP browser API base configured', { socketPath: config.socketPath });
     logger.info('Browser control socket detected', { controlSocketPath });
 
     // Register browser controller (try native first, fall back to mock)
@@ -65,12 +63,9 @@ async function main() {
       type: nativeController ? 'native' : 'mock'
     });
 
-    // Create MCP server
-    const mcpServer = createAthenaBrowserMcpServer();
-    logger.info('MCP server created');
-
     // Create Claude client
-    const claudeClient = new ClaudeClient(config, mcpServer);
+    // Note: MCP server runs separately via mcp-stdio-server.ts
+    const claudeClient = new ClaudeClient(config);
     logger.info('Claude client created');
 
     // Create Express app
@@ -112,6 +107,7 @@ async function main() {
 
     // Chat endpoints
     app.post('/v1/chat/send', createSendHandler(claudeClient));
+    app.post('/v1/chat/stream', createStreamHandler(claudeClient));
     app.post('/v1/chat/continue', createContinueHandler(claudeClient));
     app.post('/v1/chat/clear', createClearHandler(claudeClient));
 
@@ -130,6 +126,7 @@ async function main() {
           'GET /health',
           'GET /v1/capabilities',
           'POST /v1/chat/send',
+          'POST /v1/chat/stream',
           'POST /v1/chat/continue',
           'POST /v1/chat/clear',
           'POST /v1/browser/navigate',
@@ -220,7 +217,12 @@ function startServer(app: express.Application): Promise<void> {
       });
 
       // Print READY line for C++ to consume
-      console.log(`READY ${config.socketPath}`);
+      // Only print to stdout if we're NOT running as an MCP stdio server
+      // (MCP stdio protocol requires stdout to only contain JSON-RPC messages)
+      const isMcpStdio = process.env.MCP_STDIO === 'true' || process.stdin.isTTY === false;
+      if (!isMcpStdio) {
+        console.log(`READY ${config.socketPath}`);
+      }
 
       resolve();
     });

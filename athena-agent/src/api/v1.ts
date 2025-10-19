@@ -243,5 +243,78 @@ export function createV1Router(controller: BrowserController | null) {
     }
   });
 
+  // ========================================================================
+  // Context-Efficient Content Extraction Endpoints
+  // ========================================================================
+
+  router.get('/browser/page-summary', async (req, res) => {
+    try {
+      ensureController(controller);
+      const tabIndex = typeof req.query.tabIndex === 'string' ? Number(req.query.tabIndex) : undefined;
+      const summary = await (controller as any).getPageSummary(Number.isNaN(tabIndex) ? undefined : tabIndex);
+      res.json({ success: true, summary });
+    } catch (error) {
+      const err = toErrorResponse(error);
+      res.status(500).json(err);
+    }
+  });
+
+  router.get('/browser/interactive-elements', async (req, res) => {
+    try {
+      ensureController(controller);
+      const tabIndex = typeof req.query.tabIndex === 'string' ? Number(req.query.tabIndex) : undefined;
+      const elements = await (controller as any).getInteractiveElements(Number.isNaN(tabIndex) ? undefined : tabIndex);
+      res.json({ success: true, elements });
+    } catch (error) {
+      const err = toErrorResponse(error);
+      res.status(500).json(err);
+    }
+  });
+
+  router.get('/browser/accessibility-tree', async (req, res) => {
+    try {
+      ensureController(controller);
+      const tabIndex = typeof req.query.tabIndex === 'string' ? Number(req.query.tabIndex) : undefined;
+      const tree = await (controller as any).getAccessibilityTree(Number.isNaN(tabIndex) ? undefined : tabIndex);
+      res.json({ success: true, tree });
+    } catch (error) {
+      const err = toErrorResponse(error);
+      res.status(500).json(err);
+    }
+  });
+
+  router.post('/browser/query-content', async (req, res) => {
+    try {
+      ensureController(controller);
+      const { queryType, tabIndex } = req.body ?? {};
+      if (typeof queryType !== 'string' || queryType.length === 0) {
+        res.status(400).json({ success: false, error: 'queryType must be a non-empty string' });
+        return;
+      }
+
+      const data = await (controller as any).queryContent(
+        queryType,
+        typeof tabIndex === 'number' ? tabIndex : undefined
+      );
+
+      res.json({ success: true, data, queryType });
+    } catch (error) {
+      const err = toErrorResponse(error);
+      res.status(500).json(err);
+    }
+  });
+
+  router.get('/browser/annotated-screenshot', async (req, res) => {
+    try {
+      ensureController(controller);
+      const tabIndex = typeof req.query.tabIndex === 'string' ? Number(req.query.tabIndex) : undefined;
+      const result = await (controller as any).getAnnotatedScreenshot(Number.isNaN(tabIndex) ? undefined : tabIndex);
+      res.json({ success: true, screenshot: result.screenshot, elements: result.elements });
+    } catch (error) {
+      const err = toErrorResponse(error);
+      res.status(500).json(err);
+    }
+  });
+
   return router;
 }

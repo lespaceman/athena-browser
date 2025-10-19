@@ -256,6 +256,77 @@ export class NativeBrowserController implements BrowserController {
     const result = await this.requestJson('GET', '/internal/tab_info');
     return result.activeTabIndex ?? 0;
   }
+
+  /**
+   * Get a compact summary of the current page.
+   * Returns title, headings, counts of interactive elements, etc.
+   * Much smaller than full HTML (~1-2KB vs 100KB+).
+   */
+  async getPageSummary(tabIndex?: number): Promise<any> {
+    const result = await this.requestJson('POST', '/internal/get_page_summary', { tabIndex });
+    return result.summary;
+  }
+
+  /**
+   * Get list of interactive elements on the page with their positions and attributes.
+   * Returns only visible, actionable elements (links, buttons, inputs, etc.).
+   * Typical size: 5-20KB for complex pages.
+   */
+  async getInteractiveElements(tabIndex?: number): Promise<any[]> {
+    const result = await this.requestJson('POST', '/internal/get_interactive_elements', { tabIndex });
+
+    // Validate response
+    if (!result || typeof result !== 'object') {
+      logger.error('getInteractiveElements: Invalid response structure', { result });
+      throw new Error('Invalid response from browser');
+    }
+
+    if (!Array.isArray(result.elements)) {
+      logger.error('getInteractiveElements: elements is not an array', {
+        elementsType: typeof result.elements,
+        elements: result.elements
+      });
+      return []; // Return empty array instead of throwing
+    }
+
+    return result.elements;
+  }
+
+  /**
+   * Get accessibility tree representation of the page.
+   * Provides semantic structure without full HTML.
+   * Typical size: 10-30KB.
+   */
+  async getAccessibilityTree(tabIndex?: number): Promise<any> {
+    const result = await this.requestJson('POST', '/internal/get_accessibility_tree', { tabIndex });
+    return result.tree;
+  }
+
+  /**
+   * Query specific content types from the page.
+   * Available types: 'forms', 'navigation', 'article', 'tables', 'media'
+   * Returns only the requested content, much smaller than full HTML.
+   */
+  async queryContent(queryType: string, tabIndex?: number): Promise<any> {
+    const result = await this.requestJson('POST', '/internal/query_content', {
+      queryType,
+      tabIndex
+    });
+    return result.data;
+  }
+
+  /**
+   * Get screenshot with interactive element annotations.
+   * Returns base64 screenshot + array of element positions.
+   * Useful for vision-based interactions.
+   */
+  async getAnnotatedScreenshot(tabIndex?: number): Promise<{ screenshot: string; elements: any[] }> {
+    const result = await this.requestJson('POST', '/internal/get_annotated_screenshot', { tabIndex });
+    return {
+      screenshot: result.screenshot,
+      elements: result.elements
+    };
+  }
 }
 
 /**

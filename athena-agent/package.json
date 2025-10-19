@@ -8,11 +8,15 @@
     "build": "tsc",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
+    "start:mcp": "node dist/mcp-stdio-server.js",
+    "dev:mcp": "tsx watch src/mcp-stdio-server.ts",
+    "mcp:inspect": "npx @modelcontextprotocol/inspector node dist/mcp-stdio-server.js",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "vitest run test/integration"
+    "test:integration": "vitest run test/integration",
+    "test:mcp": "vitest run test/mcp"
   },
   "keywords": [
     "athena",
@@ -25,7 +29,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.14",
+    "@anthropic-ai/claude-agent-sdk": "latest",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "express": "^4.19.2",
     "winston": "^3.14.2",

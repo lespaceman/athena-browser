@@ -306,6 +306,9 @@ void ClaudePanel::SendMessage(const QString& message) {
 
   qDebug() << "[ClaudePanel] Sending message to Claude:" << message;
 
+  // Add an empty assistant message bubble that we'll update as chunks arrive
+  addMessage("assistant", "", false);
+
   // Launch background thread for API call
   std::string message_copy = message.toStdString();
   runtime::NodeRuntime* node_runtime = node_runtime_;
@@ -327,93 +330,141 @@ void ClaudePanel::SendMessage(const QString& message) {
 
     std::string json_body = "{\"message\":\"" + escaped_message + "\"}";
 
-    // Call the Athena Agent API (THIS BLOCKS)
-    auto response = node_runtime->Call("POST", "/v1/chat/send", json_body);
+    // Call the Athena Agent streaming API
+    auto response = node_runtime->Call("POST", "/v1/chat/stream", json_body);
 
-    // Marshal result back to Qt main thread
-    QMetaObject::invokeMethod(this, [this, response]() {
-      showThinkingIndicator(false);
-      waiting_for_response_ = false;
-
-      if (!response.IsOk()) {
+    // Parse SSE streaming response
+    if (!response.IsOk()) {
+      QMetaObject::invokeMethod(this, [this, response]() {
+        showThinkingIndicator(false);
+        waiting_for_response_ = false;
         QString error_msg = QString::fromStdString(
             "❌ **Error:** Failed to communicate with Claude Agent: " +
             response.GetError().Message());
-        addMessage("assistant", error_msg, true);
-        return;
-      }
+        replaceLastAssistantMessage(error_msg);
+      }, Qt::QueuedConnection);
+      return;
+    }
 
-      // Parse JSON response
-      std::string response_body = response.Value();
-      qDebug() << "[ClaudePanel] Response received (length=" << response_body.length() << ")";
+    // Parse SSE events from response body
+    std::string response_body = response.Value();
+    qDebug() << "[ClaudePanel] SSE stream received (length=" << response_body.length() << ")";
+    qDebug() << "[ClaudePanel] Raw SSE data:" << QString::fromStdString(response_body);
 
-      // Check for success field
-      size_t success_pos = response_body.find("\"success\":");
-      bool success = false;
-      if (success_pos != std::string::npos) {
-        size_t true_pos = response_body.find("true", success_pos);
-        size_t false_pos = response_body.find("false", success_pos);
-        if (true_pos != std::string::npos && (false_pos == std::string::npos || true_pos < false_pos)) {
-          success = true;
-        }
-      }
+    std::string accumulated_text;
+    bool had_error = false;
+    std::string error_message;
 
-      if (!success) {
-        // Extract error message
-        size_t error_pos = response_body.find("\"error\":\"");
-        std::string error_msg;
-        if (error_pos != std::string::npos) {
-          size_t start = error_pos + 9;
-          size_t end = response_body.find("\"", start);
-          error_msg = "❌ **Error:** " + response_body.substr(start, end - start);
+    // Parse SSE format: lines starting with "data: " contain JSON chunks
+    size_t parse_pos = 0;
+    int chunk_count = 0;
+    while (parse_pos < response_body.length()) {
+      // Find "data: " prefix
+      size_t data_start = response_body.find("data: ", parse_pos);
+      if (data_start == std::string::npos) break;
+
+      data_start += 6;  // Skip "data: "
+      size_t data_end = response_body.find("\n", data_start);
+      if (data_end == std::string::npos) data_end = response_body.length();
+
+      std::string json_line = response_body.substr(data_start, data_end - data_start);
+      parse_pos = data_end + 1;
+
+      qDebug() << "[ClaudePanel] Parsing chunk" << ++chunk_count << ":" << QString::fromStdString(json_line);
+
+      // Parse JSON chunk
+      // Format: {"type":"chunk","content":"text"} or {"type":"done"} or {"type":"error","error":"msg"}
+      size_t type_pos = json_line.find("\"type\":\"");
+      if (type_pos == std::string::npos) continue;
+
+      size_t type_start = type_pos + 8;
+      size_t type_end = json_line.find("\"", type_start);
+      std::string chunk_type = json_line.substr(type_start, type_end - type_start);
+
+      if (chunk_type == "chunk") {
+        qDebug() << "[ClaudePanel] Found chunk type, extracting content...";
+        // Extract content field
+        size_t content_pos = json_line.find("\"content\":\"");
+        if (content_pos != std::string::npos) {
+          size_t content_start = content_pos + 11;
+          size_t content_end = content_start;
+          int escape_count = 0;
+
+          // Find the end of the content string (handling escaped quotes)
+          while (content_end < json_line.length()) {
+            if (json_line[content_end] == '\\') {
+              escape_count++;
+              content_end++;
+              continue;
+            }
+            if (json_line[content_end] == '\"' && escape_count % 2 == 0) {
+              break;
+            }
+            escape_count = 0;
+            content_end++;
+          }
+
+          std::string chunk_content = json_line.substr(content_start, content_end - content_start);
+
+          qDebug() << "[ClaudePanel] Extracted content (escaped):" << QString::fromStdString(chunk_content);
+
+          // Unescape JSON sequences
+          size_t esc_pos = 0;
+          while ((esc_pos = chunk_content.find("\\n", esc_pos)) != std::string::npos) {
+            chunk_content.replace(esc_pos, 2, "\n");
+            esc_pos += 1;
+          }
+          esc_pos = 0;
+          while ((esc_pos = chunk_content.find("\\\"", esc_pos)) != std::string::npos) {
+            chunk_content.replace(esc_pos, 2, "\"");
+            esc_pos += 1;
+          }
+          esc_pos = 0;
+          while ((esc_pos = chunk_content.find("\\\\", esc_pos)) != std::string::npos) {
+            chunk_content.replace(esc_pos, 2, "\\");
+            esc_pos += 1;
+          }
+
+          accumulated_text += chunk_content;
+
+          qDebug() << "[ClaudePanel] Accumulated text length:" << accumulated_text.length();
+
+          // Update UI with accumulated text so far
+          QMetaObject::invokeMethod(this, [this, accumulated_text]() {
+            qDebug() << "[ClaudePanel] Updating UI with text (length=" << accumulated_text.length() << ")";
+            replaceLastAssistantMessage(QString::fromStdString(accumulated_text));
+          }, Qt::QueuedConnection);
         } else {
-          error_msg = "❌ **Error:** Request failed with unknown error";
+          qDebug() << "[ClaudePanel] ERROR: content field not found in chunk!";
         }
-        addMessage("assistant", QString::fromStdString(error_msg), true);
-        return;
-      }
-
-      // Extract response field
-      size_t response_pos = response_body.find("\"response\":\"");
-      if (response_pos == std::string::npos) {
-        addMessage("assistant", "❌ **Error:** Unexpected response format from Claude Agent", true);
-        return;
-      }
-
-      // Extract the response string
-      size_t start = response_pos + 12;  // Skip past "response":"
-      size_t end = start;
-      int escape_count = 0;
-
-      while (end < response_body.length()) {
-        if (response_body[end] == '\\') {
-          escape_count++;
-          end++;
-          continue;
+      } else if (chunk_type == "error") {
+        // Extract error message
+        size_t error_pos = json_line.find("\"error\":\"");
+        if (error_pos != std::string::npos) {
+          size_t err_start = error_pos + 9;
+          size_t err_end = json_line.find("\"", err_start);
+          error_message = json_line.substr(err_start, err_end - err_start);
+          had_error = true;
         }
-        if (response_body[end] == '\"' && escape_count % 2 == 0) {
-          break;
-        }
-        escape_count = 0;
-        end++;
+      } else if (chunk_type == "done") {
+        // Streaming complete
+        qDebug() << "[ClaudePanel] Streaming complete";
       }
+    }
 
-      std::string claude_response = response_body.substr(start, end - start);
+    // Final UI update
+    QMetaObject::invokeMethod(this, [this, accumulated_text, had_error, error_message]() {
+      showThinkingIndicator(false);
+      waiting_for_response_ = false;
 
-      // Unescape JSON escape sequences
-      size_t unescape_pos = 0;
-      while ((unescape_pos = claude_response.find("\\n", unescape_pos)) != std::string::npos) {
-        claude_response.replace(unescape_pos, 2, "\n");
-        unescape_pos += 1;
+      if (had_error) {
+        QString error_msg = QString::fromStdString("❌ **Error:** " + error_message);
+        replaceLastAssistantMessage(error_msg);
+      } else if (!accumulated_text.empty()) {
+        replaceLastAssistantMessage(QString::fromStdString(accumulated_text));
+      } else {
+        replaceLastAssistantMessage("❌ **Error:** No response received from Claude");
       }
-      unescape_pos = 0;
-      while ((unescape_pos = claude_response.find("\\\"", unescape_pos)) != std::string::npos) {
-        claude_response.replace(unescape_pos, 2, "\"");
-        unescape_pos += 1;
-      }
-
-      // Add assistant message
-      addMessage("assistant", QString::fromStdString(claude_response), true);
 
       // Show regenerate button
       regenerateButton_->show();
@@ -443,9 +494,13 @@ void ClaudePanel::addMessage(const QString& role, const QString& message, bool a
 }
 
 void ClaudePanel::replaceLastAssistantMessage(const QString& message) {
+  qDebug() << "[ClaudePanel::replaceLastAssistantMessage] Called with message length:" << message.length();
+  qDebug() << "[ClaudePanel::replaceLastAssistantMessage] Message preview:" << message.left(100);
+
   // Find the last assistant message
   for (auto it = messageBubbles_.rbegin(); it != messageBubbles_.rend(); ++it) {
     if ((*it)->GetRole() == ChatBubble::Role::Assistant) {
+      qDebug() << "[ClaudePanel::replaceLastAssistantMessage] Found assistant bubble, updating message";
       (*it)->SetMessage(message);
       scrollToBottom(true);
       return;
@@ -453,6 +508,7 @@ void ClaudePanel::replaceLastAssistantMessage(const QString& message) {
   }
 
   // If no assistant message found, add a new one
+  qDebug() << "[ClaudePanel::replaceLastAssistantMessage] No assistant bubble found, adding new one";
   addMessage("assistant", message, true);
 }
 

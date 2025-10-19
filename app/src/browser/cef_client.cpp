@@ -1,11 +1,14 @@
 #include "browser/cef_client.h"
+#include "utils/logging.h"
 #include "include/cef_app.h"
 #include "include/wrapper/cef_helpers.h"
 #include <iostream>
+#include <utility>
 
 namespace athena {
 namespace browser {
 
+static utils::Logger g_logger("CefClient");
 CefClient::CefClient(void* native_window, rendering::GLRenderer* gl_renderer)
     : native_window_(native_window),
       browser_(nullptr),
@@ -169,6 +172,100 @@ void CefClient::SetDeviceScaleFactor(float scale_factor) {
       browser_->GetHost()->WasResized();
     }
   }
+}
+
+std::string CefClient::GenerateRequestId() {
+  uint64_t id = next_js_request_id_.fetch_add(1, std::memory_order_relaxed);
+  return std::to_string(id);
+}
+
+std::optional<std::string> CefClient::RequestJavaScriptEvaluation(const std::string& code) {
+  CEF_REQUIRE_UI_THREAD();
+
+  if (!browser_) {
+    g_logger.Warn("RequestJavaScriptEvaluation: browser_ is null");
+    return std::nullopt;
+  }
+
+  auto frame = browser_->GetMainFrame();
+  if (!frame) {
+    g_logger.Warn("RequestJavaScriptEvaluation: main frame is null");
+    return std::nullopt;
+  }
+
+  const std::string request_id = GenerateRequestId();
+  {
+    std::lock_guard<std::mutex> lock(js_mutex_);
+    pending_js_.emplace(request_id, JavaScriptRequest{});
+  }
+
+  CefRefPtr<CefProcessMessage> message = CefProcessMessage::Create("Athena.ExecuteJavaScript");
+  CefRefPtr<CefListValue> args = message->GetArgumentList();
+  args->SetString(0, request_id);
+  args->SetString(1, code);
+
+  g_logger.Debug("Dispatching JS evaluation request {}", request_id);
+  frame->SendProcessMessage(PID_RENDERER, message);
+  return request_id;
+}
+
+std::optional<std::string> CefClient::TryConsumeJavaScriptResult(const std::string& request_id) {
+  std::lock_guard<std::mutex> lock(js_mutex_);
+  auto it = pending_js_.find(request_id);
+  if (it == pending_js_.end() || !it->second.completed) {
+    return std::nullopt;
+  }
+
+  std::string result = std::move(it->second.result_json);
+  pending_js_.erase(it);
+  return result;
+}
+
+void CefClient::CancelJavaScriptEvaluation(const std::string& request_id) {
+  std::lock_guard<std::mutex> lock(js_mutex_);
+  pending_js_.erase(request_id);
+}
+
+bool CefClient::OnProcessMessageReceived(CefRefPtr<::CefBrowser> browser,
+                                         CefRefPtr<::CefFrame> frame,
+                                         CefProcessId source_process,
+                                         CefRefPtr<CefProcessMessage> message) {
+  (void)browser;
+  (void)frame;
+  (void)source_process;
+
+  if (!message) {
+    return false;
+  }
+
+  const std::string name = message->GetName();
+  if (name != "Athena.ExecuteJavaScriptResult") {
+    return false;
+  }
+
+  CefRefPtr<CefListValue> args = message->GetArgumentList();
+  if (!args || args->GetSize() < 2) {
+    g_logger.Warn("ExecuteJavaScriptResult received with insufficient arguments");
+    return true;
+  }
+
+  const std::string request_id = args->GetString(0);
+  const std::string payload = args->GetString(1);
+
+  {
+    std::lock_guard<std::mutex> lock(js_mutex_);
+    auto it = pending_js_.find(request_id);
+    if (it == pending_js_.end()) {
+      g_logger.Warn("ExecuteJavaScriptResult for unknown request {}", request_id);
+      return true;
+    }
+
+    it->second.completed = true;
+    it->second.result_json = payload;
+  }
+
+  g_logger.Debug("ExecuteJavaScriptResult received for request {}", request_id);
+  return true;
 }
 
 }  // namespace browser

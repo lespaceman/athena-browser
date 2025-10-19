@@ -6,6 +6,15 @@
  *
  * This server runs on the main UI thread using platform-specific I/O mechanisms,
  * avoiding the need for additional threading.
+ *
+ * Implementation Files:
+ * - browser_control_server.cpp: Core server lifecycle and connection management
+ * - browser_control_server_routing.cpp: HTTP request parsing and routing
+ * - browser_control_handlers_navigation.cpp: Navigation and history handlers
+ * - browser_control_handlers_tabs.cpp: Tab management handlers
+ * - browser_control_handlers_content.cpp: HTML, JavaScript, screenshot handlers
+ * - browser_control_handlers_extraction.cpp: Advanced content extraction handlers
+ * - browser_control_server_internal.h: Shared utilities and constants
  */
 
 #ifndef ATHENA_RUNTIME_BROWSER_CONTROL_SERVER_H_
@@ -155,6 +164,14 @@ class BrowserControlServer {
   std::string HandleCloseTab(size_t tab_index);
   std::string HandleSwitchTab(size_t tab_index);
   std::string HandleTabInfo();
+
+  // Context-efficient content extraction handlers
+  std::string HandleGetPageSummary(std::optional<size_t> tab_index);
+  std::string HandleGetInteractiveElements(std::optional<size_t> tab_index);
+  std::string HandleGetAccessibilityTree(std::optional<size_t> tab_index);
+  std::string HandleQueryContent(const std::string& query_type,
+                                 std::optional<size_t> tab_index);
+  std::string HandleGetAnnotatedScreenshot(std::optional<size_t> tab_index);
 
   // HTTP helpers
   static std::string ParseHttpMethod(const std::string& request);

@@ -52,6 +52,12 @@ endif()
 set(RUNTIME_SOURCES
   src/runtime/node_runtime.cpp
   src/runtime/browser_control_server.cpp
+  src/runtime/browser_control_server_routing.cpp
+  src/runtime/browser_control_handlers_navigation.cpp
+  src/runtime/browser_control_handlers_tabs.cpp
+  src/runtime/browser_control_handlers_content.cpp
+  src/runtime/browser_control_handlers_extraction.cpp
+  src/runtime/js_execution_utils.cpp
 )
 
 add_executable(athena-browser
