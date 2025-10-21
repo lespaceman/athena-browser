@@ -345,6 +345,7 @@ class QtMainWindow : public QMainWindow, public Window {
   void onTabCloseRequested(int index);
   void onCurrentTabChanged(int index);
   void onClaudeButtonClicked();
+  void onTabMoved(int from, int to);
 
  private:
   // ============================================================================

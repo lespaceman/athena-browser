@@ -404,24 +404,6 @@ utils::Result<std::string> NodeRuntime::Call(const std::string& method,
   logger.Debug("NodeRuntime::Call - Received full headers (" + std::to_string(response.length()) +
                " bytes)");
 
-  // Parse Content-Length from headers
-  size_t content_length = 0;
-  size_t cl_pos = response.find("Content-Length:");
-  if (cl_pos != std::string::npos) {
-    size_t cl_start = cl_pos + 15;  // Length of "Content-Length:"
-    size_t cl_end = response.find("\r\n", cl_start);
-    if (cl_end != std::string::npos) {
-      std::string cl_str = response.substr(cl_start, cl_end - cl_start);
-      // Trim whitespace
-      size_t first = cl_str.find_first_not_of(" \t");
-      size_t last = cl_str.find_last_not_of(" \t");
-      if (first != std::string::npos && last != std::string::npos) {
-        cl_str = cl_str.substr(first, last - first + 1);
-        content_length = std::stoull(cl_str);
-      }
-    }
-  }
-
   // Find where the body starts
   size_t body_start = response.find("\r\n\r\n");
   if (body_start == std::string::npos) {
@@ -430,26 +412,129 @@ utils::Result<std::string> NodeRuntime::Call(const std::string& method,
   }
   body_start += 4;  // Skip past "\r\n\r\n"
 
-  // Calculate how much body we already have
-  size_t body_received = response.length() - body_start;
+  // Check if this is a chunked transfer encoding response
+  bool is_chunked = response.find("Transfer-Encoding: chunked") != std::string::npos;
 
-  // Continue reading until we have the full body
-  if (content_length > 0) {
-    while (body_received < content_length) {
+  std::string response_body;
+
+  if (is_chunked) {
+    logger.Debug("NodeRuntime::Call - Detected chunked transfer encoding");
+
+    // Start with what we already have
+    std::string chunked_data = response.substr(body_start);
+
+    // Continue reading until we get the terminating chunk
+    while (true) {
+      // Check if we have the terminating chunk (0\r\n\r\n or 0\r\n followed by trailers)
+      if (chunked_data.find("0\r\n\r\n") != std::string::npos ||
+          chunked_data.find("\r\n0\r\n\r\n") != std::string::npos) {
+        break;
+      }
+
+      // Read more data
       received = recv(sock, buffer, sizeof(buffer) - 1, 0);
       if (received <= 0) {
         break;
       }
       buffer[received] = '\0';
-      response += buffer;
-      body_received += received;
+      chunked_data += buffer;
     }
+
+    logger.Debug("NodeRuntime::Call - Received full chunked response (" +
+                 std::to_string(chunked_data.length()) + " bytes)");
+
+    // Decode chunked encoding
+    size_t pos = 0;
+    while (pos < chunked_data.length()) {
+      // Find the chunk size line (hex number followed by \r\n)
+      size_t size_end = chunked_data.find("\r\n", pos);
+      if (size_end == std::string::npos) {
+        break;
+      }
+
+      // Parse chunk size (hex)
+      std::string size_str = chunked_data.substr(pos, size_end - pos);
+      // Remove any chunk extensions (after ';')
+      size_t semicolon = size_str.find(';');
+      if (semicolon != std::string::npos) {
+        size_str = size_str.substr(0, semicolon);
+      }
+
+      size_t chunk_size;
+      try {
+        chunk_size = std::stoull(size_str, nullptr, 16);
+      } catch (...) {
+        logger.Error("NodeRuntime::Call - Failed to parse chunk size: " + size_str);
+        break;
+      }
+
+      logger.Debug("NodeRuntime::Call - Chunk size: " + std::to_string(chunk_size) + " bytes");
+
+      if (chunk_size == 0) {
+        // Last chunk
+        break;
+      }
+
+      // Move past the size line
+      pos = size_end + 2;  // Skip \r\n
+
+      // Extract chunk data
+      if (pos + chunk_size <= chunked_data.length()) {
+        response_body += chunked_data.substr(pos, chunk_size);
+        pos += chunk_size;
+
+        // Skip the trailing \r\n after the chunk
+        if (pos + 2 <= chunked_data.length() && chunked_data.substr(pos, 2) == "\r\n") {
+          pos += 2;
+        }
+      } else {
+        logger.Error("NodeRuntime::Call - Incomplete chunk data");
+        break;
+      }
+    }
+
+    logger.Debug("NodeRuntime::Call - Decoded body length: " + std::to_string(response_body.length()) +
+                 " bytes");
+  } else {
+    // Parse Content-Length from headers
+    size_t content_length = 0;
+    size_t cl_pos = response.find("Content-Length:");
+    if (cl_pos != std::string::npos) {
+      size_t cl_start = cl_pos + 15;  // Length of "Content-Length:"
+      size_t cl_end = response.find("\r\n", cl_start);
+      if (cl_end != std::string::npos) {
+        std::string cl_str = response.substr(cl_start, cl_end - cl_start);
+        // Trim whitespace
+        size_t first = cl_str.find_first_not_of(" \t");
+        size_t last = cl_str.find_last_not_of(" \t");
+        if (first != std::string::npos && last != std::string::npos) {
+          cl_str = cl_str.substr(first, last - first + 1);
+          content_length = std::stoull(cl_str);
+        }
+      }
+    }
+
+    // Calculate how much body we already have
+    size_t body_received = response.length() - body_start;
+
+    // Continue reading until we have the full body
+    if (content_length > 0) {
+      while (body_received < content_length) {
+        received = recv(sock, buffer, sizeof(buffer) - 1, 0);
+        if (received <= 0) {
+          break;
+        }
+        buffer[received] = '\0';
+        response += buffer;
+        body_received += received;
+      }
+    }
+
+    // Extract body from response
+    response_body = response.substr(body_start);
   }
 
   close(sock);
-
-  // Extract body from response
-  std::string response_body = response.substr(body_start);
 
   return utils::Ok(std::move(response_body));
 }

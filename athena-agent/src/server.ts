@@ -12,6 +12,7 @@ import { dirname } from 'path';
 import { Logger } from './logger.js';
 import { config, validateConfig } from './config.js';
 import { ClaudeClient } from './claude-client.js';
+import { SessionManager } from './session-manager.js';
 import { healthHandler } from './routes/health.js';
 import {
   createSendHandler,
@@ -20,11 +21,22 @@ import {
   createStreamHandler,
   capabilitiesHandler
 } from './routes/chat.js';
+import {
+  createListHandler,
+  createGetHandler,
+  createGetMessagesHandler,
+  createUpdateHandler,
+  createDeleteHandler,
+  createSearchHandler,
+  createPruneHandler,
+  createStatsHandler
+} from './routes/sessions.js';
 import { setBrowserController } from './routes/browser.js';
 import { createMockBrowserController } from './browser-controller-impl.js';
 import { createNativeBrowserController } from './native-controller.js';
 import { openUrlHandler } from './routes/poc.js';
 import { createV1Router } from './api/v1.js';
+import { createAgentMcpServer } from './mcp-agent-adapter.js';
 
 const logger = new Logger('Server');
 
@@ -63,10 +75,20 @@ async function main() {
       type: nativeController ? 'native' : 'mock'
     });
 
-    // Create Claude client
-    // Note: MCP server runs separately via mcp-stdio-server.ts
-    const claudeClient = new ClaudeClient(config);
-    logger.info('Claude client created');
+    // Create session manager for persistent conversation storage
+    const sessionManager = new SessionManager();
+    logger.info('Session manager initialized', {
+      sessionCount: sessionManager.getSessionCount()
+    });
+
+    // Create MCP server for Claude Agent SDK integration
+    // This allows Claude to use browser control tools via the Agent SDK
+    const mcpServer = createAgentMcpServer(controlSocketPath);
+    logger.info('MCP server created for Agent SDK');
+
+    // Create Claude client with MCP server and session manager
+    const claudeClient = new ClaudeClient(config, mcpServer, sessionManager);
+    logger.info('Claude client created with MCP server and session storage');
 
     // Create Express app
     const app = express();
@@ -111,6 +133,16 @@ async function main() {
     app.post('/v1/chat/continue', createContinueHandler(claudeClient));
     app.post('/v1/chat/clear', createClearHandler(claudeClient));
 
+    // Session management endpoints
+    app.get('/v1/sessions', createListHandler(sessionManager));
+    app.get('/v1/sessions/search', createSearchHandler(sessionManager));
+    app.get('/v1/sessions/stats', createStatsHandler(sessionManager));
+    app.post('/v1/sessions/prune', createPruneHandler(sessionManager));
+    app.get('/v1/sessions/:sessionId', createGetHandler(sessionManager));
+    app.get('/v1/sessions/:sessionId/messages', createGetMessagesHandler(sessionManager));
+    app.patch('/v1/sessions/:sessionId', createUpdateHandler(sessionManager));
+    app.delete('/v1/sessions/:sessionId', createDeleteHandler(sessionManager));
+
     // Unified API (preferred entry point for MCP and other clients)
     app.use('/v1', createV1Router(browserController));
 
@@ -129,6 +161,14 @@ async function main() {
           'POST /v1/chat/stream',
           'POST /v1/chat/continue',
           'POST /v1/chat/clear',
+          'GET /v1/sessions',
+          'GET /v1/sessions/search',
+          'GET /v1/sessions/stats',
+          'POST /v1/sessions/prune',
+          'GET /v1/sessions/:sessionId',
+          'GET /v1/sessions/:sessionId/messages',
+          'PATCH /v1/sessions/:sessionId',
+          'DELETE /v1/sessions/:sessionId',
           'POST /v1/browser/navigate',
           'POST /v1/browser/back',
           'POST /v1/browser/forward',

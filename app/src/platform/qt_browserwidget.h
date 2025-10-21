@@ -63,6 +63,11 @@ class BrowserWidget : public QOpenGLWidget {
   size_t GetTabIndex() const { return tab_index_; }
 
   /**
+   * Update the tab index after tabs are reordered or removed.
+   */
+  void SetTabIndex(size_t tab_index) { tab_index_ = tab_index; }
+
+  /**
    * Get the CEF client for this specific tab's browser.
    * Returns nullptr if this tab doesn't have a browser yet.
    */

@@ -17,8 +17,10 @@
 #include "rendering/gl_renderer.h"
 #include "utils/logging.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <utility>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QCoreApplication>
@@ -28,6 +30,8 @@
 #include <QKeySequence>
 #include <QMetaObject>
 #include <QShortcut>
+#include <QTabBar>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QStyle>
 #include <QTimer>
@@ -238,6 +242,10 @@ void QtMainWindow::connectSignals() {
 
   connect(tabWidget_, &QTabWidget::currentChanged, this, &QtMainWindow::onCurrentTabChanged);
 
+  if (QTabBar* tabBar = tabWidget_->tabBar()) {
+    connect(tabBar, &QTabBar::tabMoved, this, &QtMainWindow::onTabMoved);
+  }
+
   // Claude button
   connect(claudeButton_, &QPushButton::clicked, this, &QtMainWindow::onClaudeButtonClicked);
 
@@ -427,6 +435,34 @@ void QtMainWindow::onClaudeButtonClicked() {
 
     logger.Info(claudePanel_->IsVisible() ? "Claude sidebar shown" : "Claude sidebar hidden");
   }
+}
+
+void QtMainWindow::onTabMoved(int from, int to) {
+  logger.Info("Tab moved from " + std::to_string(from) + " to " + std::to_string(to));
+
+  if (from == to) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(tabs_mutex_);
+
+  const int tab_count = static_cast<int>(tabs_.size());
+  if (from < 0 || to < 0 || from >= tab_count || to >= tab_count) {
+    logger.Warn("onTabMoved: indices out of range");
+    return;
+  }
+
+  QtTab moved_tab = std::move(tabs_[from]);
+  tabs_.erase(tabs_.begin() + from);
+  tabs_.insert(tabs_.begin() + to, std::move(moved_tab));
+
+  for (size_t i = 0; i < tabs_.size(); ++i) {
+    if (tabs_[i].browser_widget) {
+      tabs_[i].browser_widget->SetTabIndex(i);
+    }
+  }
+
+  active_tab_index_ = static_cast<size_t>(tabWidget_->currentIndex());
 }
 
 // ============================================================================
@@ -981,6 +1017,7 @@ void QtMainWindow::CloseTab(size_t index) {
   bool should_close_window = false;
   std::unique_ptr<GLRenderer> renderer_to_destroy;
   CefClient* client_to_hide = nullptr;
+  BrowserWidget* widget_to_delete = nullptr;
 
   {
     std::lock_guard<std::mutex> lock(tabs_mutex_);
@@ -994,22 +1031,41 @@ void QtMainWindow::CloseTab(size_t index) {
     browser_to_close = tabs_[index].browser_id;
     renderer_to_destroy = std::move(tabs_[index].renderer);
     client_to_hide = tabs_[index].cef_client;
+    widget_to_delete = tabs_[index].browser_widget;
 
-    // Remove tab widget page
-    tabWidget_->removeTab(index);
-
-    // Remove from tabs vector
+    // Remove from tabs vector while holding the lock to keep state consistent
     tabs_.erase(tabs_.begin() + index);
+
+    // Update browser widget tab indices so they stay in sync with tabs_
+    for (size_t i = 0; i < tabs_.size(); ++i) {
+      if (tabs_[i].browser_widget) {
+        tabs_[i].browser_widget->SetTabIndex(i);
+      }
+    }
 
     // Check if we closed the last tab
     should_close_window = tabs_.empty();
 
     // Adjust active tab index if needed
-    if (!should_close_window && active_tab_index_ >= tabs_.size()) {
-      active_tab_index_ = tabs_.size() - 1;
+    if (should_close_window) {
+      active_tab_index_ = 0;
+      new_active_index = 0;
+    } else {
+      size_t previous_active = active_tab_index_;
+      size_t max_index = tabs_.empty() ? 0 : tabs_.size() - 1;
+      active_tab_index_ = std::min(previous_active, max_index);
+      new_active_index = active_tab_index_;
     }
+  }
 
-    new_active_index = active_tab_index_;
+  // Remove the tab page outside the lock to avoid re-entrant signal handling deadlocks
+  {
+    QSignalBlocker blocker(tabWidget_);
+    tabWidget_->removeTab(static_cast<int>(index));
+  }
+
+  if (widget_to_delete) {
+    widget_to_delete->deleteLater();
   }
 
   // Hide browser (outside lock)

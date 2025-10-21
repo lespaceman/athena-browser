@@ -15,6 +15,7 @@ if(USE_QT)
     Widgets
     OpenGL
     OpenGLWidgets
+    Network
   )
 
   # Enable Qt MOC (Meta-Object Compiler) for signals/slots
@@ -115,6 +116,7 @@ if(CEF_FOUND)
         Qt6::Widgets
         Qt6::OpenGL
         Qt6::OpenGLWidgets
+        Qt6::Network
         ${X11_LIBRARIES}
         ${OPENGL_LIBRARIES}
         ${GTK3_LIBRARIES}

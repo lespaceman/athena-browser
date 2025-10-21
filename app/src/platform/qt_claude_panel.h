@@ -7,6 +7,7 @@
 #include <QGraphicsOpacityEffect>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLocalSocket>
 #include <QPropertyAnimation>
 #include <QPushButton>
 #include <QScrollArea>
@@ -100,6 +101,12 @@ class ClaudePanel : public QWidget {
   void onInputTextChanged();
   void onRegenerateClicked();
 
+  // Streaming socket handlers
+  void onSocketConnected();
+  void onSocketReadyRead();
+  void onSocketError(QLocalSocket::LocalSocketError error);
+  void onSocketDisconnected();
+
  private:
   // ============================================================================
   // Setup Methods
@@ -143,6 +150,12 @@ class ClaudePanel : public QWidget {
    */
   void trimHistory();
 
+  /**
+   * Parse and process SSE (Server-Sent Events) chunks from streaming response.
+   * @param data Raw SSE data to parse
+   */
+  void parseSSEChunks(const QString& data);
+
   // ============================================================================
   // Member Variables
   // ============================================================================
@@ -170,6 +183,7 @@ class ClaudePanel : public QWidget {
   ChatInputWidget* inputWidget_;
   QPushButton* sendButton_;
   QPushButton* regenerateButton_;
+  QLabel* keyboardHintLabel_;
 
   // Thinking indicator
   ThinkingIndicator* thinkingIndicator_;
@@ -177,6 +191,15 @@ class ClaudePanel : public QWidget {
   // Message tracking
   std::deque<ChatBubble*> messageBubbles_;
   bool waiting_for_response_;
+
+  // Streaming HTTP connection
+  QLocalSocket* streaming_socket_;
+  QString response_buffer_;        // Buffers incomplete HTTP data
+  QString accumulated_text_;       // Accumulated SSE content for current response
+  bool headers_received_;          // Track if HTTP headers have been parsed
+
+  // Session management
+  QString current_session_id_;     // Current Claude session ID for continuity
 };
 
 /**
@@ -209,6 +232,11 @@ class ChatInputWidget : public QTextEdit {
    * Emitted when user presses Enter (without Shift).
    */
   void sendRequested();
+
+  /**
+   * Emitted when focus state changes.
+   */
+  void focusChanged(bool focused);
 
  protected:
   void keyPressEvent(QKeyEvent* event) override;
@@ -265,9 +293,6 @@ class ChatBubble : public QFrame {
    */
   void AnimateIn();
 
- private slots:
-  void onCopyClicked();
-
  private:
   void setupUI();
   void setupStyles();
@@ -280,7 +305,6 @@ class ChatBubble : public QFrame {
   QVBoxLayout* layout_;
   QLabel* roleLabel_;         // "You" or "Claude"
   QTextEdit* contentWidget_;  // Message content (read-only)
-  QPushButton* copyButton_;   // Copy message button
 
   // Animation
   QGraphicsOpacityEffect* opacityEffect_;

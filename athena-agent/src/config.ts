@@ -13,12 +13,15 @@ export function loadConfig(): AthenaAgentConfig {
   const config: AthenaAgentConfig = {
     socketPath: process.env.ATHENA_SOCKET_PATH || `/tmp/athena-${uid}.sock`,
     cwd: process.env.CWD || process.cwd(),
-    model: process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
-    permissionMode: (process.env.PERMISSION_MODE as any) || 'bypassPermissions',
+    // Use Sonnet 4.5 by default for better reasoning and tool use
+    model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-5',
+    permissionMode: (process.env.PERMISSION_MODE as any) || 'default',
     logLevel: (process.env.LOG_LEVEL as any) || 'info',
     apiKey: process.env.ANTHROPIC_API_KEY,
-    maxThinkingTokens: process.env.MAX_THINKING_TOKENS ? parseInt(process.env.MAX_THINKING_TOKENS, 10) : undefined,
-    maxTurns: process.env.MAX_TURNS ? parseInt(process.env.MAX_TURNS, 10) : undefined
+    // Enable extended thinking for complex browser automation tasks
+    maxThinkingTokens: process.env.MAX_THINKING_TOKENS ? parseInt(process.env.MAX_THINKING_TOKENS, 10) : 8000,
+    // Limit conversation turns to prevent runaway costs
+    maxTurns: process.env.MAX_TURNS ? parseInt(process.env.MAX_TURNS, 10) : 20
   };
 
   return config;

@@ -12,7 +12,8 @@ const logger = new Logger('ChatRoutes');
 
 // Validation schemas
 const ChatRequestSchema = z.object({
-  message: z.string().min(1).max(50000)
+  message: z.string().min(1).max(50000),
+  sessionId: z.string().optional() // Optional: auto-create if not provided
 });
 
 /**
@@ -33,16 +34,17 @@ export function createSendHandler(claudeClient: ClaudeClient) {
         return;
       }
 
-      const { message } = validation.data;
+      const { message, sessionId } = validation.data;
       const requestId = req.headers['x-request-id'] as string || `req-${Date.now()}`;
 
       logger.info('Chat request received', {
         requestId,
+        sessionId: sessionId || 'new',
         messageLength: message.length
       });
 
-      // Send message to Claude
-      const response = await claudeClient.sendMessage(message);
+      // Send message to Claude with session context
+      const response = await claudeClient.sendMessage(message, sessionId);
 
       logger.info('Chat response sent', {
         requestId,
@@ -85,11 +87,12 @@ export function createStreamHandler(claudeClient: ClaudeClient) {
         return;
       }
 
-      const { message } = validation.data;
+      const { message, sessionId } = validation.data;
       const requestId = req.headers['x-request-id'] as string || `req-${Date.now()}`;
 
       logger.info('Chat stream request received', {
         requestId,
+        sessionId: sessionId || 'new',
         messageLength: message.length
       });
 
@@ -101,7 +104,7 @@ export function createStreamHandler(claudeClient: ClaudeClient) {
 
       // Stream the response
       try {
-        for await (const chunk of claudeClient.streamMessage(message)) {
+        for await (const chunk of claudeClient.streamMessage(message, sessionId)) {
           // Send SSE event
           const data = JSON.stringify(chunk);
           logger.debug('Sending SSE chunk', { chunk });
@@ -162,6 +165,7 @@ export function createStreamHandler(claudeClient: ClaudeClient) {
 /**
  * POST /v1/chat/continue
  * Continue the current conversation
+ * @deprecated Use POST /v1/chat/send with sessionId instead
  */
 export function createContinueHandler(claudeClient: ClaudeClient) {
   return async (req: Request, res: Response): Promise<void> => {
@@ -176,15 +180,16 @@ export function createContinueHandler(claudeClient: ClaudeClient) {
         return;
       }
 
-      const { message } = validation.data;
+      const { message, sessionId } = validation.data;
       const requestId = req.headers['x-request-id'] as string || `req-${Date.now()}`;
 
-      logger.info('Continue conversation request', {
+      logger.info('Continue conversation request (deprecated)', {
         requestId,
-        sessionId: claudeClient.getSessionId()
+        sessionId: sessionId || 'none provided'
       });
 
-      const response = await claudeClient.continueConversation(message);
+      // Just call sendMessage with sessionId - same functionality
+      const response = await claudeClient.sendMessage(message, sessionId);
 
       res.json(response);
 
