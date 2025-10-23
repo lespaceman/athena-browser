@@ -80,7 +80,17 @@ athena-browser/
 - ✅ Git commit: e36b01f "build: add Linux distribution packaging"
 - ✅ Time: ~1.5 hours
 
-**Total Time Spent:** 5 hours (vs. estimated 8-12 hours)
+**Phase 3.5: Agent Path Fix** (BONUS - COMPLETED)
+- ✅ Added fallback logic to find agent script in multiple locations
+- ✅ Supports dev mode: agent/dist/server.js (relative to project root)
+- ✅ Supports bundle mode: lib/agent/server.js (relative to binary)
+- ✅ Supports macOS bundle: Resources/agent/server.js (future-proofing)
+- ✅ Bundle now finds agent automatically without Phase 4's complexity
+- ✅ Clear debug logging and improved error messages
+- ✅ Git commit: 59b2ab4 "fix: add agent path fallback for bundle mode"
+- ✅ Time: ~0.5 hours
+
+**Total Time Spent:** 5.5 hours (vs. estimated 8-12 hours)
 
 ### 🎉 Phase 2 & 3 Success
 
@@ -102,14 +112,20 @@ cd dist/linux/athena-browser
 - ✅ Athena Browser binary (bin/athena-browser)
 - ✅ CEF libraries and resources (lib/libcef.so, locales/, *.pak)
 - ✅ Qt6 libraries and plugins (lib/libQt*.so, lib/plugins/)
-- ✅ Node.js agent with production dependencies (lib/agent/)
+- ✅ Node.js agent with production dependencies (lib/agent/server.js) - **Agent path now works!**
 - ✅ Homepage resources (resources/homepage/)
 - ✅ Launcher script with proper library paths (athena-browser.sh)
 - ✅ README.txt with usage instructions
 
+**Bundle Verification:**
+```bash
+# Expected log output when running bundle:
+[Main] [INFO] Athena Agent will be initialized with script: .../lib/agent/server.js
+```
+
 ### 🔄 Remaining Phases
 
-- **Phase 4:** Make Resource Paths Configurable (DEFERRED - over-engineered)
+- **Phase 4:** Make Resource Paths Configurable (~~DEFERRED~~ **PARTIALLY DONE** - Agent path fallback implemented, full path config system not needed)
 - **Phase 5:** Add macOS and Windows Packaging (FUTURE - when needed)
 - **Phase 6:** Create Release Packages (FUTURE - AppImage, DMG)
 - **Phase 7:** CI/CD Integration (FUTURE - GitHub Actions)
@@ -567,21 +583,33 @@ cd dist/linux/athena-browser
 
 ---
 
-## Phase 4: Make Resource Paths Configurable 🔧 (OPTIONAL - DEFER)
+## Phase 4: Make Resource Paths Configurable 🔧 (PARTIALLY DONE ✅)
 
-**⚠️ Recommendation: DEFER until multi-platform support is actually needed**
+**Status: PARTIALLY IMPLEMENTED** - Agent path fallback completed in Phase 3.5
 
 **Goal:** Eliminate hardcoded `resources/homepage` and `agent/dist` paths
 
-**Problem:** Paths are hardcoded, making it hard to support different bundle structures
+**Problem:** Paths were hardcoded, making it hard to support different bundle structures
 
-**Why Defer:**
-- Current runtime path detection in `scheme_handler.cpp` and `main.cpp` already works for dev and production modes
-- Adds significant complexity (8 hours) for uncertain future benefit
-- Can be added later when macOS/Windows support is actively developed
-- Phases 1-3 provide immediate value; this adds technical debt
+**What Was Done (Phase 3.5):**
+- ✅ Agent script path now uses fallback logic (main.cpp:112-155)
+- ✅ Checks dev mode: `agent/dist/server.js` (relative to project root)
+- ✅ Checks bundle mode: `lib/agent/server.js` (relative to binary)
+- ✅ Checks macOS bundle: `Resources/agent/server.js` (future-proof)
+- ✅ Bundle now works without full path configuration system
+- ✅ Git commit: 59b2ab4 "fix: add agent path fallback for bundle mode"
 
-**Solution (if needed later):** Make paths configurable via CMake defines and runtime detection
+**What Remains (DEFER):**
+- ⏭️ Homepage resource path fallback (scheme_handler.cpp) - not needed yet, homepage works in dev and bundle modes
+- ⏭️ Full CMake-based path configuration system - over-engineered for current needs
+
+**Why Partial Solution is Sufficient:**
+- Agent path was the critical issue - now resolved
+- Homepage already works via DEV_URL (dev mode) and resources/homepage/ (bundle mode)
+- Full path config system (8 hours) adds complexity without immediate benefit
+- Can be added later if needed for advanced use cases
+
+**Solution (if full implementation needed later):** Make paths configurable via CMake defines and runtime detection
 
 ### Changes
 
