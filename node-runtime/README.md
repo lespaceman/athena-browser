@@ -5,7 +5,7 @@ Node.js helper process for Athena Browser, providing Node-grade capabilities via
 ## Architecture
 
 - **IPC**: HTTP over Unix domain socket (`/tmp/athena-<uid>.sock`)
-- **Lifecycle**: Spawned by GTK app, supervised by `Application` class
+- **Lifecycle**: Spawned by Qt app, supervised by `Application` class
 - **Security**: Socket permissions locked to user (0600)
 - **Health**: `/health` endpoint for liveness/readiness checks
 - **Graceful shutdown**: Handles SIGTERM with cleanup
@@ -145,11 +145,11 @@ On successful startup, prints:
 READY /tmp/athena-<uid>.sock
 ```
 
-GTK reads this line to know the endpoint is available.
+The Qt app reads this line to know the endpoint is available.
 
 ## Shutdown
 
-1. GTK sends SIGTERM
+1. Qt app sends SIGTERM
 2. Node stops accepting new connections
 3. Finishes in-flight requests
 4. Unlinks socket file

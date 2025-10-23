@@ -1,8 +1,8 @@
 /**
  * QtMainWindow Implementation
  *
- * Qt-based main window that replaces GtkWindow with Qt's signal/slot system.
- * Maintains same architecture: zero globals, RAII, dependency injection.
+ * Qt-based main window with multi-tab browser support.
+ * Maintains clean architecture: zero globals, RAII, dependency injection.
  */
 
 #include "platform/qt_mainwindow.h"
@@ -274,11 +274,10 @@ void QtMainWindow::InitializeBrowser() {
 }
 
 // ============================================================================
-// Qt Event Handlers (replace GTK callbacks)
+// Qt Event Handlers
 // ============================================================================
 
 void QtMainWindow::closeEvent(QCloseEvent* event) {
-  // Replaces GTK on_delete callback
   logger.Info("Window close event");
   closed_ = true;
 
@@ -310,10 +309,9 @@ void QtMainWindow::closeEvent(QCloseEvent* event) {
 }
 
 void QtMainWindow::resizeEvent(QResizeEvent* event) {
-  // Replaces GTK on_size_allocate callback
   QMainWindow::resizeEvent(event);
 
-  // Notify browser of size change (Phase 2: resize active tab's browser widget)
+  // Notify browser of size change (resize active tab's browser widget)
   // Extract data first, then call OnBrowserSizeChanged outside the lock to avoid recursive locking
   size_t tab_index_to_resize = 0;
   int widget_width = 0;
@@ -374,7 +372,7 @@ void QtMainWindow::OnBrowserSizeChanged(size_t tab_index, int width, int height)
 }
 
 // ============================================================================
-// UI Event Slots (replace GTK signal callbacks)
+// UI Event Slots
 // ============================================================================
 
 void QtMainWindow::onBackClicked() {
@@ -1461,8 +1459,7 @@ void QtWindowSystem::Run() {
   // CEF requires CefDoMessageLoopWork() to be called regularly to
   // process browser events (painting, navigation, JS execution, etc.)
   //
-  // In GTK, we used: g_idle_add(OnCefMessageLoopWork, ...)
-  // In Qt, we use: QTimer that fires every 10ms
+  // We use a QTimer that fires every 10ms to call CefDoMessageLoopWork()
   // ====================================================================
 
   cef_timer_ = new QTimer(app_);

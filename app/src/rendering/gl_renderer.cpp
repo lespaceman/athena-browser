@@ -179,7 +179,6 @@ utils::Result<void> GLRenderer::Render() {
   }
 
   // The GL context is automatically current when this is called
-  // GTK: from GtkGLArea "render" signal
   // Qt: from QOpenGLWidget::paintGL()
 
   // Let CEF's renderer do the actual OpenGL rendering

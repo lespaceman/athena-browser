@@ -44,7 +44,7 @@ class CefClient : public ::CefClient,
   /**
    * Construct a CEF client.
    *
-   * @param native_window Platform-specific window handle (GtkWidget*, HWND, etc.)
+   * @param native_window Platform-specific window handle (QWidget*, HWND, etc.)
    * @param gl_renderer Non-owning pointer to GL renderer
    */
   CefClient(void* native_window, rendering::GLRenderer* gl_renderer);

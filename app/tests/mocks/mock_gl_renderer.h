@@ -13,7 +13,7 @@ namespace testing {
  * Mock implementation of GLRenderer for testing.
  *
  * This mock is used to test components that depend on GLRenderer
- * without requiring actual OpenGL initialization or GTK widgets.
+ * without requiring actual OpenGL initialization or Qt widgets.
  *
  * Since GLRenderer is not an interface, this mock provides a simple
  * fake implementation that tracks method calls.

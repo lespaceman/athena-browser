@@ -68,7 +68,7 @@ utils::Result<void> Application::Initialize(int& argc, char* argv[]) {
     return utils::Error("Window system is null");
   }
 
-  // Initialize window system first (initializes platform, e.g., GTK)
+  // Initialize window system first (initializes Qt platform)
   auto window_result = window_system_->Initialize(argc, argv, browser_engine_.get());
   if (!window_result) {
     return utils::Error("Failed to initialize window system: " +

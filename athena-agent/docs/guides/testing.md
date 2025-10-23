@@ -145,7 +145,7 @@ browser-api-client.ts
          ↓ (Unix socket)
 C++ Browser Control Server
          ↓
-GTK Browser
+Qt Browser
 ```
 
 ## Test Coverage

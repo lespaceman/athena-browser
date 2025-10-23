@@ -56,8 +56,7 @@ struct QtTab {
 /**
  * Qt-based main window implementation with multi-tab support.
  *
- * This class replaces GtkWindow with Qt's signal/slot system:
- *   - No more C callbacks or user_data casting
+ * Uses Qt's signal/slot system for clean event handling:
  *   - Direct C++ virtual functions for event handling
  *   - Parent-child ownership for automatic widget cleanup
  *   - QMetaObject::invokeMethod for thread-safe UI updates
@@ -325,7 +324,7 @@ class QtMainWindow : public QMainWindow, public Window {
 
  protected:
   // ============================================================================
-  // Qt Event Handlers (replace GTK callbacks)
+  // Qt Event Handlers
   // ============================================================================
 
   void closeEvent(QCloseEvent* event) override;
@@ -334,7 +333,7 @@ class QtMainWindow : public QMainWindow, public Window {
 
  private slots:
   // ============================================================================
-  // UI Event Slots (replace GTK signal callbacks)
+  // UI Event Slots
   // ============================================================================
 
   void onBackClicked();

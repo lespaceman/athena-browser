@@ -57,7 +57,7 @@ struct ApplicationConfig {
  * auto app = std::make_unique<Application>(
  *     config,
  *     std::make_unique<CefEngine>(),
- *     std::make_unique<GtkWindowSystem>());
+ *     std::make_unique<QtWindowSystem>());
  *
  * if (auto result = app->Initialize(); !result) {
  *   std::cerr << "Init failed: " << result.GetError().Message() << std::endl;

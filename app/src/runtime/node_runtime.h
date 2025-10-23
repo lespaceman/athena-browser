@@ -47,7 +47,7 @@ struct HealthStatus {
 
 /**
  * NodeRuntime manages a separate Node.js process for providing Node-grade
- * capabilities to the GTK application.
+ * capabilities to the Qt application.
  *
  * Architecture:
  *   - Process management: spawn, supervise, restart on crash

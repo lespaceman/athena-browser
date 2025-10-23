@@ -224,7 +224,7 @@ TEST_F(MyTest, ErrorPath) {
 
 Tests are designed to run without:
 - CEF initialization (browser engine tests use mocks or minimal state)
-- GTK/X11 display (platform-specific code is abstracted)
+- Qt/X11 display (platform-specific code is abstracted)
 - Network access (all tests are self-contained)
 
 This allows tests to run in CI environments like GitHub Actions.

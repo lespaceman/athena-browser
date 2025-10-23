@@ -37,7 +37,7 @@ struct BrowserConfig {
   int height = 800;
   float device_scale_factor = 1.0f;
   rendering::GLRenderer* gl_renderer = nullptr;  // Non-owning pointer
-  void* native_window_handle = nullptr;          // Platform-specific (GtkWidget*, HWND, etc.)
+  void* native_window_handle = nullptr;          // Platform-specific (QWidget*, HWND, etc.)
 };
 
 /**

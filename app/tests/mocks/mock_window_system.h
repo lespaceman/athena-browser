@@ -63,7 +63,7 @@ class MockWindow : public Window {
 
   void Show() override {
     visible_ = true;
-    // Simulate tab creation like GtkWindow::OnRealize()
+    // Simulate tab creation like QtMainWindow::CreateTab()
     // Create a browser if we don't already have one
     if (browser_id_ == 0 && engine_ && engine_->IsInitialized()) {
       browser::BrowserConfig browser_config;

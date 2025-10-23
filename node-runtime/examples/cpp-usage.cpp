@@ -1,7 +1,7 @@
 /**
  * Example: Using Claude Agent SDK from C++ via Node Runtime
  *
- * This demonstrates how to call Claude SDK endpoints from the GTK application.
+ * This demonstrates how to call Claude SDK endpoints from the Qt application.
  */
 
 #include "runtime/node_runtime.h"

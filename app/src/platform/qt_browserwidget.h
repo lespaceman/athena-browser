@@ -22,9 +22,9 @@ namespace platform {
 class QtMainWindow;
 
 /**
- * OpenGL widget for CEF browser rendering (Qt version).
+ * OpenGL widget for CEF browser rendering.
  *
- * Replaces GTK's gl_area_ with Qt's QOpenGLWidget.
+ * Uses Qt's QOpenGLWidget to provide hardware-accelerated rendering.
  * Handles:
  * - OpenGL context initialization
  * - Rendering frames from GLRenderer
@@ -81,85 +81,82 @@ class BrowserWidget : public QOpenGLWidget {
 
  protected:
   // ============================================================================
-  // Qt OpenGL Overrides (replace GTK GL callbacks)
+  // Qt OpenGL Overrides
   // ============================================================================
 
   /**
    * Initialize OpenGL resources.
    * Called once when GL context is created.
-   * Replaces GTK's on_gl_realize callback.
    */
   void initializeGL() override;
 
   /**
    * Render the browser frame.
    * Called every frame or when update() is called.
-   * Replaces GTK's on_gl_render callback.
    */
   void paintGL() override;
 
   /**
    * Handle widget resize.
    * Called when widget size changes.
-   * Replaces GTK's on_size_allocate callback (for GL widget only).
    */
   void resizeGL(int w, int h) override;
 
   // ============================================================================
-  // Input Event Overrides (replace GTK input callbacks)
+  // Input Event Overrides
   // ============================================================================
 
   /**
    * Handle mouse move events.
-   * Replaces GTK's on_motion_notify callback.
+   * Forwards to CEF for processing.
    */
   void mouseMoveEvent(QMouseEvent* event) override;
 
   /**
    * Handle mouse press events.
-   * Replaces GTK's on_button_press callback.
+   * Forwards to CEF for processing.
    */
   void mousePressEvent(QMouseEvent* event) override;
 
   /**
    * Handle mouse release events.
-   * Replaces GTK's on_button_release callback.
+   * Forwards to CEF for processing.
    */
   void mouseReleaseEvent(QMouseEvent* event) override;
 
   /**
    * Handle scroll wheel events.
-   * Replaces GTK's on_scroll callback.
+   * Forwards to CEF for processing.
    */
   void wheelEvent(QWheelEvent* event) override;
 
   /**
    * Handle key press events.
-   * Replaces GTK's on_key_press callback.
+   * Forwards to CEF for processing.
    */
   void keyPressEvent(QKeyEvent* event) override;
 
   /**
    * Handle key release events.
-   * Replaces GTK's on_key_release callback.
+   * Forwards to CEF for processing.
    */
   void keyReleaseEvent(QKeyEvent* event) override;
 
   /**
    * Handle focus in events.
-   * Replaces GTK's on_focus_in callback.
+   * Notifies CEF when widget gains focus.
    */
   void focusInEvent(QFocusEvent* event) override;
 
   /**
    * Handle focus out events.
-   * Replaces GTK's on_focus_out callback.
+   * Notifies CEF when widget loses focus.
    */
   void focusOutEvent(QFocusEvent* event) override;
 
  private:
   // ============================================================================
-  // Helper Methods (same logic as GTK callbacks)
+  // Helper Methods
   // ============================================================================
 
   /**
