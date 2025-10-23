@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Default values
 BUILD_TYPE="release"
 BUILD_AGENT=true
+BUILD_HOMEPAGE="${BUILD_HOMEPAGE:-1}"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -50,6 +51,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 BUILD_DIR="$ROOT_DIR/build/$BUILD_TYPE"
+
+# ============================================================================
+# Build Homepage (if requested)
+# ============================================================================
+
+if [ "$BUILD_HOMEPAGE" = "1" ]; then
+    "$ROOT_DIR/scripts/build-homepage.sh"
+    echo ""
+fi
 
 # ============================================================================
 # Build Athena Agent (if requested)

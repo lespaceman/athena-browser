@@ -402,8 +402,20 @@ cmake --build build/asan
 3. Download CEF binary to `third_party/cef_binary_${CEF_VERSION}_${PLATFORM}/`
 4. Rebuild: `rm -rf build && ./scripts/build.sh`
 
-### Running Homepage Only
+### Homepage Development
 
+**Development mode (HMR):**
+```bash
+./scripts/dev.sh
+```
+
+**Production build:**
+```bash
+./scripts/build-homepage.sh  # Builds and copies to resources/homepage/
+./scripts/build.sh            # Automatically builds homepage first
+```
+
+**Manual homepage development:**
 ```bash
 cd homepage
 npm run dev       # Development server
@@ -411,7 +423,7 @@ npm run build     # Production build
 npm run preview   # Preview production build
 ```
 
-Homepage is built with Vite + React. Production builds are copied to `resources/homepage/`.
+Homepage is built with Vite + React. Production builds are automatically copied to `resources/homepage/` by the build scripts.
 
 ## Important File Locations
 
