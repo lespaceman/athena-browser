@@ -130,3 +130,13 @@ echo "  ./scripts/run.sh                              # Run with default homepag
 echo "  DEV_URL=https://example.com ./scripts/run.sh  # Run with custom URL"
 echo ""
 
+# ============================================================================
+# Create Distribution Package (if requested)
+# ============================================================================
+
+if [ "${PACKAGE:-0}" = "1" ]; then
+  echo ""
+  echo "📦 Creating distribution bundle..."
+  ./scripts/package-linux.sh
+fi
+
