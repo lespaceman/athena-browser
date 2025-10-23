@@ -111,17 +111,45 @@ int main(int argc, char* argv[]) {
 
   if (config.enable_node_runtime) {
     // Determine the path to the Athena Agent server script
-    // The script is at the project root: /path/to/project/agent/dist/server.js
-    // The binary is at: /path/to/project/build/release/app/athena-browser
-    // So we need to go up 3 levels: app -> release -> build -> project
+    // Check multiple locations to support both dev and bundle modes
     std::filesystem::path exe_path(argv[0]);
-    std::filesystem::path exe_dir = exe_path.parent_path();  // build/release/app
-    std::filesystem::path project_root = exe_dir.parent_path().parent_path().parent_path();
-    std::filesystem::path runtime_script = project_root / "agent" / "dist" / "server.js";
+    std::filesystem::path exe_dir = exe_path.parent_path();
+    std::filesystem::path runtime_script;
 
-    // Check if the script exists
-    if (!std::filesystem::exists(runtime_script)) {
-      logger.Warn("Athena Agent script not found at: {}", runtime_script.string());
+    // Location 1: Development mode
+    // Binary at: /path/to/project/build/release/app/athena-browser
+    // Agent at:  /path/to/project/agent/dist/server.js
+    std::filesystem::path project_root = exe_dir.parent_path().parent_path().parent_path();
+    std::filesystem::path dev_script = project_root / "agent" / "dist" / "server.js";
+
+    // Location 2: Bundle mode (Linux/Windows)
+    // Binary at: dist/linux/athena-browser/bin/athena-browser
+    // Agent at:  dist/linux/athena-browser/lib/agent/server.js
+    std::filesystem::path bundle_script = exe_dir.parent_path() / "lib" / "agent" / "server.js";
+
+    // Location 3: Bundle mode (macOS)
+    // Binary at: Athena Browser.app/Contents/MacOS/athena-browser
+    // Agent at:  Athena Browser.app/Contents/Resources/agent/server.js
+    std::filesystem::path macos_script = exe_dir.parent_path() / "Resources" / "agent" / "server.js";
+
+    // Try each location in order
+    if (std::filesystem::exists(dev_script)) {
+      runtime_script = dev_script;
+      logger.Debug("Found agent script in development location: {}", runtime_script.string());
+    } else if (std::filesystem::exists(bundle_script)) {
+      runtime_script = bundle_script;
+      logger.Debug("Found agent script in bundle location: {}", runtime_script.string());
+    } else if (std::filesystem::exists(macos_script)) {
+      runtime_script = macos_script;
+      logger.Debug("Found agent script in macOS bundle location: {}", runtime_script.string());
+    }
+
+    // Check if we found the script
+    if (runtime_script.empty() || !std::filesystem::exists(runtime_script)) {
+      logger.Warn("Athena Agent script not found. Checked:");
+      logger.Warn("  Dev:    {}", dev_script.string());
+      logger.Warn("  Bundle: {}", bundle_script.string());
+      logger.Warn("  macOS:  {}", macos_script.string());
       logger.Warn("Claude chat integration will not be available.");
       logger.Warn("Run 'cd agent && npm run build' to build the agent.");
     } else {
