@@ -1,10 +1,11 @@
 #ifndef ATHENA_RUNTIME_NODE_RUNTIME_H_
 #define ATHENA_RUNTIME_NODE_RUNTIME_H_
 
-#include <string>
-#include <memory>
-#include <chrono>
 #include "utils/error.h"
+
+#include <chrono>
+#include <memory>
+#include <string>
 
 namespace athena {
 namespace runtime {
@@ -15,7 +16,7 @@ namespace runtime {
 struct NodeRuntimeConfig {
   std::string node_executable = "node";
   std::string runtime_script_path;  // Path to server.js
-  std::string socket_path;  // Unix socket path (auto-generated if empty)
+  std::string socket_path;          // Unix socket path (auto-generated if empty)
   int startup_timeout_ms = 5000;
   int health_check_interval_ms = 10000;
   int restart_max_attempts = 3;
@@ -26,11 +27,11 @@ struct NodeRuntimeConfig {
  * Process state for tracking Node runtime lifecycle.
  */
 enum class RuntimeState {
-  STOPPED,      // Not started
-  STARTING,     // Spawning process, waiting for READY
-  READY,        // Running and healthy
-  UNHEALTHY,    // Process alive but health check failing
-  CRASHED       // Process died unexpectedly
+  STOPPED,    // Not started
+  STARTING,   // Spawning process, waiting for READY
+  READY,      // Running and healthy
+  UNHEALTHY,  // Process alive but health check failing
+  CRASHED     // Process died unexpectedly
 };
 
 /**
@@ -168,9 +169,9 @@ class NodeRuntime {
    * @return Response body on success, error on failure
    */
   utils::Result<std::string> Call(const std::string& method,
-                                   const std::string& path,
-                                   const std::string& body = "",
-                                   const std::string& request_id = "");
+                                  const std::string& path,
+                                  const std::string& body = "",
+                                  const std::string& request_id = "");
 
   // ============================================================================
   // Accessors
@@ -215,7 +216,7 @@ class NodeRuntime {
 
   // Health monitoring
   bool health_monitoring_enabled_;
-  unsigned int health_check_timer_id_;  // GLib timer source ID
+  void* health_check_timer_handle_;  // Platform-specific timer handle (GLib source ID or QTimer*)
   std::chrono::steady_clock::time_point last_health_check_;
 
   // Restart tracking

@@ -1,10 +1,13 @@
 #include "browser/app_handler.h"
-#include "resources/scheme_handler.h"
-#include "cef_scheme.h"
+
 #include "cef_command_line.h"
+#include "cef_scheme.h"
+#include "resources/scheme_handler.h"
 #include "wrapper/cef_helpers.h"
 // For message router renderer side
 #include "wrapper/cef_message_router.h"
+
+#include <cstdio>
 
 AppHandler::AppHandler() {}
 
@@ -32,17 +35,16 @@ void AppHandler::OnBeforeCommandLineProcessing(const CefString& process_type,
 
 void AppHandler::OnContextInitialized() {
   CEF_REQUIRE_UI_THREAD();
-  
+
   // Register the custom scheme handler factory for app://
   CefRegisterSchemeHandlerFactory("app", "", new AppSchemeHandlerFactory());
 }
 
 void AppHandler::OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) {
   // Register app:// as a standard, secure scheme with CORS support
-  registrar->AddCustomScheme("app", 
-    CEF_SCHEME_OPTION_STANDARD | 
-    CEF_SCHEME_OPTION_SECURE | 
-    CEF_SCHEME_OPTION_CORS_ENABLED);
+  registrar->AddCustomScheme(
+      "app",
+      CEF_SCHEME_OPTION_STANDARD | CEF_SCHEME_OPTION_SECURE | CEF_SCHEME_OPTION_CORS_ENABLED);
 }
 
 void AppHandler::OnContextCreated(CefRefPtr<CefBrowser> browser,
@@ -84,7 +86,139 @@ bool AppHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
                                           CefProcessId source_process,
                                           CefRefPtr<CefProcessMessage> message) {
   CEF_REQUIRE_RENDERER_THREAD();
-  if (renderer_router_ && renderer_router_->OnProcessMessageReceived(browser, frame, source_process, message))
+  if (renderer_router_ &&
+      renderer_router_->OnProcessMessageReceived(browser, frame, source_process, message)) {
     return true;
-  return false;
+  }
+
+  if (!message || !frame) {
+    return false;
+  }
+
+  const std::string name = message->GetName();
+  if (name != "Athena.ExecuteJavaScript") {
+    return false;
+  }
+
+  CefRefPtr<CefListValue> args = message->GetArgumentList();
+  if (!args || args->GetSize() < 2) {
+    return false;
+  }
+
+  const std::string request_id = args->GetString(0);
+  const std::string code = args->GetString(1);
+
+  auto escape_json = [](const std::string& input) -> std::string {
+    std::string out;
+    out.reserve(input.size());
+    for (char c : input) {
+      switch (c) {
+        case '\\':
+          out += "\\\\";
+          break;
+        case '"':
+          out += "\\\"";
+          break;
+        case '\n':
+          out += "\\n";
+          break;
+        case '\r':
+          out += "\\r";
+          break;
+        case '\t':
+          out += "\\t";
+          break;
+        default:
+          if (static_cast<unsigned char>(c) < 0x20) {
+            char buffer[7];
+            std::snprintf(buffer, sizeof(buffer), "\\u%04x", c);
+            out += buffer;
+          } else {
+            out += c;
+          }
+          break;
+      }
+    }
+    return out;
+  };
+
+  std::string payload =
+      R"({"success":false,"error":{"message":"Unable to enter V8 context","stack":""}})";
+  CefRefPtr<CefV8Context> context = frame->GetV8Context();
+  if (context && context->Enter()) {
+    CefRefPtr<CefV8Value> retval;
+    CefRefPtr<CefV8Exception> exception;
+
+    const std::string script =
+        "(function(){\n"
+        "  const __athenaSerialize = (value) => {\n"
+        "    try {\n"
+        "      const seen = new WeakSet();\n"
+        "      return JSON.parse(JSON.stringify(value, (key, val) => {\n"
+        "        if (typeof val === 'bigint') { return val.toString(); }\n"
+        "        if (typeof val === 'function' || typeof val === 'symbol') { return undefined; }\n"
+        "        if (typeof val === 'object' && val !== null) {\n"
+        "          if (seen.has(val)) { return '[Circular]'; }\n"
+        "          seen.add(val);\n"
+        "        }\n"
+        "        return val;\n"
+        "      }));\n"
+        "    } catch (err) {\n"
+        "      if (typeof value === 'undefined') { return null; }\n"
+        "      return String(value);\n"
+        "    }\n"
+        "  };\n"
+        "  try {\n"
+        "    const __result = (function(){\n" +
+        code +
+        "\n"
+        "    })();\n"
+        "    const __type = (() => {\n"
+        "      if (Array.isArray(__result)) return 'array';\n"
+        "      if (__result === null) return 'null';\n"
+        "      return typeof __result;\n"
+        "    })();\n"
+        "    return JSON.stringify({\n"
+        "      success: true,\n"
+        "      type: __type,\n"
+        "      result: __athenaSerialize(__result),\n"
+        "      stringResult: typeof __result === 'string' ? __result : null\n"
+        "    });\n"
+        "  } catch (error) {\n"
+        "    return JSON.stringify({\n"
+        "      success: false,\n"
+        "      error: {\n"
+        "        message: error && error.message ? String(error.message) : String(error),\n"
+        "        stack: error && error.stack ? String(error.stack) : ''\n"
+        "      }\n"
+        "    });\n"
+        "  }\n"
+        "})();";
+
+    bool ok = context->Eval(script, frame->GetURL(), 0, retval, exception);
+    if (!ok || !retval.get() || !retval->IsString()) {
+      std::string message_text = "JavaScript execution failed";
+      std::string stack_text = "";
+      if (exception) {
+        message_text = exception->GetMessage().ToString();
+        // Note: CEF V8Exception doesn't have GetStackTrace() method
+        // Stack trace is typically included in the message itself
+      }
+      payload = std::string("{\"success\":false,\"error\":{\"message\":\"") +
+                escape_json(message_text) + "\",\"stack\":\"" + escape_json(stack_text) + "\"}}";
+    } else {
+      payload = retval->GetStringValue();
+    }
+
+    context->Exit();
+  }
+
+  CefRefPtr<CefProcessMessage> response =
+      CefProcessMessage::Create("Athena.ExecuteJavaScriptResult");
+  CefRefPtr<CefListValue> response_args = response->GetArgumentList();
+  response_args->SetString(0, request_id);
+  response_args->SetString(1, payload);
+
+  frame->SendProcessMessage(PID_BROWSER, response);
+  return true;
 }

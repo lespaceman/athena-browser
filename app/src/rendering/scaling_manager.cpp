@@ -1,4 +1,5 @@
 #include "rendering/scaling_manager.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -19,8 +20,7 @@ ScalingManager::ScalingManager(float scale) : scale_(scale) {}
 // Move Operations
 // ============================================================================
 
-ScalingManager::ScalingManager(ScalingManager&& other) noexcept
-    : scale_(other.scale_) {
+ScalingManager::ScalingManager(ScalingManager&& other) noexcept : scale_(other.scale_) {
   // Note: mutex cannot be moved, but we don't need to - it's for protecting
   // scale_ and we've already copied the value
 }
@@ -56,14 +56,12 @@ void ScalingManager::SetScaleFactor(float scale) {
 // Point Transformations
 // ============================================================================
 
-core::Point ScalingManager::LogicalToPhysical(
-    const core::Point& logical) const {
+core::Point ScalingManager::LogicalToPhysical(const core::Point& logical) const {
   std::lock_guard<std::mutex> lock(mutex_);
   return scale_.Scale(logical);
 }
 
-core::Point ScalingManager::PhysicalToLogical(
-    const core::Point& physical) const {
+core::Point ScalingManager::PhysicalToLogical(const core::Point& physical) const {
   std::lock_guard<std::mutex> lock(mutex_);
   return scale_.Unscale(physical);
 }
@@ -77,8 +75,7 @@ core::Size ScalingManager::LogicalToPhysical(const core::Size& logical) const {
   return scale_.Scale(logical);
 }
 
-core::Size ScalingManager::PhysicalToLogical(
-    const core::Size& physical) const {
+core::Size ScalingManager::PhysicalToLogical(const core::Size& physical) const {
   std::lock_guard<std::mutex> lock(mutex_);
   return scale_.Unscale(physical);
 }
@@ -92,8 +89,7 @@ core::Rect ScalingManager::LogicalToPhysical(const core::Rect& logical) const {
   return scale_.Scale(logical);
 }
 
-core::Rect ScalingManager::PhysicalToLogical(
-    const core::Rect& physical) const {
+core::Rect ScalingManager::PhysicalToLogical(const core::Rect& physical) const {
   std::lock_guard<std::mutex> lock(mutex_);
   return scale_.Unscale(physical);
 }

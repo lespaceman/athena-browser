@@ -18,9 +18,6 @@ if [ ! -f "$BINARY" ]; then
     exit 1
 fi
 
-# Force X11 backend for proper CEF rendering (required on Wayland)
-export GDK_BACKEND=x11
-
 # Set default URL if not provided
 DEFAULT_URL="${DEV_URL:-https://www.google.com}"
 

@@ -9,35 +9,34 @@
 import express from 'express';
 import { unlinkSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
-import { Logger } from './logger.js';
-import { config, validateConfig } from './config.js';
-import { ClaudeClient } from './claude-client.js';
-import { createAthenaBrowserMcpServer, setBrowserApiBase } from './mcp-server.js';
-import { healthHandler } from './routes/health.js';
+import { Logger } from './logger';
+import { config, validateConfig } from './config';
+import { ClaudeClient } from './claude-client';
+import { SessionManager } from './session-manager';
+import { healthHandler } from './routes/health';
 import {
   createSendHandler,
   createContinueHandler,
   createClearHandler,
+  createStreamHandler,
   capabilitiesHandler
-} from './routes/chat.js';
+} from './routes/chat';
 import {
-  navigateHandler,
-  backHandler,
-  forwardHandler,
-  reloadHandler,
-  getUrlHandler,
-  getHtmlHandler,
-  executeJsHandler,
-  screenshotHandler,
-  createTabHandler,
-  closeTabHandler,
-  switchTabHandler,
-  tabInfoHandler,
-  setBrowserController
-} from './routes/browser.js';
-import { createMockBrowserController } from './browser-controller-impl.js';
-import { createNativeBrowserController } from './native-controller.js';
-import { openUrlHandler } from './routes/poc.js';
+  createListHandler,
+  createGetHandler,
+  createGetMessagesHandler,
+  createUpdateHandler,
+  createDeleteHandler,
+  createSearchHandler,
+  createPruneHandler,
+  createStatsHandler
+} from './routes/sessions';
+import { setBrowserController } from './routes/browser';
+import { createMockBrowserController } from './browser-controller-impl';
+import { createNativeBrowserController } from './native-controller';
+import { openUrlHandler } from './routes/poc';
+import { createV1Router } from './api/v1';
+import { createAgentMcpServer } from './mcp-agent-adapter';
 
 const logger = new Logger('Server');
 
@@ -47,6 +46,9 @@ const logger = new Logger('Server');
 
 async function main() {
   try {
+    // Direct stderr write to test visibility
+    process.stderr.write('[ATHENA-AGENT] Starting up...\n');
+
     logger.info('Starting Athena Agent', {
       version: '1.0.0',
       nodeVersion: process.version,
@@ -63,9 +65,10 @@ async function main() {
       permissionMode: config.permissionMode
     });
 
-    // Configure MCP server to call back to this server's endpoints
-    setBrowserApiBase(config.socketPath);
-    logger.info('MCP browser API base configured', { socketPath: config.socketPath });
+    // Detect browser control socket
+    const uid = process.getuid?.() ?? 1000;
+    const controlSocketPath = process.env.ATHENA_CONTROL_SOCKET_PATH || `/tmp/athena-${uid}-control.sock`;
+    logger.info('Browser control socket detected', { controlSocketPath });
 
     // Register browser controller (try native first, fall back to mock)
     const nativeController = createNativeBrowserController();
@@ -75,13 +78,20 @@ async function main() {
       type: nativeController ? 'native' : 'mock'
     });
 
-    // Create MCP server
-    const mcpServer = createAthenaBrowserMcpServer();
-    logger.info('MCP server created');
+    // Create session manager for persistent conversation storage
+    const sessionManager = new SessionManager();
+    logger.info('Session manager initialized', {
+      sessionCount: sessionManager.getSessionCount()
+    });
 
-    // Create Claude client
-    const claudeClient = new ClaudeClient(config, mcpServer);
-    logger.info('Claude client created');
+    // Create MCP server for Claude Agent SDK integration
+    // This allows Claude to use browser control tools via the Agent SDK
+    const mcpServer = createAgentMcpServer(controlSocketPath);
+    logger.info('MCP server created for Agent SDK');
+
+    // Create Claude client with MCP server and session manager
+    const claudeClient = new ClaudeClient(config, mcpServer, sessionManager);
+    logger.info('Claude client created with MCP server and session storage');
 
     // Create Express app
     const app = express();
@@ -122,24 +132,22 @@ async function main() {
 
     // Chat endpoints
     app.post('/v1/chat/send', createSendHandler(claudeClient));
+    app.post('/v1/chat/stream', createStreamHandler(claudeClient));
     app.post('/v1/chat/continue', createContinueHandler(claudeClient));
     app.post('/v1/chat/clear', createClearHandler(claudeClient));
 
-    // Browser control endpoints
-    app.post('/v1/browser/navigate', navigateHandler);
-    app.post('/v1/browser/back', backHandler);
-    app.post('/v1/browser/forward', forwardHandler);
-    app.post('/v1/browser/reload', reloadHandler);
-    app.get('/v1/browser/get_url', getUrlHandler);
-    app.get('/v1/browser/get_html', getHtmlHandler);
-    app.post('/v1/browser/execute_js', executeJsHandler);
-    app.post('/v1/browser/screenshot', screenshotHandler);
+    // Session management endpoints
+    app.get('/v1/sessions', createListHandler(sessionManager));
+    app.get('/v1/sessions/search', createSearchHandler(sessionManager));
+    app.get('/v1/sessions/stats', createStatsHandler(sessionManager));
+    app.post('/v1/sessions/prune', createPruneHandler(sessionManager));
+    app.get('/v1/sessions/:sessionId', createGetHandler(sessionManager));
+    app.get('/v1/sessions/:sessionId/messages', createGetMessagesHandler(sessionManager));
+    app.patch('/v1/sessions/:sessionId', createUpdateHandler(sessionManager));
+    app.delete('/v1/sessions/:sessionId', createDeleteHandler(sessionManager));
 
-    // Tab management endpoints
-    app.post('/v1/window/create_tab', createTabHandler);
-    app.post('/v1/window/close_tab', closeTabHandler);
-    app.post('/v1/window/switch_tab', switchTabHandler);
-    app.get('/v1/window/tab_info', tabInfoHandler);
+    // Unified API (preferred entry point for MCP and other clients)
+    app.use('/v1', createV1Router(browserController));
 
     // POC endpoint
     app.post('/v1/poc/open_url', openUrlHandler);
@@ -153,20 +161,30 @@ async function main() {
           'GET /health',
           'GET /v1/capabilities',
           'POST /v1/chat/send',
+          'POST /v1/chat/stream',
           'POST /v1/chat/continue',
           'POST /v1/chat/clear',
+          'GET /v1/sessions',
+          'GET /v1/sessions/search',
+          'GET /v1/sessions/stats',
+          'POST /v1/sessions/prune',
+          'GET /v1/sessions/:sessionId',
+          'GET /v1/sessions/:sessionId/messages',
+          'PATCH /v1/sessions/:sessionId',
+          'DELETE /v1/sessions/:sessionId',
           'POST /v1/browser/navigate',
           'POST /v1/browser/back',
           'POST /v1/browser/forward',
           'POST /v1/browser/reload',
-          'GET /v1/browser/get_url',
-          'GET /v1/browser/get_html',
-          'POST /v1/browser/execute_js',
+          'GET /v1/browser/url',
+          'GET /v1/browser/html',
+          'POST /v1/browser/execute-js',
           'POST /v1/browser/screenshot',
-          'POST /v1/window/create_tab',
-          'POST /v1/window/close_tab',
-          'POST /v1/window/switch_tab',
-          'GET /v1/window/tab_info'
+          'POST /v1/window/create',
+          'POST /v1/window/close',
+          'POST /v1/window/switch',
+          'GET /v1/window/tabs',
+          'POST /v1/poc/open_url'
         ]
       });
     });
@@ -242,7 +260,12 @@ function startServer(app: express.Application): Promise<void> {
       });
 
       // Print READY line for C++ to consume
-      console.log(`READY ${config.socketPath}`);
+      // Only print to stdout if we're NOT running as an MCP stdio server
+      // (MCP stdio protocol requires stdout to only contain JSON-RPC messages)
+      const isMcpStdio = process.env.MCP_STDIO === 'true' || process.stdin.isTTY === false;
+      if (!isMcpStdio) {
+        console.log(`READY ${config.socketPath}`);
+      }
 
       resolve();
     });

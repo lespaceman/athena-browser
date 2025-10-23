@@ -2,6 +2,7 @@
 #define ATHENA_TESTS_MOCKS_MOCK_GL_RENDERER_H_
 
 #include "rendering/gl_renderer.h"
+
 #include <gmock/gmock.h>
 
 namespace athena {
@@ -22,7 +23,8 @@ class MockGLRenderer {
   MockGLRenderer() = default;
   ~MockGLRenderer() = default;
 
-  MOCK_METHOD(void, OnPaint,
+  MOCK_METHOD(void,
+              OnPaint,
               (CefRefPtr<CefBrowser> browser,
                CefRenderHandler::PaintElementType type,
                const CefRenderHandler::RectList& dirty_rects,

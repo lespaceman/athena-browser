@@ -1,16 +1,18 @@
 #include "core/application.h"
-#include "mocks/mock_window_system.h"
+
 #include "mocks/mock_browser_engine.h"
-#include <gtest/gtest.h>
+#include "mocks/mock_window_system.h"
+
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 using namespace athena::core;
 using namespace athena::platform;
 using namespace athena::browser;
 using namespace athena::utils;
 using ::testing::_;
-using ::testing::Return;
 using ::testing::Invoke;
+using ::testing::Return;
 
 class ApplicationTest : public ::testing::Test {
  protected:
@@ -22,18 +24,13 @@ class ApplicationTest : public ::testing::Test {
     browser_engine_ptr_ = browser_engine.get();
 
     // Setup default expectations
-    ON_CALL(*browser_engine_ptr_, IsInitialized())
-        .WillByDefault(Return(true));
+    ON_CALL(*browser_engine_ptr_, IsInitialized()).WillByDefault(Return(true));
 
     app_ = std::make_unique<Application>(
-        ApplicationConfig{},
-        std::move(browser_engine),
-        std::move(window_system));
+        ApplicationConfig{}, std::move(browser_engine), std::move(window_system));
   }
 
-  void TearDown() override {
-    app_.reset();
-  }
+  void TearDown() override { app_.reset(); }
 
   std::unique_ptr<Application> app_;
   athena::platform::testing::MockWindowSystem* window_system_ptr_;
@@ -59,9 +56,7 @@ TEST_F(ApplicationTest, ConstructionWithCustomConfig) {
   auto window_system = std::make_unique<athena::platform::testing::MockWindowSystem>();
   auto browser_engine = std::make_unique<athena::browser::testing::MockBrowserEngine>();
 
-  Application app(config,
-                  std::move(browser_engine),
-                  std::move(window_system));
+  Application app(config, std::move(browser_engine), std::move(window_system));
 
   EXPECT_EQ(app.GetConfig().cache_path, "/tmp/custom_cache");
   EXPECT_EQ(app.GetConfig().enable_sandbox, true);
@@ -73,8 +68,7 @@ TEST_F(ApplicationTest, ConstructionWithCustomConfig) {
 // ============================================================================
 
 TEST_F(ApplicationTest, InitializeSuccess) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   auto result = app_->Initialize();
   ASSERT_TRUE(result.IsOk());
@@ -87,8 +81,7 @@ TEST_F(ApplicationTest, InitializeWithCommandLineArgs) {
   char arg1[] = "--test-flag";
   char* argv[] = {arg0, arg1};
 
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   auto result = app_->Initialize(argc, argv);
   ASSERT_TRUE(result.IsOk());
@@ -106,9 +99,7 @@ TEST_F(ApplicationTest, InitializeFailsWhenWindowSystemFails) {
   char** dummy_argv = nullptr;
   window_system->Initialize(dummy_argc, dummy_argv, browser_engine.get());
 
-  Application app(config,
-                  std::move(browser_engine),
-                  std::move(window_system));
+  Application app(config, std::move(browser_engine), std::move(window_system));
 
   // This will fail because window system is already initialized
   auto result = app.Initialize();
@@ -125,8 +116,7 @@ TEST_F(ApplicationTest, InitializeFailsWhenBrowserEngineFails) {
 }
 
 TEST_F(ApplicationTest, InitializeFailsWhenAlreadyInitialized) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   auto result1 = app_->Initialize();
   ASSERT_TRUE(result1.IsOk());
@@ -141,8 +131,7 @@ TEST_F(ApplicationTest, InitializeFailsWhenAlreadyInitialized) {
 // ============================================================================
 
 TEST_F(ApplicationTest, ShutdownClosesAllResources) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   EXPECT_CALL(*browser_engine_ptr_, Shutdown());
 
@@ -153,8 +142,7 @@ TEST_F(ApplicationTest, ShutdownClosesAllResources) {
 }
 
 TEST_F(ApplicationTest, ShutdownIsIdempotent) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   EXPECT_CALL(*browser_engine_ptr_, Shutdown()).Times(1);  // Only once
 
@@ -164,8 +152,7 @@ TEST_F(ApplicationTest, ShutdownIsIdempotent) {
 }
 
 TEST_F(ApplicationTest, DestructorCallsShutdown) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   EXPECT_CALL(*browser_engine_ptr_, Shutdown());
 
@@ -178,8 +165,7 @@ TEST_F(ApplicationTest, DestructorCallsShutdown) {
 // ============================================================================
 
 TEST_F(ApplicationTest, CreateWindowSuccess) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   EXPECT_CALL(*browser_engine_ptr_, CreateBrowser(_))
       .WillOnce(Return(athena::utils::Result<athena::browser::BrowserId>(1)));
@@ -211,8 +197,7 @@ TEST_F(ApplicationTest, CreateWindowFailsWhenNotInitialized) {
 }
 
 TEST_F(ApplicationTest, CreateMultipleWindows) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   EXPECT_CALL(*browser_engine_ptr_, CreateBrowser(_))
       .WillOnce(Return(athena::utils::Result<athena::browser::BrowserId>(1)))
@@ -240,8 +225,7 @@ TEST_F(ApplicationTest, CreateMultipleWindows) {
 }
 
 TEST_F(ApplicationTest, GetWindowCount) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   EXPECT_CALL(*browser_engine_ptr_, CreateBrowser(_))
       .WillOnce(Return(athena::utils::Result<athena::browser::BrowserId>(1)))
@@ -269,8 +253,7 @@ TEST_F(ApplicationTest, GetWindowCount) {
 }
 
 TEST_F(ApplicationTest, CloseAllWindows) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   EXPECT_CALL(*browser_engine_ptr_, CreateBrowser(_))
       .WillOnce(Return(athena::utils::Result<athena::browser::BrowserId>(1)))
@@ -306,8 +289,7 @@ TEST_F(ApplicationTest, CloseAllWindows) {
 // ============================================================================
 
 TEST_F(ApplicationTest, RunBlocksUntilQuit) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   app_->Initialize();
 
@@ -326,8 +308,7 @@ TEST_F(ApplicationTest, RunFailsWhenNotInitialized) {
 }
 
 TEST_F(ApplicationTest, QuitStopsEventLoop) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   app_->Initialize();
 
@@ -357,9 +338,7 @@ TEST_F(ApplicationTest, GetConfig) {
   auto window_system = std::make_unique<athena::platform::testing::MockWindowSystem>();
   auto browser_engine = std::make_unique<athena::browser::testing::MockBrowserEngine>();
 
-  Application app(config,
-                  std::move(browser_engine),
-                  std::move(window_system));
+  Application app(config, std::move(browser_engine), std::move(window_system));
 
   EXPECT_EQ(app.GetConfig().cache_path, "/tmp/test_cache");
 }
@@ -369,8 +348,7 @@ TEST_F(ApplicationTest, GetConfig) {
 // ============================================================================
 
 TEST_F(ApplicationTest, WindowCallbacksAreInvoked) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   EXPECT_CALL(*browser_engine_ptr_, CreateBrowser(_))
       .WillOnce(Return(athena::utils::Result<athena::browser::BrowserId>(1)));
@@ -383,13 +361,10 @@ TEST_F(ApplicationTest, WindowCallbacksAreInvoked) {
   bool callback_invoked = false;
   BrowserWindowConfig config;
   BrowserWindowCallbacks callbacks;
-  callbacks.on_resize = [&](int w, int h) {
-    callback_invoked = true;
-  };
+  callbacks.on_resize = [&](int w, int h) { callback_invoked = true; };
 
   // Expect SetSize to be called twice (once from callback, once from explicit SetSize)
-  EXPECT_CALL(*browser_engine_ptr_, SetSize(1, 1024, 768))
-      .Times(2);
+  EXPECT_CALL(*browser_engine_ptr_, SetSize(1, 1024, 768)).Times(2);
 
   auto result = app_->CreateWindow(config, callbacks);
   ASSERT_TRUE(result.IsOk());
@@ -406,8 +381,7 @@ TEST_F(ApplicationTest, WindowCallbacksAreInvoked) {
 // ============================================================================
 
 TEST_F(ApplicationTest, CreateWindowWithEmptyURL) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   EXPECT_CALL(*browser_engine_ptr_, CreateBrowser(_))
       .WillOnce(Return(athena::utils::Result<athena::browser::BrowserId>(1)));
@@ -428,8 +402,7 @@ TEST_F(ApplicationTest, CreateWindowWithEmptyURL) {
 }
 
 TEST_F(ApplicationTest, MultipleInitializeAttempts) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   auto result1 = app_->Initialize();
   ASSERT_TRUE(result1.IsOk());
@@ -452,8 +425,7 @@ TEST_F(ApplicationTest, QuitWithoutInitialize) {
 }
 
 TEST_F(ApplicationTest, CloseAllWindowsWithNoWindows) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   app_->Initialize();
 
@@ -466,8 +438,7 @@ TEST_F(ApplicationTest, CloseAllWindowsWithNoWindows) {
 // ============================================================================
 
 TEST_F(ApplicationTest, FullLifecycle) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   EXPECT_CALL(*browser_engine_ptr_, CreateBrowser(_))
       .WillOnce(Return(athena::utils::Result<athena::browser::BrowserId>(1)));
@@ -499,8 +470,7 @@ TEST_F(ApplicationTest, FullLifecycle) {
 }
 
 TEST_F(ApplicationTest, AutoQuitWhenAllWindowsClosed) {
-  EXPECT_CALL(*browser_engine_ptr_, Initialize(_))
-      .WillOnce(Return(athena::utils::Ok()));
+  EXPECT_CALL(*browser_engine_ptr_, Initialize(_)).WillOnce(Return(athena::utils::Ok()));
 
   EXPECT_CALL(*browser_engine_ptr_, CreateBrowser(_))
       .WillOnce(Return(athena::utils::Result<athena::browser::BrowserId>(1)));

@@ -1,6 +1,7 @@
-#include <gtest/gtest.h>
 #include "utils/logging.h"
+
 #include <fstream>
+#include <gtest/gtest.h>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -78,8 +79,7 @@ TEST(LoggerTest, FileOutput) {
   std::ifstream file(test_file);
   ASSERT_TRUE(file.is_open());
 
-  std::string content((std::istreambuf_iterator<char>(file)),
-                      std::istreambuf_iterator<char>());
+  std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
   EXPECT_TRUE(content.find("Test message") != std::string::npos);
   EXPECT_TRUE(content.find("Error message") != std::string::npos);
@@ -91,16 +91,51 @@ TEST(LoggerTest, FileOutput) {
   std::remove(test_file.c_str());
 }
 
-TEST(LoggerTest, GlobalLogger) {
-  Logger* global = GetGlobalLogger();
-  ASSERT_NE(global, nullptr);
-  EXPECT_EQ(global->GetName(), "athena");
+TEST(LoggerTest, LogLevelEnvironmentVariable) {
+  // Test default level (no env var)
+  {
+    unsetenv("LOG_LEVEL");
+    Logger logger("test");
+    EXPECT_EQ(logger.GetLevel(), LogLevel::kInfo);
+  }
 
-  Logger custom_logger("custom");
-  SetGlobalLogger(&custom_logger);
+  // Test debug level
+  {
+    setenv("LOG_LEVEL", "debug", 1);
+    Logger logger("test");
+    EXPECT_EQ(logger.GetLevel(), LogLevel::kDebug);
+  }
 
-  EXPECT_EQ(GetGlobalLogger(), &custom_logger);
-  EXPECT_EQ(GetGlobalLogger()->GetName(), "custom");
+  // Test warn level
+  {
+    setenv("LOG_LEVEL", "warn", 1);
+    Logger logger("test");
+    EXPECT_EQ(logger.GetLevel(), LogLevel::kWarn);
+  }
+
+  // Test error level
+  {
+    setenv("LOG_LEVEL", "error", 1);
+    Logger logger("test");
+    EXPECT_EQ(logger.GetLevel(), LogLevel::kError);
+  }
+
+  // Test case insensitivity
+  {
+    setenv("LOG_LEVEL", "DEBUG", 1);
+    Logger logger("test");
+    EXPECT_EQ(logger.GetLevel(), LogLevel::kDebug);
+  }
+
+  // Test invalid value (should default to info)
+  {
+    setenv("LOG_LEVEL", "invalid", 1);
+    Logger logger("test");
+    EXPECT_EQ(logger.GetLevel(), LogLevel::kInfo);
+  }
+
+  // Cleanup
+  unsetenv("LOG_LEVEL");
 }
 
 TEST(LoggerTest, ThreadSafety) {

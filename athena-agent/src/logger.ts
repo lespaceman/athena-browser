@@ -3,7 +3,7 @@
  */
 
 import winston from 'winston';
-import type { LogEntry } from './types.js';
+import type { LogEntry } from './types';
 
 const { createLogger, format, transports } = winston;
 
@@ -18,16 +18,12 @@ export class Logger {
     this.logger = createLogger({
       level: process.env.LOG_LEVEL || 'info',
       format: format.combine(
-        format.timestamp({ format: 'ISO' }),
+        format.timestamp(),
         format.errors({ stack: true }),
         format.json()
       ),
       transports: [
         new transports.Console({
-          format: format.combine(
-            format.colorize({ all: false }), // No color codes for JSON
-            format.json()
-          ),
           // IMPORTANT: Write to stderr instead of stdout!
           // The C++ parent reads stdout for the READY signal, then closes the pipe.
           // If Winston writes to stdout after that, Node gets SIGPIPE and dies.

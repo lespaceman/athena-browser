@@ -1,17 +1,18 @@
 #ifndef ATHENA_RUNTIME_BROWSER_CONTROLLER_H_
 #define ATHENA_RUNTIME_BROWSER_CONTROLLER_H_
 
-#include <string>
-#include <memory>
 #include "utils/error.h"
+
+#include <memory>
+#include <string>
 
 namespace athena {
 namespace platform {
-  class GtkWindow;
+class GtkWindow;
 }
 
 namespace runtime {
-  class NodeRuntime;
+class NodeRuntime;
 
 /**
  * BrowserController provides an HTTP API bridge between the Node.js runtime

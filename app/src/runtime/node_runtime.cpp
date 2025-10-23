@@ -1,16 +1,24 @@
 #include "runtime/node_runtime.h"
+
 #include "utils/logging.h"
-#include <unistd.h>
+
+#include <cstring>
+#include <fcntl.h>
+#include <filesystem>
 #include <signal.h>
-#include <sys/wait.h>
+#include <sstream>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <fcntl.h>
-#include <cstring>
-#include <sstream>
+#include <sys/wait.h>
 #include <thread>
-#include <filesystem>
+#include <unistd.h>
+
+// Platform-specific includes for timers
+#ifdef ATHENA_USE_QT
+#include <QTimer>
+#else
 #include <glib.h>
+#endif
 
 namespace athena {
 namespace runtime {
@@ -27,7 +35,7 @@ NodeRuntime::NodeRuntime(const NodeRuntimeConfig& config)
       pid_(-1),
       state_(RuntimeState::STOPPED),
       health_monitoring_enabled_(false),
-      health_check_timer_id_(0),
+      health_check_timer_handle_(nullptr),
       restart_attempts_(0) {
   logger.Debug("NodeRuntime::NodeRuntime - Creating runtime");
 
@@ -61,8 +69,7 @@ utils::Result<void> NodeRuntime::Initialize() {
   }
 
   if (access(config_.runtime_script_path.c_str(), R_OK) != 0) {
-    return utils::Error("Runtime script not found or not readable: " +
-                       config_.runtime_script_path);
+    return utils::Error("Runtime script not found or not readable: " + config_.runtime_script_path);
   }
 
   // Clean up stale socket file BEFORE spawning
@@ -72,7 +79,8 @@ utils::Result<void> NodeRuntime::Initialize() {
       std::filesystem::remove(config_.socket_path);
       logger.Debug("NodeRuntime::Initialize - Stale socket removed successfully");
     } catch (const std::filesystem::filesystem_error& e) {
-      logger.Warn("NodeRuntime::Initialize - Failed to remove stale socket: " + std::string(e.what()));
+      logger.Warn("NodeRuntime::Initialize - Failed to remove stale socket: " +
+                  std::string(e.what()));
       // Continue anyway - socket might be in use by another instance
     }
   }
@@ -172,7 +180,8 @@ utils::Result<HealthStatus> NodeRuntime::CheckHealth() {
   return utils::Ok(std::move(status));
 }
 
-// GLib callback for periodic health checks
+#ifndef ATHENA_USE_QT
+// GTK: GLib callback for periodic health checks
 static gboolean health_check_callback(gpointer user_data) {
   auto* runtime = static_cast<NodeRuntime*>(user_data);
 
@@ -197,10 +206,11 @@ static gboolean health_check_callback(gpointer user_data) {
     return G_SOURCE_CONTINUE;  // Keep checking
   }
 
-  logger.Debug("NodeRuntime - Health check passed (uptime: " +
-               std::to_string(health.uptime_ms) + "ms)");
+  logger.Debug("NodeRuntime - Health check passed (uptime: " + std::to_string(health.uptime_ms) +
+               "ms)");
   return G_SOURCE_CONTINUE;  // Keep checking
 }
+#endif
 
 void NodeRuntime::StartHealthMonitoring() {
   if (health_monitoring_enabled_) {
@@ -215,12 +225,48 @@ void NodeRuntime::StartHealthMonitoring() {
 
   health_monitoring_enabled_ = true;
 
-  // Set up periodic health check using GLib timeout
-  // Check every config_.health_check_interval_ms milliseconds
-  health_check_timer_id_ = g_timeout_add(
-      config_.health_check_interval_ms,
-      health_check_callback,
-      this);
+#ifdef ATHENA_USE_QT
+  // Qt: Use QTimer for periodic health checks
+  QTimer* timer = new QTimer();
+  timer->setInterval(config_.health_check_interval_ms);
+
+  // Connect timer timeout to health check lambda
+  QObject::connect(timer, &QTimer::timeout, [this, timer]() {
+    // Check if process is still alive
+    if (!IsProcessAlive()) {
+      logger.Error("NodeRuntime - Process died, triggering restart");
+      timer->stop();
+      timer->deleteLater();
+      health_check_timer_handle_ = nullptr;
+      HandleCrash();
+      return;
+    }
+
+    // Perform health check
+    auto health_result = CheckHealth();
+    if (!health_result) {
+      logger.Warn("NodeRuntime - Health check failed: " + health_result.GetError().Message());
+      return;
+    }
+
+    auto health = health_result.Value();
+    if (!health.healthy) {
+      logger.Warn("NodeRuntime - Health check reports unhealthy status");
+      return;
+    }
+
+    logger.Debug("NodeRuntime - Health check passed (uptime: " + std::to_string(health.uptime_ms) +
+                 "ms)");
+  });
+
+  timer->start();
+  health_check_timer_handle_ = static_cast<void*>(timer);
+#else
+  // GTK: Use GLib timeout for periodic health checks
+  unsigned int timer_id =
+      g_timeout_add(config_.health_check_interval_ms, health_check_callback, this);
+  health_check_timer_handle_ = reinterpret_cast<void*>(static_cast<uintptr_t>(timer_id));
+#endif
 
   logger.Info("NodeRuntime - Health monitoring started (interval: " +
               std::to_string(config_.health_check_interval_ms) + "ms)");
@@ -233,11 +279,23 @@ void NodeRuntime::StopHealthMonitoring() {
 
   health_monitoring_enabled_ = false;
 
-  // Remove GLib timeout
-  if (health_check_timer_id_ > 0) {
-    g_source_remove(health_check_timer_id_);
-    health_check_timer_id_ = 0;
+#ifdef ATHENA_USE_QT
+  // Qt: Stop and delete QTimer
+  if (health_check_timer_handle_) {
+    QTimer* timer = static_cast<QTimer*>(health_check_timer_handle_);
+    timer->stop();
+    timer->deleteLater();
+    health_check_timer_handle_ = nullptr;
   }
+#else
+  // GTK: Remove GLib timeout
+  if (health_check_timer_handle_) {
+    unsigned int timer_id =
+        static_cast<unsigned int>(reinterpret_cast<uintptr_t>(health_check_timer_handle_));
+    g_source_remove(timer_id);
+    health_check_timer_handle_ = nullptr;
+  }
+#endif
 
   logger.Info("NodeRuntime - Health monitoring stopped");
 }
@@ -247,9 +305,9 @@ void NodeRuntime::StopHealthMonitoring() {
 // ============================================================================
 
 utils::Result<std::string> NodeRuntime::Call(const std::string& method,
-                                              const std::string& path,
-                                              const std::string& body,
-                                              const std::string& request_id) {
+                                             const std::string& path,
+                                             const std::string& body,
+                                             const std::string& request_id) {
   if (state_ != RuntimeState::READY) {
     return utils::Error("Runtime not ready");
   }
@@ -321,8 +379,8 @@ utils::Result<std::string> NodeRuntime::Call(const std::string& method,
     response += buffer;
     read_attempts++;
 
-    logger.Debug("NodeRuntime::Call - Received " + std::to_string(received) +
-                 " bytes (attempt " + std::to_string(read_attempts) + ")");
+    logger.Debug("NodeRuntime::Call - Received " + std::to_string(received) + " bytes (attempt " +
+                 std::to_string(read_attempts) + ")");
 
     // Check if we got the headers (end with \r\n\r\n)
     if (response.find("\r\n\r\n") != std::string::npos) {
@@ -332,8 +390,8 @@ utils::Result<std::string> NodeRuntime::Call(const std::string& method,
 
   if (received <= 0) {
     close(sock);
-    std::string error_msg = "Failed to receive response headers after " +
-                           std::to_string(read_attempts) + " attempts";
+    std::string error_msg =
+        "Failed to receive response headers after " + std::to_string(read_attempts) + " attempts";
     if (received < 0) {
       error_msg += ": " + std::string(strerror(errno));
     } else {
@@ -343,25 +401,8 @@ utils::Result<std::string> NodeRuntime::Call(const std::string& method,
     return utils::Error(error_msg);
   }
 
-  logger.Debug("NodeRuntime::Call - Received full headers (" + std::to_string(response.length()) + " bytes)");
-
-  // Parse Content-Length from headers
-  size_t content_length = 0;
-  size_t cl_pos = response.find("Content-Length:");
-  if (cl_pos != std::string::npos) {
-    size_t cl_start = cl_pos + 15;  // Length of "Content-Length:"
-    size_t cl_end = response.find("\r\n", cl_start);
-    if (cl_end != std::string::npos) {
-      std::string cl_str = response.substr(cl_start, cl_end - cl_start);
-      // Trim whitespace
-      size_t first = cl_str.find_first_not_of(" \t");
-      size_t last = cl_str.find_last_not_of(" \t");
-      if (first != std::string::npos && last != std::string::npos) {
-        cl_str = cl_str.substr(first, last - first + 1);
-        content_length = std::stoull(cl_str);
-      }
-    }
-  }
+  logger.Debug("NodeRuntime::Call - Received full headers (" + std::to_string(response.length()) +
+               " bytes)");
 
   // Find where the body starts
   size_t body_start = response.find("\r\n\r\n");
@@ -371,26 +412,129 @@ utils::Result<std::string> NodeRuntime::Call(const std::string& method,
   }
   body_start += 4;  // Skip past "\r\n\r\n"
 
-  // Calculate how much body we already have
-  size_t body_received = response.length() - body_start;
+  // Check if this is a chunked transfer encoding response
+  bool is_chunked = response.find("Transfer-Encoding: chunked") != std::string::npos;
 
-  // Continue reading until we have the full body
-  if (content_length > 0) {
-    while (body_received < content_length) {
+  std::string response_body;
+
+  if (is_chunked) {
+    logger.Debug("NodeRuntime::Call - Detected chunked transfer encoding");
+
+    // Start with what we already have
+    std::string chunked_data = response.substr(body_start);
+
+    // Continue reading until we get the terminating chunk
+    while (true) {
+      // Check if we have the terminating chunk (0\r\n\r\n or 0\r\n followed by trailers)
+      if (chunked_data.find("0\r\n\r\n") != std::string::npos ||
+          chunked_data.find("\r\n0\r\n\r\n") != std::string::npos) {
+        break;
+      }
+
+      // Read more data
       received = recv(sock, buffer, sizeof(buffer) - 1, 0);
       if (received <= 0) {
         break;
       }
       buffer[received] = '\0';
-      response += buffer;
-      body_received += received;
+      chunked_data += buffer;
     }
+
+    logger.Debug("NodeRuntime::Call - Received full chunked response (" +
+                 std::to_string(chunked_data.length()) + " bytes)");
+
+    // Decode chunked encoding
+    size_t pos = 0;
+    while (pos < chunked_data.length()) {
+      // Find the chunk size line (hex number followed by \r\n)
+      size_t size_end = chunked_data.find("\r\n", pos);
+      if (size_end == std::string::npos) {
+        break;
+      }
+
+      // Parse chunk size (hex)
+      std::string size_str = chunked_data.substr(pos, size_end - pos);
+      // Remove any chunk extensions (after ';')
+      size_t semicolon = size_str.find(';');
+      if (semicolon != std::string::npos) {
+        size_str = size_str.substr(0, semicolon);
+      }
+
+      size_t chunk_size;
+      try {
+        chunk_size = std::stoull(size_str, nullptr, 16);
+      } catch (...) {
+        logger.Error("NodeRuntime::Call - Failed to parse chunk size: " + size_str);
+        break;
+      }
+
+      logger.Debug("NodeRuntime::Call - Chunk size: " + std::to_string(chunk_size) + " bytes");
+
+      if (chunk_size == 0) {
+        // Last chunk
+        break;
+      }
+
+      // Move past the size line
+      pos = size_end + 2;  // Skip \r\n
+
+      // Extract chunk data
+      if (pos + chunk_size <= chunked_data.length()) {
+        response_body += chunked_data.substr(pos, chunk_size);
+        pos += chunk_size;
+
+        // Skip the trailing \r\n after the chunk
+        if (pos + 2 <= chunked_data.length() && chunked_data.substr(pos, 2) == "\r\n") {
+          pos += 2;
+        }
+      } else {
+        logger.Error("NodeRuntime::Call - Incomplete chunk data");
+        break;
+      }
+    }
+
+    logger.Debug("NodeRuntime::Call - Decoded body length: " + std::to_string(response_body.length()) +
+                 " bytes");
+  } else {
+    // Parse Content-Length from headers
+    size_t content_length = 0;
+    size_t cl_pos = response.find("Content-Length:");
+    if (cl_pos != std::string::npos) {
+      size_t cl_start = cl_pos + 15;  // Length of "Content-Length:"
+      size_t cl_end = response.find("\r\n", cl_start);
+      if (cl_end != std::string::npos) {
+        std::string cl_str = response.substr(cl_start, cl_end - cl_start);
+        // Trim whitespace
+        size_t first = cl_str.find_first_not_of(" \t");
+        size_t last = cl_str.find_last_not_of(" \t");
+        if (first != std::string::npos && last != std::string::npos) {
+          cl_str = cl_str.substr(first, last - first + 1);
+          content_length = std::stoull(cl_str);
+        }
+      }
+    }
+
+    // Calculate how much body we already have
+    size_t body_received = response.length() - body_start;
+
+    // Continue reading until we have the full body
+    if (content_length > 0) {
+      while (body_received < content_length) {
+        received = recv(sock, buffer, sizeof(buffer) - 1, 0);
+        if (received <= 0) {
+          break;
+        }
+        buffer[received] = '\0';
+        response += buffer;
+        body_received += received;
+      }
+    }
+
+    // Extract body from response
+    response_body = response.substr(body_start);
   }
 
   close(sock);
-
-  // Extract body from response
-  std::string response_body = response.substr(body_start);
 
   return utils::Ok(std::move(response_body));
 }
@@ -451,8 +595,17 @@ utils::Result<void> NodeRuntime::SpawnProcess() {
     // Node.js will just get EPIPE error which it can handle gracefully
     signal(SIGPIPE, SIG_IGN);
 
-    // Set environment variable for socket path
-    setenv("ATHENA_SOCKET_PATH", config_.socket_path.c_str(), 1);
+    // Set environment variable for Node.js Express server socket path
+    // Note: This is DIFFERENT from the browser control socket path.
+    // The Node server gets its own socket (without -control suffix)
+    std::string agent_socket_path = "/tmp/athena-" + std::to_string(getuid()) + ".sock";
+    setenv("ATHENA_SOCKET_PATH", agent_socket_path.c_str(), 1);
+
+    // Set environment variable for browser control socket path
+    // This tells the Node NativeController where to connect to the C++ browser control server
+    // The control socket has the -control suffix
+    std::string control_socket_path = "/tmp/athena-" + std::to_string(getuid()) + "-control.sock";
+    setenv("ATHENA_CONTROL_SOCKET_PATH", control_socket_path.c_str(), 1);
 
     // Execute Node
     execlp(config_.node_executable.c_str(),
@@ -461,6 +614,7 @@ utils::Result<void> NodeRuntime::SpawnProcess() {
            nullptr);
 
     // If we get here, exec failed
+    // Note: Using raw stderr after fork() - Logger is not safe in child process
     std::cerr << "Failed to exec Node: " << strerror(errno) << std::endl;
     _exit(1);
   }
@@ -653,9 +807,9 @@ void NodeRuntime::HandleCrash() {
 
   // Attempt restart if within limits
   if (restart_attempts_ < config_.restart_max_attempts) {
-    logger.Info("NodeRuntime - Attempting restart: attempt=" +
-                std::to_string(restart_attempts_ + 1) + "/" +
-                std::to_string(config_.restart_max_attempts));
+    logger.Info(
+        "NodeRuntime - Attempting restart: attempt=" + std::to_string(restart_attempts_ + 1) + "/" +
+        std::to_string(config_.restart_max_attempts));
 
     auto result = Restart();
     if (!result) {
@@ -671,8 +825,8 @@ utils::Result<void> NodeRuntime::Restart() {
 
   // Calculate backoff
   int backoff_ms = CalculateBackoff();
-  logger.Debug("NodeRuntime - Waiting backoff before restart: " +
-               std::to_string(backoff_ms) + "ms");
+  logger.Debug("NodeRuntime - Waiting backoff before restart: " + std::to_string(backoff_ms) +
+               "ms");
 
   std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
 

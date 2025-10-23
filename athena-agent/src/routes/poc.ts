@@ -6,8 +6,8 @@
  */
 
 import type { Request, Response } from 'express';
-import { Logger } from '../logger.js';
-import { getController } from './browser.js';
+import { Logger } from '../logger';
+import { getController } from './browser';
 
 const logger = new Logger('POCRoutes');
 

@@ -1,9 +1,12 @@
 #include "core/application.h"
+
+#include "platform/qt_mainwindow.h"
 #include "utils/logging.h"
+
 #include <algorithm>
 #include <iostream>
-#include <unistd.h>
 #include <limits.h>
+#include <unistd.h>
 
 namespace athena {
 namespace core {
@@ -49,7 +52,7 @@ Application::~Application() {
 // Lifecycle Management
 // ============================================================================
 
-utils::Result<void> Application::Initialize(int argc, char* argv[]) {
+utils::Result<void> Application::Initialize(int& argc, char* argv[]) {
   logger.Debug("Application::Initialize - Initializing application");
 
   if (initialized_) {
@@ -69,7 +72,7 @@ utils::Result<void> Application::Initialize(int argc, char* argv[]) {
   auto window_result = window_system_->Initialize(argc, argv, browser_engine_.get());
   if (!window_result) {
     return utils::Error("Failed to initialize window system: " +
-                                window_result.GetError().Message());
+                        window_result.GetError().Message());
   }
 
   logger.Debug("Application::Initialize - Window system initialized");
@@ -86,7 +89,7 @@ utils::Result<void> Application::Initialize(int argc, char* argv[]) {
   if (!engine_result) {
     window_system_->Shutdown();
     return utils::Error("Failed to initialize browser engine: " +
-                                engine_result.GetError().Message());
+                        engine_result.GetError().Message());
   }
 
   logger.Debug("Application::Initialize - Browser engine initialized");
@@ -198,9 +201,7 @@ bool Application::IsRunning() const {
 // ============================================================================
 
 utils::Result<std::unique_ptr<BrowserWindow>> Application::CreateWindow(
-    const BrowserWindowConfig& config,
-    const BrowserWindowCallbacks& callbacks) {
-
+    const BrowserWindowConfig& config, const BrowserWindowCallbacks& callbacks) {
   if (!initialized_) {
     return utils::Error("Application not initialized");
   }
@@ -219,10 +220,7 @@ utils::Result<std::unique_ptr<BrowserWindow>> Application::CreateWindow(
 
   // Create the browser window
   auto window = std::make_unique<BrowserWindow>(
-      window_config,
-      window_callbacks,
-      window_system_.get(),
-      browser_engine_.get());
+      window_config, window_callbacks, window_system_.get(), browser_engine_.get());
 
   // Track the window (weak pointer)
   windows_.push_back(window.get());
@@ -235,10 +233,10 @@ utils::Result<std::unique_ptr<BrowserWindow>> Application::CreateWindow(
 size_t Application::GetWindowCount() const {
   // Remove closed windows from tracking
   auto& mutable_windows = const_cast<std::vector<BrowserWindow*>&>(windows_);
-  mutable_windows.erase(
-      std::remove_if(mutable_windows.begin(), mutable_windows.end(),
-                     [](BrowserWindow* w) { return w->IsClosed(); }),
-      mutable_windows.end());
+  mutable_windows.erase(std::remove_if(mutable_windows.begin(),
+                                       mutable_windows.end(),
+                                       [](BrowserWindow* w) { return w->IsClosed(); }),
+                        mutable_windows.end());
 
   return windows_.size();
 }
@@ -300,9 +298,7 @@ void Application::SetupDefaultCallbacks(BrowserWindowCallbacks& callbacks) {
 
 void Application::OnWindowDestroyed(BrowserWindow* window) {
   // Remove from tracking
-  windows_.erase(
-      std::remove(windows_.begin(), windows_.end(), window),
-      windows_.end());
+  windows_.erase(std::remove(windows_.begin(), windows_.end(), window), windows_.end());
 
   logger.Debug("Application::OnWindowDestroyed - Window removed from tracking");
 
@@ -327,14 +323,14 @@ utils::Result<void> Application::InitializeRuntime() {
 
   auto result = node_runtime_->Initialize();
   if (!result) {
-    return utils::Error("Failed to initialize Node runtime: " +
-                       result.GetError().Message());
+    return utils::Error("Failed to initialize Node runtime: " + result.GetError().Message());
   }
 
   // Start health monitoring with automatic restart on failure
   node_runtime_->StartHealthMonitoring();
 
-  logger.Info("Application::InitializeRuntime - Node runtime started successfully with health monitoring");
+  logger.Info(
+      "Application::InitializeRuntime - Node runtime started successfully with health monitoring");
   return utils::Ok();
 }
 
@@ -359,7 +355,8 @@ void Application::ShutdownRuntime() {
 
 utils::Result<void> Application::InitializeBrowserControlServer() {
   if (!config_.enable_node_runtime || !node_runtime_) {
-    logger.Debug("Application::InitializeBrowserControlServer - Node runtime disabled, skipping server");
+    logger.Debug(
+        "Application::InitializeBrowserControlServer - Node runtime disabled, skipping server");
     return utils::Ok();
   }
 
@@ -370,7 +367,7 @@ utils::Result<void> Application::InitializeBrowserControlServer() {
 
   logger.Info("Application::InitializeBrowserControlServer - Starting browser control server");
 
-  // Get the first window's native window (GtkWindow)
+  // Get the first window's native window
   auto* first_window = windows_[0];
   if (!first_window) {
     return utils::Error("First window is null");
@@ -381,10 +378,10 @@ utils::Result<void> Application::InitializeBrowserControlServer() {
     return utils::Error("First window's native window is null");
   }
 
-  // Cast to GtkWindow (we know it's GTK from window_system)
-  auto gtk_window = std::dynamic_pointer_cast<platform::GtkWindow>(window_shared);
-  if (!gtk_window) {
-    return utils::Error("Native window is not a GtkWindow");
+  // Cast to QtMainWindow (Qt-only build)
+  auto qt_window = std::dynamic_pointer_cast<platform::QtMainWindow>(window_shared);
+  if (!qt_window) {
+    return utils::Error("Failed to cast window to QtMainWindow");
   }
 
   // Create server config
@@ -393,13 +390,13 @@ utils::Result<void> Application::InitializeBrowserControlServer() {
 
   // Create and initialize server
   browser_control_server_ = std::make_unique<runtime::BrowserControlServer>(server_config);
-  browser_control_server_->SetBrowserWindow(gtk_window);
+  browser_control_server_->SetBrowserWindow(qt_window);
 
   auto result = browser_control_server_->Initialize();
   if (!result) {
     browser_control_server_.reset();
     return utils::Error("Failed to initialize browser control server: " +
-                       result.GetError().Message());
+                        result.GetError().Message());
   }
 
   logger.Info("Application::InitializeBrowserControlServer - Server started successfully");

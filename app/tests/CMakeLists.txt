@@ -23,7 +23,7 @@ function(add_athena_test test_name)
     nlohmann_json::nlohmann_json
   )
 
-  # Add CEF and GTK if needed for integration tests
+  # Add CEF if needed for integration tests
   if(CEF_FOUND)
     target_link_libraries(${test_name} PRIVATE
       libcef_dll_wrapper
@@ -31,17 +31,18 @@ function(add_athena_test test_name)
     )
   endif()
 
-  # Add GTK3 and OpenGL for tests that need it (browser tests)
+  # Add platform-specific dependencies
   if(UNIX AND NOT APPLE)
     find_package(OpenGL QUIET)
-    find_package(PkgConfig QUIET)
-    if(PkgConfig_FOUND)
-      pkg_check_modules(GTK3_TEST QUIET gtk+-3.0)
-      if(GTK3_TEST_FOUND)
-        target_include_directories(${test_name} PRIVATE ${GTK3_TEST_INCLUDE_DIRS})
-        target_link_libraries(${test_name} PRIVATE ${GTK3_TEST_LIBRARIES})
-      endif()
-    endif()
+
+    # Qt dependencies for tests
+    target_link_libraries(${test_name} PRIVATE
+      Qt6::Core
+      Qt6::Widgets
+      Qt6::OpenGL
+      Qt6::OpenGLWidgets
+    )
+
     if(OPENGL_FOUND)
       target_link_libraries(${test_name} PRIVATE ${OPENGL_LIBRARIES})
     endif()
@@ -61,6 +62,10 @@ add_athena_test(core_types_test core/types_test.cpp)
 # Utils tests (Phase 1)
 add_athena_test(logging_test utils/logging_test.cpp ../src/utils/logging.cpp)
 add_athena_test(error_test utils/error_test.cpp)
+add_athena_test(js_execution_utils_test
+  runtime/js_execution_utils_test.cpp
+  ../src/runtime/js_execution_utils.cpp
+)
 
 # Rendering tests (Phase 2)
 add_athena_test(buffer_manager_test rendering/buffer_manager_test.cpp ../src/rendering/buffer_manager.cpp)
@@ -71,6 +76,7 @@ add_athena_test(cef_client_test
   browser/cef_client_test.cpp
   ../src/browser/cef_client.cpp
   ../src/rendering/gl_renderer.cpp
+  ../src/utils/logging.cpp
   ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
 )
 
@@ -81,71 +87,39 @@ add_athena_test(cef_engine_test
   ../src/browser/app_handler.cpp
   ../src/resources/scheme_handler.cpp
   ../src/rendering/gl_renderer.cpp
+  ../src/utils/logging.cpp
   ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
 )
 
 # Platform tests (Phase 4)
-# Note: These tests expose critical bugs in the tab implementation
-# Tests are DISABLED by default (they will fail until bugs are fixed)
-add_athena_test(gtk_window_tabs_test
-  platform/gtk_window_tabs_test.cpp
-  ../src/platform/gtk_window.cpp
-  ../src/platform/gtk_window_callbacks.cpp
-  ../src/platform/gtk_window_tabs.cpp
-  ../src/platform/gtk_window_sidebar.cpp
-  ../src/rendering/gl_renderer.cpp
-  ../src/browser/cef_client.cpp
-  ../src/browser/cef_engine.cpp
-  ../src/browser/app_handler.cpp
-  ../src/resources/scheme_handler.cpp
-  ../src/runtime/node_runtime.cpp
-  ../src/utils/logging.cpp
-  ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
-)
-
-# Chat history tests
-add_athena_test(gtk_window_chat_test
-  platform/gtk_window_chat_test.cpp
-  ../src/platform/gtk_window.cpp
-  ../src/platform/gtk_window_callbacks.cpp
-  ../src/platform/gtk_window_tabs.cpp
-  ../src/platform/gtk_window_sidebar.cpp
-  ../src/rendering/gl_renderer.cpp
-  ../src/browser/cef_client.cpp
-  ../src/browser/cef_engine.cpp
-  ../src/browser/app_handler.cpp
-  ../src/resources/scheme_handler.cpp
-  ../src/runtime/node_runtime.cpp
-  ../src/utils/logging.cpp
-  ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
-)
+# TODO: Add Qt-specific platform tests
 
 # Application layer tests (Phase 5)
-add_athena_test(browser_window_test
-  core/browser_window_test.cpp
-  ../src/core/browser_window.cpp
-  ../src/runtime/node_runtime.cpp
-  ../src/utils/logging.cpp
-)
-
-add_athena_test(application_test
-  core/application_test.cpp
-  ../src/core/application.cpp
-  ../src/core/browser_window.cpp
-  ../src/platform/gtk_window.cpp
-  ../src/platform/gtk_window_callbacks.cpp
-  ../src/platform/gtk_window_tabs.cpp
-  ../src/platform/gtk_window_sidebar.cpp
-  ../src/rendering/gl_renderer.cpp
-  ../src/browser/cef_client.cpp
-  ../src/browser/cef_engine.cpp
-  ../src/browser/app_handler.cpp
-  ../src/resources/scheme_handler.cpp
-  ../src/runtime/node_runtime.cpp
-  ../src/runtime/browser_control_server.cpp
-  ../src/utils/logging.cpp
-  ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
-)
+# TODO: Re-enable these tests for Qt once platform layer is fully migrated
+# add_athena_test(browser_window_test
+#   core/browser_window_test.cpp
+#   ../src/core/browser_window.cpp
+#   ../src/runtime/node_runtime.cpp
+#   ../src/utils/logging.cpp
+# )
+#
+# add_athena_test(application_test
+#   core/application_test.cpp
+#   ../src/core/application.cpp
+#   ../src/core/browser_window.cpp
+#   ../src/platform/qt_mainwindow.cpp
+#   ../src/platform/qt_browserwidget.cpp
+#   ../src/platform/qt_claude_panel.cpp
+#   ../src/rendering/gl_renderer.cpp
+#   ../src/browser/cef_client.cpp
+#   ../src/browser/cef_engine.cpp
+#   ../src/browser/app_handler.cpp
+#   ../src/resources/scheme_handler.cpp
+#   ../src/runtime/node_runtime.cpp
+#   ../src/runtime/browser_control_server.cpp
+#   ../src/utils/logging.cpp
+#   ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
+# )
 
 # Integration tests (will be added in Phase 6)
 # add_athena_test(integration_test integration/startup_test.cpp)

@@ -1,5 +1,6 @@
-#include <gtest/gtest.h>
 #include "core/types.h"
+
+#include <gtest/gtest.h>
 
 using namespace athena::core;
 

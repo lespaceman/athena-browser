@@ -1,13 +1,14 @@
 #ifndef ATHENA_BROWSER_BROWSER_ENGINE_H_
 #define ATHENA_BROWSER_BROWSER_ENGINE_H_
 
-#include <string>
-#include <cstdint>
 #include "utils/error.h"
+
+#include <cstdint>
+#include <string>
 
 namespace athena {
 namespace rendering {
-  class GLRenderer;
+class GLRenderer;
 }
 
 namespace browser {
@@ -36,7 +37,7 @@ struct BrowserConfig {
   int height = 800;
   float device_scale_factor = 1.0f;
   rendering::GLRenderer* gl_renderer = nullptr;  // Non-owning pointer
-  void* native_window_handle = nullptr;  // Platform-specific (GtkWidget*, HWND, etc.)
+  void* native_window_handle = nullptr;          // Platform-specific (GtkWidget*, HWND, etc.)
 };
 
 /**

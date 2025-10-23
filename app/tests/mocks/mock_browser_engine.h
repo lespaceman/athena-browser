@@ -2,6 +2,7 @@
 #define ATHENA_TESTS_MOCKS_MOCK_BROWSER_ENGINE_H_
 
 #include "browser/browser_engine.h"
+
 #include <gmock/gmock.h>
 
 namespace athena {

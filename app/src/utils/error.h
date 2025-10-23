@@ -1,9 +1,9 @@
 #ifndef ATHENA_UTILS_ERROR_H_
 #define ATHENA_UTILS_ERROR_H_
 
+#include <stdexcept>
 #include <string>
 #include <variant>
-#include <stdexcept>
 
 namespace athena {
 namespace utils {
@@ -11,11 +11,9 @@ namespace utils {
 // Error class representing a failure condition
 class Error {
  public:
-  explicit Error(const std::string& message)
-      : message_(message), code_(0) {}
+  explicit Error(const std::string& message) : message_(message), code_(0) {}
 
-  Error(int code, const std::string& message)
-      : message_(message), code_(code) {}
+  Error(int code, const std::string& message) : message_(message), code_(code) {}
 
   const std::string& Message() const { return message_; }
   int Code() const { return code_; }
@@ -34,7 +32,7 @@ class Error {
 
 // Result<T, E> type for error handling
 // Inspired by Rust's Result type
-template<typename T, typename E = Error>
+template <typename T, typename E = Error>
 class Result {
  public:
   // Construct from value
@@ -46,17 +44,13 @@ class Result {
   Result(E&& error) : data_(std::move(error)) {}
 
   // Check if result contains value
-  bool IsOk() const {
-    return std::holds_alternative<T>(data_);
-  }
+  bool IsOk() const { return std::holds_alternative<T>(data_); }
 
   // Check if result contains error
-  bool IsError() const {
-    return std::holds_alternative<E>(data_);
-  }
+  bool IsError() const { return std::holds_alternative<E>(data_); }
 
   // Get value (throws if error)
-  const T& Value() const & {
+  const T& Value() const& {
     if (IsError()) {
       throw std::runtime_error("Attempted to access value of error result: " +
                                GetError().ToString());
@@ -81,7 +75,7 @@ class Result {
   }
 
   // Get error (throws if value)
-  const E& GetError() const & {
+  const E& GetError() const& {
     if (IsOk()) {
       throw std::runtime_error("Attempted to access error of ok result");
     }
@@ -96,29 +90,23 @@ class Result {
   }
 
   // Get value or default
-  T ValueOr(const T& default_value) const & {
-    return IsOk() ? std::get<T>(data_) : default_value;
-  }
+  T ValueOr(const T& default_value) const& { return IsOk() ? std::get<T>(data_) : default_value; }
 
   T ValueOr(T&& default_value) && {
     return IsOk() ? std::move(std::get<T>(data_)) : std::move(default_value);
   }
 
   // Conversion operators for convenience
-  explicit operator bool() const {
-    return IsOk();
-  }
+  explicit operator bool() const { return IsOk(); }
 
-  bool operator!() const {
-    return IsError();
-  }
+  bool operator!() const { return IsError(); }
 
  private:
   std::variant<T, E> data_;
 };
 
 // Specialization for void return type
-template<typename E>
+template <typename E>
 class Result<void, E> {
  public:
   // Construct success
@@ -147,7 +135,7 @@ class Result<void, E> {
 };
 
 // Helper functions for creating results
-template<typename T>
+template <typename T>
 Result<T, Error> Ok(T&& value) {
   return Result<T, Error>(std::forward<T>(value));
 }
@@ -156,12 +144,12 @@ inline Result<void, Error> Ok() {
   return Result<void, Error>();
 }
 
-template<typename T>
+template <typename T>
 Result<T, Error> Err(const std::string& message) {
   return Result<T, Error>(Error(message));
 }
 
-template<typename T>
+template <typename T>
 Result<T, Error> Err(int code, const std::string& message) {
   return Result<T, Error>(Error(code, message));
 }

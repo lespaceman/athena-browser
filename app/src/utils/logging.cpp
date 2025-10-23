@@ -1,17 +1,38 @@
 #include "utils/logging.h"
+
+#include <cstdlib>
 #include <ctime>
 
 namespace athena {
 namespace utils {
 
-static Logger* g_global_logger = nullptr;
+// Helper function to parse LOG_LEVEL environment variable
+static LogLevel ParseLogLevel(const char* level_str) {
+  if (!level_str) {
+    return LogLevel::kInfo;  // Default
+  }
+
+  std::string level(level_str);
+  // Convert to lowercase for case-insensitive comparison
+  for (char& c : level) {
+    c = std::tolower(c);
+  }
+
+  if (level == "debug") return LogLevel::kDebug;
+  if (level == "info") return LogLevel::kInfo;
+  if (level == "warn") return LogLevel::kWarn;
+  if (level == "error") return LogLevel::kError;
+  if (level == "fatal") return LogLevel::kFatal;
+
+  // Default to info if unrecognized
+  return LogLevel::kInfo;
+}
 
 Logger::Logger(const std::string& name)
     : name_(name),
-      level_(LogLevel::kInfo),
+      level_(ParseLogLevel(std::getenv("LOG_LEVEL"))),
       console_output_(true),
-      file_output_(false) {
-}
+      file_output_(false) {}
 
 Logger::~Logger() {
   if (file_stream_ && file_stream_->is_open()) {
@@ -94,27 +115,32 @@ std::string Logger::FormatLogLine(LogLevel level, const std::string& message) {
   std::ostringstream oss;
   oss << "[" << CurrentTimestamp() << "] "
       << "[" << name_ << "] "
-      << "[" << LevelToString(level) << "] "
-      << message;
+      << "[" << LevelToString(level) << "] " << message;
   return oss.str();
 }
 
 std::string Logger::LevelToString(LogLevel level) {
   switch (level) {
-    case LogLevel::kDebug: return "DEBUG";
-    case LogLevel::kInfo:  return "INFO";
-    case LogLevel::kWarn:  return "WARN";
-    case LogLevel::kError: return "ERROR";
-    case LogLevel::kFatal: return "FATAL";
-    default: return "UNKNOWN";
+    case LogLevel::kDebug:
+      return "DEBUG";
+    case LogLevel::kInfo:
+      return "INFO";
+    case LogLevel::kWarn:
+      return "WARN";
+    case LogLevel::kError:
+      return "ERROR";
+    case LogLevel::kFatal:
+      return "FATAL";
+    default:
+      return "UNKNOWN";
   }
 }
 
 std::string Logger::CurrentTimestamp() {
   auto now = std::chrono::system_clock::now();
   auto now_time_t = std::chrono::system_clock::to_time_t(now);
-  auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-      now.time_since_epoch()) % 1000;
+  auto now_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
   std::tm tm_buf;
 #if defined(_WIN32)
@@ -124,21 +150,9 @@ std::string Logger::CurrentTimestamp() {
 #endif
 
   std::ostringstream oss;
-  oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S")
-      << '.' << std::setfill('0') << std::setw(3) << now_ms.count();
+  oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S") << '.' << std::setfill('0') << std::setw(3)
+      << now_ms.count();
   return oss.str();
-}
-
-Logger* GetGlobalLogger() {
-  if (!g_global_logger) {
-    static Logger default_logger("athena");
-    g_global_logger = &default_logger;
-  }
-  return g_global_logger;
-}
-
-void SetGlobalLogger(Logger* logger) {
-  g_global_logger = logger;
 }
 
 }  // namespace utils

@@ -4,6 +4,7 @@
 #include "browser/browser_engine.h"
 #include "browser/cef_client.h"
 #include "include/cef_app.h"
+
 #include <map>
 #include <memory>
 
@@ -109,10 +110,10 @@ class CefEngine : public BrowserEngine {
   BrowserInfo* FindBrowser(BrowserId id);
   const BrowserInfo* FindBrowser(BrowserId id) const;
 
-  CefRefPtr<::CefApp> app_;           // CEF application handler
-  const CefMainArgs* main_args_;      // CEF main arguments (non-owning)
-  bool initialized_;                  // Initialization state
-  BrowserId next_id_;                 // Next browser ID to assign
+  CefRefPtr<::CefApp> app_;                    // CEF application handler
+  const CefMainArgs* main_args_;               // CEF main arguments (non-owning)
+  bool initialized_;                           // Initialization state
+  BrowserId next_id_;                          // Next browser ID to assign
   std::map<BrowserId, BrowserInfo> browsers_;  // Active browsers
 };
 

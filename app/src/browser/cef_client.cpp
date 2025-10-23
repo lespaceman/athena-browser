@@ -1,20 +1,23 @@
 #include "browser/cef_client.h"
+
 #include "include/cef_app.h"
 #include "include/wrapper/cef_helpers.h"
-#include <gtk/gtk.h>
+#include "utils/logging.h"
+
 #include <iostream>
+#include <utility>
 
 namespace athena {
 namespace browser {
 
+static utils::Logger logger("CefClient");
 CefClient::CefClient(void* native_window, rendering::GLRenderer* gl_renderer)
     : native_window_(native_window),
       browser_(nullptr),
       gl_renderer_(gl_renderer),
       width_(0),
       height_(0),
-      device_scale_factor_(1.0f) {
-}
+      device_scale_factor_(1.0f) {}
 
 CefClient::~CefClient() {
   // GL resources cleaned up by GLRenderer (owned externally)
@@ -28,8 +31,7 @@ CefClient::~CefClient() {
 void CefClient::OnAfterCreated(CefRefPtr<::CefBrowser> browser) {
   CEF_REQUIRE_UI_THREAD();
   browser_ = browser;
-  std::cout << "[CefClient::OnAfterCreated] OSR Browser created! Scale factor: "
-            << device_scale_factor_ << std::endl;
+  logger.Info("OSR Browser created! Scale factor: {}", device_scale_factor_);
 }
 
 bool CefClient::DoClose(CefRefPtr<::CefBrowser> browser) {
@@ -59,8 +61,8 @@ void CefClient::OnTitleChange(CefRefPtr<::CefBrowser> browser, const CefString& 
 }
 
 void CefClient::OnAddressChange(CefRefPtr<::CefBrowser> browser,
-                                 CefRefPtr<::CefFrame> frame,
-                                 const CefString& url) {
+                                CefRefPtr<::CefFrame> frame,
+                                const CefString& url) {
   CEF_REQUIRE_UI_THREAD();
 
   // Only update for the main frame
@@ -74,9 +76,9 @@ void CefClient::OnAddressChange(CefRefPtr<::CefBrowser> browser,
 // ============================================================================
 
 void CefClient::OnLoadingStateChange(CefRefPtr<::CefBrowser> browser,
-                                      bool isLoading,
-                                      bool canGoBack,
-                                      bool canGoForward) {
+                                     bool isLoading,
+                                     bool canGoBack,
+                                     bool canGoForward) {
   CEF_REQUIRE_UI_THREAD();
 
   if (on_loading_state_change_) {
@@ -170,6 +172,100 @@ void CefClient::SetDeviceScaleFactor(float scale_factor) {
       browser_->GetHost()->WasResized();
     }
   }
+}
+
+std::string CefClient::GenerateRequestId() {
+  uint64_t id = next_js_request_id_.fetch_add(1, std::memory_order_relaxed);
+  return std::to_string(id);
+}
+
+std::optional<std::string> CefClient::RequestJavaScriptEvaluation(const std::string& code) {
+  CEF_REQUIRE_UI_THREAD();
+
+  if (!browser_) {
+    logger.Warn("RequestJavaScriptEvaluation: browser_ is null");
+    return std::nullopt;
+  }
+
+  auto frame = browser_->GetMainFrame();
+  if (!frame) {
+    logger.Warn("RequestJavaScriptEvaluation: main frame is null");
+    return std::nullopt;
+  }
+
+  const std::string request_id = GenerateRequestId();
+  {
+    std::lock_guard<std::mutex> lock(js_mutex_);
+    pending_js_.emplace(request_id, JavaScriptRequest{});
+  }
+
+  CefRefPtr<CefProcessMessage> message = CefProcessMessage::Create("Athena.ExecuteJavaScript");
+  CefRefPtr<CefListValue> args = message->GetArgumentList();
+  args->SetString(0, request_id);
+  args->SetString(1, code);
+
+  logger.Debug("Dispatching JS evaluation request {}", request_id);
+  frame->SendProcessMessage(PID_RENDERER, message);
+  return request_id;
+}
+
+std::optional<std::string> CefClient::TryConsumeJavaScriptResult(const std::string& request_id) {
+  std::lock_guard<std::mutex> lock(js_mutex_);
+  auto it = pending_js_.find(request_id);
+  if (it == pending_js_.end() || !it->second.completed) {
+    return std::nullopt;
+  }
+
+  std::string result = std::move(it->second.result_json);
+  pending_js_.erase(it);
+  return result;
+}
+
+void CefClient::CancelJavaScriptEvaluation(const std::string& request_id) {
+  std::lock_guard<std::mutex> lock(js_mutex_);
+  pending_js_.erase(request_id);
+}
+
+bool CefClient::OnProcessMessageReceived(CefRefPtr<::CefBrowser> browser,
+                                         CefRefPtr<::CefFrame> frame,
+                                         CefProcessId source_process,
+                                         CefRefPtr<CefProcessMessage> message) {
+  (void)browser;
+  (void)frame;
+  (void)source_process;
+
+  if (!message) {
+    return false;
+  }
+
+  const std::string name = message->GetName();
+  if (name != "Athena.ExecuteJavaScriptResult") {
+    return false;
+  }
+
+  CefRefPtr<CefListValue> args = message->GetArgumentList();
+  if (!args || args->GetSize() < 2) {
+    logger.Warn("ExecuteJavaScriptResult received with insufficient arguments");
+    return true;
+  }
+
+  const std::string request_id = args->GetString(0);
+  const std::string payload = args->GetString(1);
+
+  {
+    std::lock_guard<std::mutex> lock(js_mutex_);
+    auto it = pending_js_.find(request_id);
+    if (it == pending_js_.end()) {
+      logger.Warn("ExecuteJavaScriptResult for unknown request {}", request_id);
+      return true;
+    }
+
+    it->second.completed = true;
+    it->second.result_json = payload;
+  }
+
+  logger.Debug("ExecuteJavaScriptResult received for request {}", request_id);
+  return true;
 }
 
 }  // namespace browser

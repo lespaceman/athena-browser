@@ -1,4 +1,47 @@
-# Primary GTK3 version with OSR rendering (Off-Screen Rendering)
+# ============================================================================
+# Qt6 Configuration
+# ============================================================================
+message(STATUS "Building with Qt6 support")
+
+# Find Qt6 packages
+find_package(Qt6 REQUIRED COMPONENTS
+  Core
+  Widgets
+  OpenGL
+  OpenGLWidgets
+  Network
+)
+
+# Enable Qt MOC (Meta-Object Compiler) for signals/slots
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+# Define platform source files
+set(PLATFORM_SOURCES
+  src/platform/qt_mainwindow.cpp
+  src/platform/qt_browserwidget.cpp
+  src/platform/qt_claude_panel.cpp
+)
+
+add_compile_definitions(ATHENA_USE_QT)
+
+# ============================================================================
+# Main Executable
+# ============================================================================
+
+# Runtime sources
+set(RUNTIME_SOURCES
+  src/runtime/node_runtime.cpp
+  src/runtime/browser_control_server.cpp
+  src/runtime/browser_control_server_routing.cpp
+  src/runtime/browser_control_handlers_navigation.cpp
+  src/runtime/browser_control_handlers_tabs.cpp
+  src/runtime/browser_control_handlers_content.cpp
+  src/runtime/browser_control_handlers_extraction.cpp
+  src/runtime/js_execution_utils.cpp
+)
+
 add_executable(athena-browser
   src/main.cpp
   # Phase 1: Utilities
@@ -11,18 +54,13 @@ add_executable(athena-browser
   src/browser/cef_client.cpp
   src/browser/cef_engine.cpp
   src/browser/app_handler.cpp
-  # Phase 4: Platform Layer
-  src/platform/gtk_window.cpp
-  src/platform/gtk_window_callbacks.cpp
-  src/platform/gtk_window_system.cpp
-  src/platform/gtk_window_tabs.cpp
-  src/platform/gtk_window_sidebar.cpp
+  # Phase 4: Platform Layer (Qt)
+  ${PLATFORM_SOURCES}
   # Phase 5: Application Layer
   src/core/browser_window.cpp
   src/core/application.cpp
   # Phase 6: Runtime Layer
-  src/runtime/node_runtime.cpp
-  src/runtime/browser_control_server.cpp
+  ${RUNTIME_SOURCES}
   # Resources
   src/resources/scheme_handler.cpp
   # CEF's official OpenGL renderer
@@ -44,21 +82,25 @@ if(CEF_FOUND)
   )
 
   if(UNIX AND NOT APPLE)
-    # Find and link GTK3 and X11 for proper window embedding
     find_package(X11 REQUIRED)
     find_package(OpenGL REQUIRED)
+
+    # Find GTK3 (needed for headers because CEF has GTK dependencies)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
-    pkg_check_modules(GDK3_X11 REQUIRED gdk-x11-3.0)
 
-    target_include_directories(athena-browser PRIVATE ${GTK3_INCLUDE_DIRS} ${GDK3_X11_INCLUDE_DIRS})
+    # Qt build: Include GTK headers (for gtk_disable_setlocale), link Qt and OpenGL
+    target_include_directories(athena-browser PRIVATE ${GTK3_INCLUDE_DIRS})
     target_link_libraries(athena-browser PRIVATE
-      ${GTK3_LIBRARIES}
-      ${GDK3_X11_LIBRARIES}
+      Qt6::Core
+      Qt6::Widgets
+      Qt6::OpenGL
+      Qt6::OpenGLWidgets
+      Qt6::Network
       ${X11_LIBRARIES}
       ${OPENGL_LIBRARIES}
+      ${GTK3_LIBRARIES}
     )
-    target_compile_options(athena-browser PRIVATE ${GTK3_CFLAGS_OTHER})
 
     # Ensure the runtime loader can find libcef.so next to the executable
     set_target_properties(athena-browser PROPERTIES BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")

@@ -38,9 +38,6 @@ trap cleanup EXIT INT TERM
 echo "Waiting for Vite to start..."
 sleep 3
 
-# Force X11 backend for proper CEF rendering (required on Wayland)
-export GDK_BACKEND=x11
-
 echo ""
 echo "🚀 Launching browser with HMR enabled..."
 echo "   Vite: http://localhost:5173"

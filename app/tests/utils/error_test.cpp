@@ -1,5 +1,6 @@
-#include <gtest/gtest.h>
 #include "utils/error.h"
+
+#include <gtest/gtest.h>
 
 using namespace athena::utils;
 

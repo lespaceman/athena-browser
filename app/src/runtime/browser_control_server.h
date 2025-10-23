@@ -4,19 +4,38 @@
  * Internal HTTP server that exposes browser control endpoints over Unix socket.
  * Allows the Node.js agent to control the browser via HTTP requests.
  *
- * This server runs in the GTK main thread using GLib's I/O watch mechanism,
+ * This server runs on the main UI thread using platform-specific I/O mechanisms,
  * avoiding the need for additional threading.
+ *
+ * Implementation Files:
+ * - browser_control_server.cpp: Core server lifecycle and connection management
+ * - browser_control_server_routing.cpp: HTTP request parsing and routing
+ * - browser_control_handlers_navigation.cpp: Navigation and history handlers
+ * - browser_control_handlers_tabs.cpp: Tab management handlers
+ * - browser_control_handlers_content.cpp: HTML, JavaScript, screenshot handlers
+ * - browser_control_handlers_extraction.cpp: Advanced content extraction handlers
+ * - browser_control_server_internal.h: Shared utilities and constants
  */
 
 #ifndef ATHENA_RUNTIME_BROWSER_CONTROL_SERVER_H_
 #define ATHENA_RUNTIME_BROWSER_CONTROL_SERVER_H_
 
-#include <string>
-#include <vector>
+#include "utils/error.h"
+
 #include <functional>
 #include <memory>
-#include "utils/error.h"
-#include "platform/gtk_window.h"
+#include <optional>
+#include <string>
+#include <vector>
+
+// Forward declare Qt types
+class QSocketNotifier;
+
+namespace athena {
+namespace platform {
+class QtMainWindow;
+}
+}  // namespace athena
 
 namespace athena {
 namespace runtime {
@@ -34,22 +53,32 @@ struct BrowserControlServerConfig {
  * Lightweight HTTP server that:
  * - Listens on Unix socket
  * - Accepts HTTP requests from Node.js agent
- * - Calls browser control methods directly (on GTK main thread)
+ * - Calls browser control methods directly (on UI main thread)
  * - Returns HTTP responses
  *
- * Runs entirely on GTK main thread using non-blocking I/O.
+ * Runs entirely on UI main thread using non-blocking I/O.
  *
  * Lifecycle:
  * 1. Create server with config
  * 2. SetBrowserWindow() to register browser instance
  * 3. Initialize() to start listening
- * 4. GTK main loop handles requests via GLib I/O watches
+ * 4. Main loop handles requests via platform-specific I/O watches
  * 5. Shutdown() to stop server
  *
- * Thread Safety:
- * - All methods must be called from GTK main thread
- * - No threading - all operations run synchronously on main thread
- * - Non-blocking I/O prevents stalling the event loop
+ * Thread Safety & Threading Model:
+ * - ALL operations run on Qt's main UI thread (required by CEF)
+ * - No threading introduced - operations are truly synchronous
+ * - Non-blocking sockets prevent blocking the UI thread during I/O
+ * - QSocketNotifier integrates Unix socket I/O with Qt's event loop
+ * - WaitForLoadToComplete() processes Qt events via QCoreApplication::processEvents()
+ *   to prevent UI freezing during navigation waits
+ * - JavaScript execution uses CefDoMessageLoopWork() to pump CEF events
+ * - All CEF browser operations execute on the main thread (CEF requirement)
+ *
+ * Performance Optimizations:
+ * - Socket buffer management parses headers only once (cached position)
+ * - JavaScript execution returns objects directly (no double JSON encoding)
+ * - Request size limited to 1MB to prevent DoS attacks
  */
 class BrowserControlServer {
  public:
@@ -65,7 +94,7 @@ class BrowserControlServer {
    */
   ~BrowserControlServer();
 
-  // Non-copyable, non-movable (due to GLib callbacks)
+  // Non-copyable, non-movable
   BrowserControlServer(const BrowserControlServer&) = delete;
   BrowserControlServer& operator=(const BrowserControlServer&) = delete;
   BrowserControlServer(BrowserControlServer&&) = delete;
@@ -75,9 +104,9 @@ class BrowserControlServer {
    * Set the browser window to control.
    * Must be called before Initialize().
    *
-   * @param window Shared pointer to GtkWindow (server stores a weak reference)
+   * @param window Shared pointer to QtMainWindow (server stores a weak reference)
    */
-  void SetBrowserWindow(const std::shared_ptr<platform::GtkWindow>& window);
+  void SetBrowserWindow(const std::shared_ptr<platform::QtMainWindow>& window);
 
   /**
    * Initialize the server and start listening.
@@ -107,13 +136,13 @@ class BrowserControlServer {
   BrowserControlServerConfig config_;
 
   // Browser window (weak reference, does not own)
-  std::weak_ptr<platform::GtkWindow> window_;
+  std::weak_ptr<platform::QtMainWindow> window_;
 
   // Socket file descriptor
   int server_fd_;
 
-  // GLib I/O watch source IDs
-  guint server_watch_id_;
+  // Qt socket notifier for accepting connections
+  QSocketNotifier* server_watch_id_;
 
   // Active client connections (opaque pointer - implementation detail)
   std::vector<void*> active_clients_;
@@ -127,10 +156,27 @@ class BrowserControlServer {
   void CloseClient(void* client);
   std::string ProcessRequest(const std::string& request);
 
-  // Request handlers (run synchronously on GTK main thread)
+  // Request handlers (run synchronously on UI main thread)
   std::string HandleOpenUrl(const std::string& url);
-  std::string HandleGetUrl();
+  std::string HandleGetUrl(std::optional<size_t> tab_index);
   std::string HandleGetTabCount();
+  std::string HandleGetPageHtml(std::optional<size_t> tab_index);
+  std::string HandleExecuteJavaScript(const std::string& code, std::optional<size_t> tab_index);
+  std::string HandleTakeScreenshot(std::optional<size_t> tab_index, std::optional<bool> full_page);
+  std::string HandleNavigate(const std::string& url, std::optional<size_t> tab_index);
+  std::string HandleHistory(const std::string& action, std::optional<size_t> tab_index);
+  std::string HandleReload(std::optional<size_t> tab_index, std::optional<bool> ignore_cache);
+  std::string HandleCreateTab(const std::string& url);
+  std::string HandleCloseTab(size_t tab_index);
+  std::string HandleSwitchTab(size_t tab_index);
+  std::string HandleTabInfo();
+
+  // Context-efficient content extraction handlers
+  std::string HandleGetPageSummary(std::optional<size_t> tab_index);
+  std::string HandleGetInteractiveElements(std::optional<size_t> tab_index);
+  std::string HandleGetAccessibilityTree(std::optional<size_t> tab_index);
+  std::string HandleQueryContent(const std::string& query_type, std::optional<size_t> tab_index);
+  std::string HandleGetAnnotatedScreenshot(std::optional<size_t> tab_index);
 
   // HTTP helpers
   static std::string ParseHttpMethod(const std::string& request);
@@ -139,14 +185,6 @@ class BrowserControlServer {
   static std::string BuildHttpResponse(int status_code,
                                        const std::string& status_text,
                                        const std::string& body);
-
-  // GLib callbacks (static, use user_data for 'this' pointer)
-  static gboolean OnServerReadable(GIOChannel* source,
-                                   GIOCondition condition,
-                                   gpointer user_data);
-  static gboolean OnClientReadable(GIOChannel* source,
-                                   GIOCondition condition,
-                                   gpointer user_data);
 };
 
 }  // namespace runtime

@@ -1,5 +1,7 @@
 #include "core/browser_window.h"
+
 #include "utils/logging.h"
+
 #include <iostream>
 
 namespace athena {
@@ -297,7 +299,7 @@ utils::Result<void> BrowserWindow::Initialize() {
   window_config.size = config_.size;
   window_config.resizable = config_.resizable;
   window_config.enable_input = config_.enable_input;
-  window_config.url = config_.url;  // Pass URL for browser creation
+  window_config.url = config_.url;                    // Pass URL for browser creation
   window_config.node_runtime = config_.node_runtime;  // Pass Node runtime for Claude chat
 
   platform::WindowCallbacks window_callbacks;

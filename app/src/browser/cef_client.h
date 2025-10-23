@@ -2,12 +2,19 @@
 #define ATHENA_BROWSER_CEF_CLIENT_H_
 
 #include "include/cef_client.h"
-#include "include/cef_life_span_handler.h"
 #include "include/cef_display_handler.h"
+#include "include/cef_life_span_handler.h"
 #include "include/cef_load_handler.h"
+#include "include/cef_process_message.h"
 #include "include/cef_render_handler.h"
 #include "rendering/gl_renderer.h"
+
+#include <atomic>
 #include <functional>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <unordered_map>
 
 namespace athena {
 namespace browser {
@@ -58,6 +65,10 @@ class CefClient : public ::CefClient,
   CefRefPtr<::CefDisplayHandler> GetDisplayHandler() override { return this; }
   CefRefPtr<::CefLoadHandler> GetLoadHandler() override { return this; }
   CefRefPtr<::CefRenderHandler> GetRenderHandler() override { return this; }
+  bool OnProcessMessageReceived(CefRefPtr<::CefBrowser> browser,
+                                CefRefPtr<::CefFrame> frame,
+                                CefProcessId source_process,
+                                CefRefPtr<CefProcessMessage> message) override;
 
   // ============================================================================
   // CefLifeSpanHandler methods
@@ -139,6 +150,24 @@ class CefClient : public ::CefClient,
   float GetDeviceScaleFactor() const { return device_scale_factor_; }
 
   /**
+   * Request JavaScript execution that returns a result.
+   * Returns a request identifier if the command was dispatched successfully.
+   */
+  std::optional<std::string> RequestJavaScriptEvaluation(const std::string& code);
+
+  /**
+   * Try to consume the result for the given request identifier.
+   * Returns std::nullopt if the result has not been received yet.
+   */
+  std::optional<std::string> TryConsumeJavaScriptResult(const std::string& request_id);
+
+  /**
+   * Remove a pending evaluation without waiting for a result.
+   * Used when callers time out and want to discard late responses.
+   */
+  void CancelJavaScriptEvaluation(const std::string& request_id);
+
+  /**
    * Set callback for address changes.
    * Called when the URL in the address bar should be updated.
    */
@@ -171,18 +200,29 @@ class CefClient : public ::CefClient,
   }
 
  private:
-  void* native_window_;              // Platform-specific window handle (non-owning)
-  CefRefPtr<::CefBrowser> browser_;  // CEF browser instance
+  void* native_window_;                 // Platform-specific window handle (non-owning)
+  CefRefPtr<::CefBrowser> browser_;     // CEF browser instance
   rendering::GLRenderer* gl_renderer_;  // GL renderer (non-owning)
-  int width_;                        // Logical view width
-  int height_;                       // Logical view height
-  float device_scale_factor_;        // HiDPI scale factor (1.0, 2.0, etc.)
+  int width_;                           // Logical view width
+  int height_;                          // Logical view height
+  float device_scale_factor_;           // HiDPI scale factor (1.0, 2.0, etc.)
 
   // Callbacks for UI updates
-  std::function<void(const std::string&)> on_address_change_;         // URL changed
-  std::function<void(bool, bool, bool)> on_loading_state_change_;     // Loading state changed
-  std::function<void(const std::string&)> on_title_change_;           // Title changed
+  std::function<void(const std::string&)> on_address_change_;      // URL changed
+  std::function<void(bool, bool, bool)> on_loading_state_change_;  // Loading state changed
+  std::function<void(const std::string&)> on_title_change_;        // Title changed
   std::function<void(CefRenderHandler::PaintElementType)> on_render_invalidated_;
+
+  struct JavaScriptRequest {
+    bool completed{false};
+    std::string result_json;
+  };
+
+  std::atomic<uint64_t> next_js_request_id_{1};
+  std::mutex js_mutex_;
+  std::unordered_map<std::string, JavaScriptRequest> pending_js_;
+
+  std::string GenerateRequestId();
 
   IMPLEMENT_REFCOUNTING(CefClient);
 };

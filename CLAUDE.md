@@ -4,29 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Athena Browser is a CEF-based desktop browser with GTK3 integration and React frontend. The project uses C++17 for the native application and TypeScript/React for the UI layer.
+Athena Browser is a CEF-based desktop browser with Qt6 integration and React frontend. The project uses C++17 for the native application and TypeScript/React for the UI layer.
 
 ## Architecture
 
 The codebase follows a clean, layered architecture with 5 main layers:
 
 ```
-main.cpp (152 LOC)
+main.cpp
     ↓
-core/application.cpp (232 LOC) - Multi-window lifecycle management
+core/application.cpp - Multi-window lifecycle management
     ↓
-core/browser_window.cpp (308 LOC) - High-level browser window wrapper
+core/browser_window.cpp - High-level browser window wrapper
     ↓               ↓
-platform/gtk_window.cpp (782 LOC)   browser/cef_engine.cpp (315 LOC)
-    ↓                                    ↓
-rendering/gl_renderer.cpp (180 LOC) - OpenGL hardware-accelerated rendering
+platform/qt_mainwindow.cpp   browser/cef_engine.cpp
+    ↓                             ↓
+rendering/gl_renderer.cpp - OpenGL hardware-accelerated rendering
 ```
 
 **Layer Responsibilities:**
 - **Foundation:** Core types (Point, Size, Rect, ScaleFactor), error handling (Result<T>), logging
 - **Rendering:** Buffer management, scaling, OpenGL rendering (uses CEF's official osr_renderer.cc)
 - **Browser Engine:** CEF abstraction, browser lifecycle, navigation
-- **Platform:** GTK3 window system abstraction, event handling
+- **Platform:** Qt6 window system abstraction, event handling
 - **Application:** High-level API for creating windows and managing application lifecycle
 
 **Key Design Principles:**
@@ -63,11 +63,9 @@ Build output: `build/release/app/athena-browser` or `build/debug/app/athena-brow
 # Run with custom URL
 DEV_URL=https://example.com ./scripts/run.sh
 
-# Direct execution (must set GDK_BACKEND)
-GDK_BACKEND=x11 build/release/app/athena-browser
+# Direct execution
+build/release/app/athena-browser
 ```
-
-**Important:** Browser requires `GDK_BACKEND=x11` for proper CEF window embedding (works on both X11 and Wayland).
 
 ### Development Mode (Frontend)
 
@@ -99,7 +97,7 @@ ctest --test-dir build/release -R "buffer|window" --output-on-failure
 ctest --test-dir build/release --verbose
 ```
 
-**Current Test Count:** 267 tests (100% passing)
+**Current Test Count:** Active tests (Qt migration in progress)
 - Core types: 42 tests
 - Error handling: 24 tests
 - Logging: 8 tests
@@ -107,8 +105,8 @@ ctest --test-dir build/release --verbose
 - Scaling management: 51 tests
 - CEF engine: 35 tests
 - CEF client: 16 tests
-- Browser window: 32 tests
-- Application: 29 tests
+- JS execution utils: Tests available
+- Platform/Application tests: Being migrated to Qt
 
 ### Code Formatting
 
@@ -187,10 +185,9 @@ return utils::Err("error message");    // For errors
 ### CEF Integration Notes
 
 **Browser Creation Lifecycle:**
-- Browser creation MUST happen asynchronously after GTK window realization
+- Browser creation happens asynchronously after Qt widget initialization
 - GLRenderer must be initialized before creating browser
-- Browser creation happens in `GtkWindow::OnRealize()` callback
-- Never call `gtk_main_iteration()` before `gtk_main()` - causes deadlock
+- Browser creation uses Qt's event system and signals/slots
 
 **CEF Subprocess Handling:**
 ```cpp
@@ -204,9 +201,9 @@ if (exit_code >= 0) {
 ```
 
 **Event Handling:**
-- All GTK callbacks use dependency injection via `user_data` pointer
+- Qt uses signals/slots for event handling
 - No global state for CEF clients or renderers
-- Follow CEF's official patterns from `browser_window_osr_gtk.cc`
+- Clean separation between Qt UI layer and CEF rendering
 
 ### OpenGL Rendering
 
@@ -215,9 +212,9 @@ The browser uses CEF's official OpenGL renderer (`osr_renderer.cc`):
 ```cpp
 class GLRenderer {
   // Wraps CEF's OsrRenderer
-  Result<void> Initialize(GtkWidget* gl_area);
+  Result<void> Initialize(void* widget);
   void OnPaint(CefRefPtr<CefBrowser>, ...);  // Called by CEF
-  Result<void> Render();                     // Called by GTK
+  Result<void> Render();                     // Called by Qt
 };
 ```
 
@@ -234,12 +231,12 @@ When adding new source files:
 
 ### Platform-Specific Code
 
-GTK-specific code is isolated in `app/src/platform/gtk_window.cpp`. When modifying:
+Qt-specific code is isolated in `app/src/platform/qt_*.cpp` files. When modifying:
 
-- All event handlers use static C functions (required by GTK)
-- Use `user_data` parameter for dependency injection
+- Use Qt signals/slots for event handling
+- Follow Qt's object ownership model (parent-child relationships)
 - Never use global state
-- All widget pointers are non-owning (GTK manages lifecycle)
+- Use Qt's MOC (Meta-Object Compiler) for signals/slots
 
 ## Common Tasks
 
@@ -305,7 +302,7 @@ Frontend is built with Vite + React. Production builds are copied to `resources/
 ### Core Implementation
 - `app/src/core/` - Application and window management
 - `app/src/browser/` - CEF integration
-- `app/src/platform/` - GTK platform layer
+- `app/src/platform/` - Qt6 platform layer
 - `app/src/rendering/` - OpenGL rendering
 - `app/src/utils/` - Error handling, logging
 - `app/src/resources/` - Custom scheme handlers
@@ -333,7 +330,12 @@ Frontend is built with Vite + React. Production builds are copied to `resources/
 # Ensure CMakeLists.txt CEF_VERSION matches
 ```
 
-**GTK headers missing:**
+**Qt6 not found:**
+```bash
+sudo apt-get install qt6-base-dev qt6-tools-dev libqt6opengl6-dev
+```
+
+**GTK headers missing (needed for CEF):**
 ```bash
 sudo apt-get install libgtk-3-dev libx11-dev pkg-config
 ```
@@ -346,13 +348,13 @@ sudo apt-get install libgl1-mesa-dev
 ### Runtime Issues
 
 **Black screen or no rendering:**
-- Check `GDK_BACKEND=x11` is set
 - Verify GLRenderer initialized before browser creation
-- Check browser created in `OnRealize()` callback, not synchronously
+- Check browser creation happens after Qt widget initialization
+- Ensure OpenGL context is properly created
 
 **Input not working:**
-- Verify `cef_client_` is cached in `GtkWindow::SetBrowser()`
-- Check all event handlers receive valid `BrowserContext*`
+- Verify Qt event handling is connected properly
+- Check that CEF client receives input events
 
 **Browser crashes on startup:**
 - Ensure CEF subprocess handling in main.cpp
@@ -372,8 +374,9 @@ sudo apt-get install libgl1-mesa-dev
 
 ## Browser Status
 
-✅ **Production Ready** (as of 2025-10-12)
-- 267/267 tests passing (100% pass rate)
+🚧 **Qt Migration Complete** (Core functionality working)
+- Core tests passing (206+ tests)
+- Qt6-based window system
 - Zero compiler warnings
 - Zero global state
 - Full RAII resource management
@@ -381,5 +384,6 @@ sudo apt-get install libgl1-mesa-dev
 - Complete input support (mouse, keyboard, focus)
 - Multi-window support
 - Clean architecture with 5 layers
+- Platform/Application tests being migrated to Qt
 
-The browser is fully functional and can be used for development or extended with new features.
+The browser is functional with Qt6. Some platform-specific tests need to be rewritten for the Qt layer.

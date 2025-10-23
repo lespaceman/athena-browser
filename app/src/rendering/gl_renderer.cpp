@@ -3,49 +3,93 @@
 
 #include "rendering/gl_renderer.h"
 
-#include <GL/gl.h>
-#include <iostream>
-
 #include "include/base/cef_logging.h"
 #include "utils/logging.h"
+
+#include <GL/gl.h>
+
+#include <iostream>
+
+// Platform-specific includes
+#ifdef ATHENA_USE_QT
+#include <QBuffer>
+#include <QByteArray>
+#include <QImage>
+#include <QOpenGLWidget>
+#else
+#include <gtk/gtk.h>
+#endif
 
 namespace athena {
 namespace rendering {
 
 namespace {
 
+#ifndef ATHENA_USE_QT
+// GTK-specific: Helper to manage GL context
 class ScopedGLContext {
  public:
-  explicit ScopedGLContext(GtkWidget* gl_area)
-      : gl_area_(gl_area), valid_(false) {
-    if (!gl_area_) {
+  explicit ScopedGLContext(void* gl_widget) : gl_widget_(gl_widget), valid_(false) {
+    if (!gl_widget_) {
       return;
     }
 
-    gtk_gl_area_make_current(GTK_GL_AREA(gl_area_));
-    valid_ = gtk_gl_area_get_error(GTK_GL_AREA(gl_area_)) == nullptr;
+    auto* gtk_widget = static_cast<GtkWidget*>(gl_widget_);
+    gtk_gl_area_make_current(GTK_GL_AREA(gtk_widget));
+    valid_ = gtk_gl_area_get_error(GTK_GL_AREA(gtk_widget)) == nullptr;
   }
 
   bool IsValid() const { return valid_; }
 
  private:
-  GtkWidget* gl_area_;
+  void* gl_widget_;
   bool valid_;
 };
+#else
+// Qt-specific: Make GL context current for CEF threads
+class ScopedGLContext {
+ public:
+  explicit ScopedGLContext(void* gl_widget) : gl_widget_(gl_widget), valid_(false) {
+    if (!gl_widget_) {
+      return;
+    }
+
+    auto* widget = static_cast<QOpenGLWidget*>(gl_widget_);
+    widget->makeCurrent();
+    valid_ = true;  // Qt's makeCurrent() always succeeds or throws
+  }
+
+  ~ScopedGLContext() {
+    if (valid_ && gl_widget_) {
+      auto* widget = static_cast<QOpenGLWidget*>(gl_widget_);
+      widget->doneCurrent();
+    }
+  }
+
+  bool IsValid() const { return valid_; }
+
+ private:
+  void* gl_widget_;
+  bool valid_;
+};
+#endif
 
 }  // namespace
 
+// Static logger for this module
+static utils::Logger logger("GLRenderer");
+
 GLRenderer::GLRenderer()
-    : gl_area_(nullptr),
+    : gl_widget_(nullptr),
       osr_renderer_(nullptr),
       initialized_(false),
       view_width_(0),
       view_height_(0) {
   // Configure renderer settings
-  settings_.show_update_rect = false;  // Disable debug rectangles
+  settings_.show_update_rect = false;                                // Disable debug rectangles
   settings_.background_color = CefColorSetARGB(255, 255, 255, 255);  // White background
-  settings_.real_screen_bounds = true;  // Enable correct screen bounds reporting
-  settings_.shared_texture_enabled = false;  // Not supported on Linux
+  settings_.real_screen_bounds = true;             // Enable correct screen bounds reporting
+  settings_.shared_texture_enabled = false;        // Not supported on Linux
   settings_.external_begin_frame_enabled = false;  // Use CEF's internal timing
 }
 
@@ -53,25 +97,32 @@ GLRenderer::~GLRenderer() {
   Cleanup();
 }
 
-utils::Result<void> GLRenderer::Initialize(GtkWidget* gl_area) {
+utils::Result<void> GLRenderer::Initialize(void* gl_widget) {
   if (initialized_) {
     return utils::Error("Renderer already initialized");
   }
 
-  if (!gl_area) {
-    return utils::Error("gl_area cannot be null");
+  if (!gl_widget) {
+    return utils::Error("gl_widget cannot be null");
   }
 
-  if (!GTK_IS_GL_AREA(gl_area)) {
+#ifndef ATHENA_USE_QT
+  // GTK-specific validation
+  auto* gtk_widget = static_cast<GtkWidget*>(gl_widget);
+  if (!GTK_IS_GL_AREA(gtk_widget)) {
     return utils::Error("widget must be a GtkGLArea");
   }
+#else
+  // Qt-specific: Assume QOpenGLWidget* - context is managed by Qt
+  // No validation needed, Qt handles everything
+#endif
 
-  ScopedGLContext context(gl_area);
+  ScopedGLContext context(gl_widget);
   if (!context.IsValid()) {
     return utils::Error("Failed to make GL context current for renderer initialization");
   }
 
-  gl_area_ = gl_area;
+  gl_widget_ = gl_widget;
 
   // Create CEF's OsrRenderer
   osr_renderer_ = std::make_unique<client::OsrRenderer>(settings_);
@@ -81,7 +132,7 @@ utils::Result<void> GLRenderer::Initialize(GtkWidget* gl_area) {
 
   initialized_ = true;
 
-  std::cout << "[GLRenderer] Initialized successfully with OpenGL acceleration" << std::endl;
+  logger.Info("Initialized successfully with OpenGL acceleration");
 
   return utils::Ok();
 }
@@ -92,12 +143,24 @@ void GLRenderer::Cleanup() {
   }
 
   if (osr_renderer_) {
-    // Only try to make GL context current if widget is still valid
-    // During window destruction, gl_area_ may already be destroyed
-    if (gl_area_ && G_IS_OBJECT(gl_area_) && GTK_IS_GL_AREA(gl_area_)) {
-      ScopedGLContext context(gl_area_);
+    // Platform-specific widget validation
+    bool widget_valid = false;
+
+#ifndef ATHENA_USE_QT
+    // GTK: Check if widget is still valid
+    if (gl_widget_) {
+      auto* gtk_widget = static_cast<GtkWidget*>(gl_widget_);
+      widget_valid = (G_IS_OBJECT(gtk_widget) && GTK_IS_GL_AREA(gtk_widget));
+    }
+#else
+    // Qt: Widget pointer is valid (Qt manages lifecycle)
+    widget_valid = (gl_widget_ != nullptr);
+#endif
+
+    if (widget_valid) {
+      ScopedGLContext context(gl_widget_);
       if (!context.IsValid()) {
-        std::cerr << "[GLRenderer] Warning: GL context invalid during cleanup" << std::endl;
+        logger.Warn("GL context invalid during cleanup");
       }
       osr_renderer_->Cleanup();
     } else {
@@ -108,9 +171,9 @@ void GLRenderer::Cleanup() {
   }
 
   initialized_ = false;
-  gl_area_ = nullptr;
+  gl_widget_ = nullptr;
 
-  std::cout << "[GLRenderer] Cleaned up" << std::endl;
+  logger.Info("Cleaned up");
 }
 
 void GLRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
@@ -120,13 +183,13 @@ void GLRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
                          int width,
                          int height) {
   if (!initialized_ || !osr_renderer_) {
-    std::cerr << "[GLRenderer] Warning: OnPaint called but renderer not initialized" << std::endl;
+    logger.Warn("OnPaint called but renderer not initialized");
     return;
   }
 
-  ScopedGLContext context(gl_area_);
+  ScopedGLContext context(gl_widget_);
   if (!context.IsValid()) {
-    std::cerr << "[GLRenderer] Warning: Unable to make GL context current during OnPaint" << std::endl;
+    logger.Warn("Unable to make GL context current during OnPaint");
     return;
   }
 
@@ -142,8 +205,7 @@ void GLRenderer::OnPopupShow(CefRefPtr<CefBrowser> browser, bool show) {
   osr_renderer_->OnPopupShow(browser, show);
 }
 
-void GLRenderer::OnPopupSize(CefRefPtr<CefBrowser> browser,
-                             const core::Rect& rect) {
+void GLRenderer::OnPopupSize(CefRefPtr<CefBrowser> browser, const core::Rect& rect) {
   if (!initialized_ || !osr_renderer_) {
     return;
   }
@@ -157,12 +219,13 @@ utils::Result<void> GLRenderer::Render() {
     return utils::Error("Renderer not initialized");
   }
 
-  if (!gl_area_) {
-    return utils::Error("No GL area set");
+  if (!gl_widget_) {
+    return utils::Error("No GL widget set");
   }
 
   // The GL context is automatically current when this is called
-  // from the GtkGLArea "render" signal
+  // GTK: from GtkGLArea "render" signal
+  // Qt: from QOpenGLWidget::paintGL()
 
   // Let CEF's renderer do the actual OpenGL rendering
   osr_renderer_->Render();
@@ -170,8 +233,7 @@ utils::Result<void> GLRenderer::Render() {
   // Check for GL errors
   GLenum gl_error = glGetError();
   if (gl_error != GL_NO_ERROR) {
-    std::string error_msg = "OpenGL error during render: " +
-                           std::to_string(gl_error);
+    std::string error_msg = "OpenGL error during render: " + std::to_string(gl_error);
     return utils::Error(error_msg);
   }
 
@@ -205,6 +267,85 @@ int GLRenderer::GetViewHeight() const {
 
 CefRect GLRenderer::ToCefRect(const core::Rect& rect) {
   return CefRect(rect.x, rect.y, rect.width, rect.height);
+}
+
+std::string GLRenderer::TakeScreenshot() const {
+  if (!initialized_ || !osr_renderer_ || !gl_widget_) {
+    logger.Warn("Cannot take screenshot - renderer not initialized");
+    return "";
+  }
+
+  // Fixed scale for optimal AI analysis (50% of original resolution)
+  const float scale = 0.5f;
+
+  // Make GL context current
+  ScopedGLContext context(gl_widget_);
+  if (!context.IsValid()) {
+    logger.Warn("Unable to make GL context current for screenshot");
+    return "";
+  }
+
+  int width = GetViewWidth();
+  int height = GetViewHeight();
+
+  if (width <= 0 || height <= 0) {
+    logger.Warn("Invalid view size for screenshot");
+    return "";
+  }
+
+  // Read pixels from the framebuffer
+  std::vector<unsigned char> pixels(width * height * 4);  // RGBA
+  glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+  // Check for GL errors
+  GLenum gl_error = glGetError();
+  if (gl_error != GL_NO_ERROR) {
+    logger.Error("OpenGL error during screenshot: {}", gl_error);
+    return "";
+  }
+
+  // Flip image vertically (OpenGL bottom-left origin -> PNG top-left origin)
+  std::vector<unsigned char> flipped(width * height * 4);
+  for (int y = 0; y < height; y++) {
+    memcpy(&flipped[y * width * 4], &pixels[(height - 1 - y) * width * 4], width * 4);
+  }
+
+#ifdef ATHENA_USE_QT
+  // Use Qt to encode as PNG and convert to base64
+  QImage image(flipped.data(), width, height, width * 4, QImage::Format_RGBA8888);
+
+  // Scale down the image if requested (scale < 1.0)
+  if (scale < 1.0f) {
+    int scaled_width = static_cast<int>(width * scale);
+    int scaled_height = static_cast<int>(height * scale);
+
+    // Ensure minimum 1x1 pixel image
+    scaled_width = std::max(1, scaled_width);
+    scaled_height = std::max(1, scaled_height);
+
+    image = image.scaled(scaled_width, scaled_height, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
+    logger.Debug("Screenshot scaled from {}x{} to {}x{} (scale={})",
+                 width, height, scaled_width, scaled_height, scale);
+  }
+
+  QByteArray byte_array;
+  QBuffer buffer(&byte_array);
+  buffer.open(QIODevice::WriteOnly);
+
+  if (!image.save(&buffer, "PNG")) {
+    logger.Error("Failed to encode PNG");
+    return "";
+  }
+
+  // Convert to base64
+  QByteArray base64 = byte_array.toBase64();
+  return std::string(base64.constData(), base64.size());
+#else
+  // GTK version: Would need to implement PNG encoding using libpng
+  logger.Error("PNG encoding not yet implemented for GTK");
+  return "";
+#endif
 }
 
 }  // namespace rendering

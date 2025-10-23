@@ -1,6 +1,7 @@
 #include "rendering/buffer_manager.h"
-#include <gtest/gtest.h>
+
 #include <cstring>
+#include <gtest/gtest.h>
 #include <vector>
 
 using namespace athena::rendering;
@@ -221,8 +222,7 @@ TEST_F(BufferManagerTest, CopyFromCEFInvalidBuffer) {
   BufferManager::Buffer invalid_buffer(size);
 
   std::vector<uint8_t> cef_buffer(100 * 100 * 4);
-  auto copy_result = manager_.CopyFromCEF(
-      invalid_buffer, cef_buffer.data(), Size{100, 100});
+  auto copy_result = manager_.CopyFromCEF(invalid_buffer, cef_buffer.data(), Size{100, 100});
 
   EXPECT_TRUE(copy_result.IsError());
   EXPECT_NE(copy_result.GetError().Message().find("invalid"), std::string::npos);
@@ -262,8 +262,7 @@ TEST_F(BufferManagerTest, CopyFromCEFDirtySingleRect) {
   Rect dirty_rect{10, 10, 20, 20};
   std::vector<Rect> dirty_rects{dirty_rect};
 
-  auto copy_result = manager_.CopyFromCEFDirty(
-      *buffer, cef_buffer.data(), size, dirty_rects);
+  auto copy_result = manager_.CopyFromCEFDirty(*buffer, cef_buffer.data(), size, dirty_rects);
   ASSERT_TRUE(copy_result.IsOk());
 
   // Verify only dirty rect was copied (rest should still be zero)
@@ -297,14 +296,9 @@ TEST_F(BufferManagerTest, CopyFromCEFDirtyMultipleRects) {
 
   std::vector<uint8_t> cef_buffer(size.width * 4 * size.height, 255);
 
-  std::vector<Rect> dirty_rects{
-      {0, 0, 10, 10},
-      {50, 50, 20, 20},
-      {80, 80, 20, 20}
-  };
+  std::vector<Rect> dirty_rects{{0, 0, 10, 10}, {50, 50, 20, 20}, {80, 80, 20, 20}};
 
-  auto copy_result = manager_.CopyFromCEFDirty(
-      *buffer, cef_buffer.data(), size, dirty_rects);
+  auto copy_result = manager_.CopyFromCEFDirty(*buffer, cef_buffer.data(), size, dirty_rects);
   ASSERT_TRUE(copy_result.IsOk());
 
   // Count non-zero bytes (should equal dirty rect pixels * 4)
@@ -344,8 +338,7 @@ TEST_F(BufferManagerTest, CopyFromCEFDirtyEmptyRectList) {
   std::vector<uint8_t> cef_buffer(size.width * 4 * size.height, 255);
   std::vector<Rect> dirty_rects;  // Empty
 
-  auto copy_result = manager_.CopyFromCEFDirty(
-      *buffer, cef_buffer.data(), size, dirty_rects);
+  auto copy_result = manager_.CopyFromCEFDirty(*buffer, cef_buffer.data(), size, dirty_rects);
   ASSERT_TRUE(copy_result.IsOk());
 
   // Should copy everything when dirty rects is empty
@@ -369,8 +362,7 @@ TEST_F(BufferManagerTest, CopyFromCEFDirtyInvalidRect) {
   // Rect outside bounds
   std::vector<Rect> dirty_rects{{200, 200, 10, 10}};
 
-  auto copy_result = manager_.CopyFromCEFDirty(
-      *buffer, cef_buffer.data(), size, dirty_rects);
+  auto copy_result = manager_.CopyFromCEFDirty(*buffer, cef_buffer.data(), size, dirty_rects);
   ASSERT_TRUE(copy_result.IsOk());
 
   // Invalid rect should be skipped - buffer should still be zero
@@ -391,8 +383,7 @@ TEST_F(BufferManagerTest, CopyFromCEFDirtyPartiallyOutOfBounds) {
   // Rect partially out of bounds
   std::vector<Rect> dirty_rects{{90, 90, 20, 20}};
 
-  auto copy_result = manager_.CopyFromCEFDirty(
-      *buffer, cef_buffer.data(), size, dirty_rects);
+  auto copy_result = manager_.CopyFromCEFDirty(*buffer, cef_buffer.data(), size, dirty_rects);
   ASSERT_TRUE(copy_result.IsOk());
 
   // Should skip the invalid rect
