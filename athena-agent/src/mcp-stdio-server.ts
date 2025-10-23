@@ -15,8 +15,8 @@
  */
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { Logger } from './logger.js';
-import { createAthenaBrowserMcpServer, setBrowserApiBase } from './mcp-server.js';
+import { Logger } from './logger';
+import { createAthenaBrowserMcpServer, setBrowserApiBase } from './mcp-server';
 
 const logger = new Logger('MCP-Stdio');
 

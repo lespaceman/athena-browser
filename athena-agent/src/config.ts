@@ -2,7 +2,7 @@
  * Configuration management for Athena Agent
  */
 
-import type { AthenaAgentConfig } from './types.js';
+import type { AthenaAgentConfig } from './types';
 
 /**
  * Load configuration from environment variables and defaults
@@ -21,7 +21,9 @@ export function loadConfig(): AthenaAgentConfig {
     // Enable extended thinking for complex browser automation tasks
     maxThinkingTokens: process.env.MAX_THINKING_TOKENS ? parseInt(process.env.MAX_THINKING_TOKENS, 10) : 8000,
     // Limit conversation turns to prevent runaway costs
-    maxTurns: process.env.MAX_TURNS ? parseInt(process.env.MAX_TURNS, 10) : 20
+    maxTurns: process.env.MAX_TURNS ? parseInt(process.env.MAX_TURNS, 10) : 20,
+    // Screenshot timeout: large screenshots (1-5MB base64) need more time to transfer
+    screenshotTimeoutMs: process.env.SCREENSHOT_TIMEOUT_MS ? parseInt(process.env.SCREENSHOT_TIMEOUT_MS, 10) : 90000
   };
 
   return config;

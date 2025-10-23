@@ -102,6 +102,24 @@ Custom system prompt guides the agent to use efficient patterns:
 - Verify navigation with `get_url`
 - Combine tools strategically for complex tasks
 
+**Screenshot Optimization:**
+
+Screenshots are base64-encoded and can timeout with large images (1-5 MB). To prevent timeouts:
+
+- **Use quality parameter**: `quality: 70` reduces file size by ~50% (vs default 85)
+- **Resize large screenshots**: `maxWidth: 1920` or `maxHeight: 1080` to limit size
+- **Increased timeout**: Default 90s timeout handles most cases (configurable via `SCREENSHOT_TIMEOUT_MS`)
+- **Example**: For a 4K screenshot, use `quality: 60, maxWidth: 1920` to reduce from 5MB to ~1MB
+
+```typescript
+// Optimized screenshot for faster transfer
+await browser_screenshot({
+  quality: 70,        // Reduce quality to 70% (default: 85)
+  maxWidth: 1920,     // Scale down if larger
+  maxHeight: 1080
+});
+```
+
 See [Architecture Documentation](./docs/architecture/mcp-integration.md) for detailed technical architecture.
 
 ## API Endpoints
@@ -230,6 +248,7 @@ npm run lint         # Run ESLint
 - `ATHENA_SOCKET_PATH` - Socket for HTTP server (default: `/tmp/athena-UID.sock`)
 - `ATHENA_CONTROL_SOCKET_PATH` - Socket for browser control (default: `/tmp/athena-UID-control.sock`)
 - `LOG_LEVEL` - Logging level: debug, info, warn, error (default: `info`)
+- `SCREENSHOT_TIMEOUT_MS` - Screenshot operation timeout in milliseconds (default: `90000` = 90s)
 
 **AI Configuration:**
 - `ANTHROPIC_API_KEY` - API key for Claude (optional, for chat features)
@@ -262,6 +281,86 @@ export MAX_THINKING_TOKENS=10000                # Extended reasoning
 export MAX_TURNS=30                              # Longer conversations
 export PERMISSION_MODE=default                   # Smart permissions (default)
 ```
+
+## Logging
+
+### Viewing Logs When Running the Browser
+
+When you run the browser with `./scripts/run.sh`, the MCP server logs automatically appear in stderr as JSON:
+
+```bash
+# Run browser - logs appear automatically
+./scripts/run.sh
+
+# Example log output:
+# {"timestamp":"2025-10-22T10:30:15.123Z","level":"info","module":"MCPServer","message":"Tool: browser_navigate","url":"https://example.com","pid":12345}
+```
+
+### Log Levels
+
+Control verbosity with `LOG_LEVEL` environment variable:
+
+```bash
+# Debug logs (very verbose - shows all browser API calls)
+LOG_LEVEL=debug ./scripts/run.sh
+
+# Info logs (default - shows tool execution and important events)
+LOG_LEVEL=info ./scripts/run.sh
+
+# Warnings and errors only
+LOG_LEVEL=warn ./scripts/run.sh
+```
+
+### Readable Log Format
+
+Use the helper script to format logs in human-readable format:
+
+```bash
+# Pretty-print logs (requires jq)
+./scripts/run.sh 2>&1 | ../scripts/view-logs.sh
+
+# Example output:
+# 2025-10-22T10:30:15.123Z [INFO] MCPServer: Tool: browser_navigate (url: https://example.com)
+```
+
+### Save Logs to File
+
+```bash
+# Save all logs while viewing them
+./scripts/run.sh 2>&1 | tee athena-$(date +%Y%m%d-%H%M%S).log
+
+# Save only MCP logs
+./scripts/run.sh 2>&1 | grep '"module":"MCP' > mcp-logs.json
+
+# Save with pretty formatting
+./scripts/run.sh 2>&1 | ../scripts/view-logs.sh | tee athena-readable.log
+```
+
+### Filter Specific Logs
+
+```bash
+# Show only errors
+./scripts/run.sh 2>&1 | grep '"level":"error"'
+
+# Show only MCPServer module
+./scripts/run.sh 2>&1 | grep '"module":"MCPServer"'
+
+# Show tool executions
+./scripts/run.sh 2>&1 | grep '"message":"Tool:'
+
+# Show browser API calls (debug level required)
+LOG_LEVEL=debug ./scripts/run.sh 2>&1 | grep 'Browser API'
+```
+
+### Log Modules
+
+The MCP server uses different module names for different components:
+
+- **`MCPServer`** - MCP tool execution and browser API calls
+- **`NativeController`** - Communication with C++ browser control server
+- **`ClaudeClient`** - Claude Agent SDK integration
+- **`SessionManager`** - Session management and forking
+- **`AthenaAgent`** - General agent operations
 
 ## Current Status
 

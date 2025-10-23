@@ -274,6 +274,9 @@ std::string GLRenderer::TakeScreenshot() const {
     return "";
   }
 
+  // Fixed scale for optimal AI analysis (50% of original resolution)
+  const float scale = 0.5f;
+
   // Make GL context current
   ScopedGLContext context(gl_widget_);
   if (!context.IsValid()) {
@@ -310,6 +313,22 @@ std::string GLRenderer::TakeScreenshot() const {
 #ifdef ATHENA_USE_QT
   // Use Qt to encode as PNG and convert to base64
   QImage image(flipped.data(), width, height, width * 4, QImage::Format_RGBA8888);
+
+  // Scale down the image if requested (scale < 1.0)
+  if (scale < 1.0f) {
+    int scaled_width = static_cast<int>(width * scale);
+    int scaled_height = static_cast<int>(height * scale);
+
+    // Ensure minimum 1x1 pixel image
+    scaled_width = std::max(1, scaled_width);
+    scaled_height = std::max(1, scaled_height);
+
+    image = image.scaled(scaled_width, scaled_height, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
+    std::cerr << "[GLRenderer] Screenshot scaled from " << width << "x" << height
+              << " to " << scaled_width << "x" << scaled_height
+              << " (scale=" << scale << ")" << std::endl;
+  }
 
   QByteArray byte_array;
   QBuffer buffer(&byte_array);

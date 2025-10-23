@@ -11,8 +11,8 @@
 
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { BrowserApiClient } from './browser-api-client.js';
-import { Logger } from './logger.js';
+import { BrowserApiClient } from './browser-api-client';
+import { Logger } from './logger';
 
 const logger = new Logger('MCPAgentAdapter');
 
@@ -264,11 +264,14 @@ Main Content: ${summary.mainText || 'N/A'}`;
         },
         async (args) => {
           try {
+            logger.info('Capturing screenshot', { tabIndex: args.tabIndex, fullPage: args.fullPage });
             const result = await client.screenshot(args.tabIndex, args.fullPage);
+            logger.info('Screenshot captured', { tabIndex: args.tabIndex, fullPage: args.fullPage });
             return {
               content: [{ type: 'image', data: result.screenshot, mimeType: 'image/png' }]
             };
           } catch (error) {
+            logger.error('Screenshot capture failed', { error });
             return { content: [{ type: 'text', text: `Failed to capture screenshot: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
           }
         }

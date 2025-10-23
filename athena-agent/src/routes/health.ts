@@ -3,7 +3,7 @@
  */
 
 import type { Request, Response } from 'express';
-import type { HealthResponse } from '../types.js';
+import type { HealthResponse } from '../types';
 
 const startTime = Date.now();
 

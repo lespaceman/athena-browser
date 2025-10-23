@@ -10,11 +10,12 @@ import type {
   ChatResponse,
   AthenaAgentConfig,
   StreamChunk
-} from './types.js';
-import { Logger } from './logger.js';
+} from './types';
+import { Logger } from './logger';
 import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
-import { SessionManager } from './session-manager.js';
-import type { Message } from './session-types.js';
+import { SessionManager } from './session-manager';
+import type { Message } from './session-types';
+import { ClaudeQueryBuilder } from './claude-query-builder';
 
 const logger = new Logger('ClaudeClient');
 
@@ -41,189 +42,6 @@ export class ClaudeClient {
     });
   }
 
-  /**
-   * Custom permission callback for dynamic tool usage decisions.
-   * Only handles dynamic logic (JavaScript execution confirmation).
-   * Static tool permissions are handled by the allowedTools array.
-   */
-  private async canUseTool(toolName: string, input: any): Promise<any> {
-    // Require confirmation for JavaScript execution
-    if (toolName === 'mcp__athena-browser__browser_execute_js') {
-      logger.warn('JavaScript execution requested', { code: input.code });
-      return {
-        behavior: 'ask',
-        message: `Allow JavaScript execution: "${input.code?.substring(0, 100)}..."?`
-      };
-    }
-
-    // All other tools are controlled by allowedTools array
-    return { behavior: 'allow' };
-  }
-
-  /**
-   * Get browser-specific system prompt
-   */
-  private getBrowserSystemPrompt(): string {
-    return `You are an expert web browser automation agent with deep knowledge of web technologies and user interactions.
-
-**IMPORTANT RESTRICTION:**
-You have access ONLY to Athena browser MCP tools. You do NOT have access to:
-- File system tools (Read, Write, Edit, Glob, Grep)
-- CLI tools (Bash)
-- Web fetching tools (WebFetch, WebSearch)
-Your entire focus is on browser automation and web page interaction.
-
-**Available Browser Tools:**
-- Navigation: browser_navigate, browser_back, browser_forward, browser_reload
-- Information: browser_get_url, browser_get_html, browser_get_page_summary, browser_get_interactive_elements, browser_get_accessibility_tree, browser_query_content
-- Interaction: browser_execute_js
-- Screenshots: browser_screenshot, browser_get_annotated_screenshot
-- Tab Management: window_create_tab, window_close_tab, window_switch_tab, window_get_tab_info
-
-**Best Practices:**
-- ALWAYS use browser_get_page_summary before browser_get_html to save tokens (1-2KB vs 100KB+)
-- Use browser_get_interactive_elements to find clickable items efficiently
-- Use browser_query_content for targeted data extraction (forms, navigation, articles, tables, media)
-- Verify navigation actions with browser_get_url after each navigation
-- Use browser_get_annotated_screenshot for visual understanding of complex pages
-- Prefer browser_get_accessibility_tree for semantic page structure
-
-**Tool Usage Efficiency:**
-1. For simple queries: page_summary + query_content
-2. For interaction: interactive_elements → execute_js or screenshot
-3. For data extraction: query_content with specific type
-4. For debugging: accessibility_tree + annotated_screenshot
-
-Always explain your reasoning before taking actions.`;
-  }
-
-  /**
-   * Get sub-agents configuration for specialized browser tasks
-   * RESTRICTED: Only browser MCP tools, no file system access
-   */
-  private getSubAgents(): any {
-    return {
-      'web-analyzer': {
-        description: 'Expert in analyzing web page structure, extracting information, and understanding semantic content. Use for page analysis, data extraction, and content understanding tasks.',
-        prompt: `You specialize in web page analysis and data extraction.
-
-Your expertise:
-- Analyzing HTML structure and DOM trees
-- Extracting structured data from pages
-- Understanding semantic content and accessibility trees
-- Identifying key page elements and their relationships
-- Optimizing data extraction strategies
-
-Always use the most efficient tools:
-1. Start with page_summary for overview
-2. Use query_content for targeted extraction
-3. Use accessibility_tree for semantic structure
-4. Only use full HTML when absolutely necessary
-
-Provide clear, structured output.`,
-        tools: [
-          'mcp__athena-browser__browser_get_url',
-          'mcp__athena-browser__browser_get_html',
-          'mcp__athena-browser__browser_get_page_summary',
-          'mcp__athena-browser__browser_get_interactive_elements',
-          'mcp__athena-browser__browser_get_accessibility_tree',
-          'mcp__athena-browser__browser_query_content',
-          'mcp__athena-browser__browser_screenshot'
-        ],
-        model: 'sonnet' as const
-      },
-
-      'navigation-expert': {
-        description: 'Expert in browser navigation, multi-step workflows, and tab management. Use for complex navigation tasks, site exploration, and workflow automation.',
-        prompt: `You specialize in browser navigation and workflow automation.
-
-Your expertise:
-- Planning and executing multi-step navigation workflows
-- Managing browser tabs efficiently
-- Handling history navigation (back/forward)
-- Recovering from navigation errors
-- Optimizing navigation paths
-
-Best practices:
-1. Verify current URL before navigating
-2. Check page load success after navigation
-3. Use page_summary to confirm correct page
-4. Manage tabs strategically (close unused tabs)
-5. Handle redirects and errors gracefully
-
-Always confirm successful navigation.`,
-        tools: [
-          'mcp__athena-browser__browser_navigate',
-          'mcp__athena-browser__browser_back',
-          'mcp__athena-browser__browser_forward',
-          'mcp__athena-browser__browser_reload',
-          'mcp__athena-browser__browser_get_url',
-          'mcp__athena-browser__browser_get_page_summary',
-          'mcp__athena-browser__window_create_tab',
-          'mcp__athena-browser__window_close_tab',
-          'mcp__athena-browser__window_switch_tab',
-          'mcp__athena-browser__window_get_tab_info'
-        ],
-        model: 'haiku' as const
-      },
-
-      'form-automation': {
-        description: 'Expert in web form interactions, input validation, and form submission. Use for filling forms, handling input fields, and automating form-based workflows.',
-        prompt: `You specialize in web form automation and interaction.
-
-Your expertise:
-- Analyzing form structure and fields
-- Identifying form inputs and their types
-- Generating appropriate JavaScript for form filling
-- Validating input before submission
-- Handling form errors and validation
-
-Process:
-1. Use query_content with "forms" to get form structure
-2. Analyze required fields and validation rules
-3. Generate safe JavaScript for form filling
-4. Verify form state before submission
-5. Handle errors and edge cases
-
-Always validate inputs and explain your approach.`,
-        tools: [
-          'mcp__athena-browser__browser_get_page_summary',
-          'mcp__athena-browser__browser_query_content',
-          'mcp__athena-browser__browser_get_interactive_elements',
-          'mcp__athena-browser__browser_execute_js',
-          'mcp__athena-browser__browser_screenshot'
-        ],
-        model: 'sonnet' as const
-      },
-
-      'screenshot-analyst': {
-        description: 'Expert in analyzing visual content from screenshots, understanding UI layout, and identifying visual elements. Use for visual debugging and UI understanding.',
-        prompt: `You specialize in visual analysis of web pages.
-
-Your expertise:
-- Analyzing screenshots for UI elements
-- Understanding visual layout and design
-- Identifying clickable elements from visual cues
-- Debugging visual rendering issues
-- Comparing before/after states
-
-Tools:
-1. Use annotated_screenshot for element identification
-2. Use regular screenshot for visual debugging
-3. Combine with accessibility_tree for semantic context
-4. Use interactive_elements for clickability verification
-
-Provide detailed visual analysis.`,
-        tools: [
-          'mcp__athena-browser__browser_screenshot',
-          'mcp__athena-browser__browser_get_annotated_screenshot',
-          'mcp__athena-browser__browser_get_interactive_elements',
-          'mcp__athena-browser__browser_get_accessibility_tree'
-        ],
-        model: 'sonnet' as const
-      }
-    };
-  }
 
   /**
    * Create a new session or get existing one
@@ -329,42 +147,19 @@ Provide detailed visual analysis.`,
         model: this.config.model
       });
 
-      const mcpServers = this.mcpServer ? {
-        'athena-browser': this.mcpServer
-      } : undefined;
+      // Build query configuration using ClaudeQueryBuilder
+      const queryConfig = ClaudeQueryBuilder.buildQueryConfig(
+        this.config,
+        this.mcpServer,
+        prompt,
+        claudeSessionId
+      );
 
-      // Build system prompt: combine preset with browser-specific instructions
-      const systemPrompt = this.mcpServer
-        ? `${this.getBrowserSystemPrompt()}\n\n---\n\nFollow the project's coding standards and practices as defined in CLAUDE.md.`
-        : undefined;
-
-      // Dynamically select tools based on prompt complexity
-      const allowedTools = this.getToolsForPrompt(prompt);
+      const queryOptions = ClaudeQueryBuilder.buildQueryOptions(queryConfig);
 
       const stream = query({
         prompt,
-        options: {
-          cwd: this.config.cwd,
-          model: this.config.model,
-          permissionMode: this.config.permissionMode,
-          // Use custom system prompt for browser tasks, otherwise use preset
-          systemPrompt: systemPrompt ? systemPrompt : {
-            type: 'preset',
-            preset: 'claude_code'
-          },
-          settingSources: ['user', 'project', 'local'], // Load all settings for comprehensive context
-          allowedTools, // Use dynamically selected tools
-          maxThinkingTokens: this.config.maxThinkingTokens,
-          maxTurns: this.config.maxTurns,
-          resume: claudeSessionId || undefined,
-          mcpServers,
-          // Add sub-agents for specialized browser tasks
-          agents: this.mcpServer ? this.getSubAgents() : undefined,
-          // Use custom permission callback instead of permissionMode
-          canUseTool: this.config.permissionMode === 'default'
-            ? this.canUseTool.bind(this)
-            : undefined
-        }
+        options: queryOptions
       });
 
       let resultMessage: any = null;
@@ -504,51 +299,26 @@ Provide detailed visual analysis.`,
         model: this.config.model
       });
 
-      const mcpServers = this.mcpServer ? {
-        'athena-browser': this.mcpServer
-      } : undefined;
-
-      // Build system prompt: combine preset with browser-specific instructions
-      const systemPrompt = this.mcpServer
-        ? `${this.getBrowserSystemPrompt()}\n\n---\n\nFollow the project's coding standards and practices as defined in CLAUDE.md.`
-        : undefined;
-
-      // Dynamically select tools based on prompt complexity
-      const allowedTools = this.getToolsForPrompt(prompt);
-
-      // Use the Claude session ID from loaded session (not instance variable!)
-      const resumeSessionId = claudeSessionId || undefined;
-
       logger.info('Calling Claude SDK query', {
-        resume: resumeSessionId,
+        resume: claudeSessionId,
         athenaSessionId: currentSessionId,
         loadedClaudeSessionId: claudeSessionId || 'none'
       });
 
+      // Build query configuration using ClaudeQueryBuilder
+      const queryConfig = ClaudeQueryBuilder.buildQueryConfig(
+        this.config,
+        this.mcpServer,
+        prompt,
+        claudeSessionId,
+        { includePartialMessages: true } // Enable streaming
+      );
+
+      const queryOptions = ClaudeQueryBuilder.buildQueryOptions(queryConfig);
+
       const stream = query({
         prompt,
-        options: {
-          cwd: this.config.cwd,
-          model: this.config.model,
-          permissionMode: this.config.permissionMode,
-          // Use custom system prompt for browser tasks, otherwise use preset
-          systemPrompt: systemPrompt ? systemPrompt : {
-            type: 'preset',
-            preset: 'claude_code'
-          },
-          settingSources: ['user', 'project', 'local'], // Load all settings for comprehensive context
-          allowedTools,
-          maxThinkingTokens: this.config.maxThinkingTokens,
-          maxTurns: this.config.maxTurns,
-          resume: resumeSessionId,
-          mcpServers,
-          agents: this.mcpServer ? this.getSubAgents() : undefined,
-          // Use custom permission callback
-          canUseTool: this.config.permissionMode === 'default'
-            ? this.canUseTool.bind(this)
-            : undefined,
-          includePartialMessages: true  // Enable streaming
-        }
+        options: queryOptions
       });
 
       let accumulatedText = '';
@@ -713,55 +483,20 @@ Provide detailed visual analysis.`,
     try {
       logger.info('Forking session', { originalSessionId });
 
-      const mcpServers = this.mcpServer ? {
-        'athena-browser': this.mcpServer
-      } : undefined;
+      // Build query configuration using ClaudeQueryBuilder
+      const queryConfig = ClaudeQueryBuilder.buildQueryConfig(
+        this.config,
+        this.mcpServer,
+        prompt,
+        originalSessionId,
+        { forkSession: true } // Fork the session for exploratory path
+      );
 
-      const systemPrompt = this.mcpServer
-        ? `${this.getBrowserSystemPrompt()}\n\n---\n\nFollow the project's coding standards and practices as defined in CLAUDE.md.`
-        : undefined;
+      const queryOptions = ClaudeQueryBuilder.buildQueryOptions(queryConfig);
 
       const stream = query({
         prompt,
-        options: {
-          cwd: this.config.cwd,
-          model: this.config.model,
-          permissionMode: this.config.permissionMode,
-          systemPrompt: systemPrompt ? systemPrompt : {
-            type: 'preset',
-            preset: 'claude_code'
-          },
-          settingSources: ['user', 'project', 'local'],
-          // RESTRICTED: Only browser MCP tools for forked sessions
-          allowedTools: this.mcpServer ? [
-            'mcp__athena-browser__browser_navigate',
-            'mcp__athena-browser__browser_back',
-            'mcp__athena-browser__browser_forward',
-            'mcp__athena-browser__browser_reload',
-            'mcp__athena-browser__browser_get_url',
-            'mcp__athena-browser__browser_get_html',
-            'mcp__athena-browser__browser_get_page_summary',
-            'mcp__athena-browser__browser_get_interactive_elements',
-            'mcp__athena-browser__browser_get_accessibility_tree',
-            'mcp__athena-browser__browser_query_content',
-            'mcp__athena-browser__browser_get_annotated_screenshot',
-            'mcp__athena-browser__browser_execute_js',
-            'mcp__athena-browser__browser_screenshot',
-            'mcp__athena-browser__window_create_tab',
-            'mcp__athena-browser__window_close_tab',
-            'mcp__athena-browser__window_switch_tab',
-            'mcp__athena-browser__window_get_tab_info'
-          ] : [],
-          maxThinkingTokens: this.config.maxThinkingTokens,
-          maxTurns: this.config.maxTurns,
-          resume: originalSessionId,
-          forkSession: true, // Fork the session for exploratory path
-          mcpServers,
-          agents: this.mcpServer ? this.getSubAgents() : undefined,
-          canUseTool: this.config.permissionMode === 'default'
-            ? this.canUseTool.bind(this)
-            : undefined
-        }
+        options: queryOptions
       });
 
       let resultMessage: any = null;
@@ -872,84 +607,4 @@ Provide detailed visual analysis.`,
     return this.sessionManager;
   }
 
-  /**
-   * Analyze prompt complexity and return appropriate tool set.
-   * Only returns Athena browser MCP tools (no file system or CLI access).
-   * This method provides the allowedTools array for static permission control.
-   */
-  private getToolsForPrompt(prompt: string): string[] {
-    const lowerPrompt = prompt.toLowerCase();
-
-    // Check for read-only vs. interactive tasks
-    const isReadOnly =
-      lowerPrompt.includes('show') ||
-      lowerPrompt.includes('get') ||
-      lowerPrompt.includes('find') ||
-      lowerPrompt.includes('search') ||
-      lowerPrompt.includes('analyze') ||
-      lowerPrompt.includes('extract');
-
-    const needsInteraction =
-      lowerPrompt.includes('click') ||
-      lowerPrompt.includes('fill') ||
-      lowerPrompt.includes('submit') ||
-      lowerPrompt.includes('execute') ||
-      lowerPrompt.includes('navigate') ||
-      lowerPrompt.includes('type');
-
-    // ONLY return browser MCP tools - no file system or CLI tools allowed
-    const tools: string[] = [];
-
-    if (!this.mcpServer) {
-      logger.warn('No MCP server configured - agent will have no tools available');
-      return tools;
-    }
-
-    // For read-only browser tasks, only add read tools
-    if (isReadOnly && !needsInteraction) {
-      tools.push(
-        'mcp__athena-browser__browser_get_url',
-        'mcp__athena-browser__browser_get_html',
-        'mcp__athena-browser__browser_get_page_summary',
-        'mcp__athena-browser__browser_get_interactive_elements',
-        'mcp__athena-browser__browser_get_accessibility_tree',
-        'mcp__athena-browser__browser_query_content',
-        'mcp__athena-browser__browser_screenshot',
-        'mcp__athena-browser__browser_get_annotated_screenshot',
-        'mcp__athena-browser__window_get_tab_info'
-      );
-      logger.debug('Using read-only browser tools', { toolCount: tools.length });
-    } else {
-      // For interactive tasks, add all browser tools (including navigation and JS execution)
-      tools.push(
-        'mcp__athena-browser__browser_navigate',
-        'mcp__athena-browser__browser_back',
-        'mcp__athena-browser__browser_forward',
-        'mcp__athena-browser__browser_reload',
-        'mcp__athena-browser__browser_get_url',
-        'mcp__athena-browser__browser_get_html',
-        'mcp__athena-browser__browser_get_page_summary',
-        'mcp__athena-browser__browser_get_interactive_elements',
-        'mcp__athena-browser__browser_get_accessibility_tree',
-        'mcp__athena-browser__browser_query_content',
-        'mcp__athena-browser__browser_get_annotated_screenshot',
-        'mcp__athena-browser__browser_execute_js',
-        'mcp__athena-browser__browser_screenshot',
-        'mcp__athena-browser__window_create_tab',
-        'mcp__athena-browser__window_close_tab',
-        'mcp__athena-browser__window_switch_tab',
-        'mcp__athena-browser__window_get_tab_info'
-      );
-      logger.debug('Using full browser tools for interactive task', { toolCount: tools.length });
-    }
-
-    logger.debug('Tool selection complete (browser-only mode)', {
-      promptLength: prompt.length,
-      totalTools: tools.length,
-      readOnly: isReadOnly,
-      needsInteraction
-    });
-
-    return tools;
-  }
 }

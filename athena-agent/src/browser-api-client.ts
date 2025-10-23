@@ -9,7 +9,7 @@
 
 import http from 'http';
 import { URLSearchParams } from 'url';
-import { Logger } from './logger.js';
+import { Logger } from './logger';
 
 const logger = new Logger('BrowserApiClient');
 
@@ -32,7 +32,8 @@ export class BrowserApiClient {
     endpoint: string,
     method: 'GET' | 'POST' = 'GET',
     body?: Record<string, any>,
-    queryParams?: Record<string, string | number | boolean | undefined>
+    queryParams?: Record<string, string | number | boolean | undefined>,
+    timeoutMs: number = 30000 // Default 30s timeout for screenshot operations
   ): Promise<T> {
     return new Promise((resolve, reject) => {
       // Use endpoint as-is (C++ server uses /internal/ prefix)
@@ -142,6 +143,19 @@ export class BrowserApiClient {
         });
         reject(error);
       });
+
+      req.on('timeout', () => {
+        req.destroy();
+        const error = new Error(`Request timeout after ${timeoutMs}ms for ${endpoint}`);
+        logger.error('Browser API request timeout', {
+          endpoint: options.path,
+          timeoutMs
+        });
+        reject(error);
+      });
+
+      // Set timeout on the request
+      req.setTimeout(timeoutMs);
 
       if (bodyStr) {
         req.write(bodyStr);

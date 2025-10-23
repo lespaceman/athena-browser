@@ -246,6 +246,7 @@ class QtMainWindow : public QMainWindow, public Window {
   /**
    * Take a screenshot of the current page.
    * Captures the current GL framebuffer and encodes as base64 PNG.
+   * Screenshots are automatically scaled to 50% resolution for optimal AI analysis.
    * @return Base64-encoded PNG image data
    */
   QString TakeScreenshot() const;

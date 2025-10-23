@@ -5,11 +5,72 @@
  * internal control server over Unix socket.
  */
 
-import type { BrowserController, OpenUrlResult } from './routes/browser.js';
-import { Logger } from './logger.js';
+import type { BrowserController, OpenUrlResult } from './routes/browser';
+import type {
+  BrowserApiResponse,
+  PageSummary,
+  InteractiveElement,
+  AccessibilityNode,
+  AnnotatedScreenshotElement
+} from './types';
+import { Logger } from './logger';
+import { config } from './config';
 import * as http from 'http';
 
 const logger = new Logger('NativeController');
+
+// Response type interfaces for browser API calls
+interface NavigateResponse extends BrowserApiResponse {
+  finalUrl: string;
+  tabIndex: number;
+  loadTimeMs: number;
+}
+
+interface UrlResponse extends BrowserApiResponse {
+  url: string;
+}
+
+interface HtmlResponse extends BrowserApiResponse {
+  html: string;
+}
+
+interface ExecuteJsResponse extends BrowserApiResponse {
+  result: unknown;
+}
+
+interface ScreenshotResponse extends BrowserApiResponse {
+  screenshot: string;
+}
+
+interface TabResponse extends BrowserApiResponse {
+  tabIndex: number;
+}
+
+interface TabInfoResponse extends BrowserApiResponse {
+  count: number;
+  activeTabIndex: number;
+}
+
+interface PageSummaryResponse extends BrowserApiResponse {
+  summary: PageSummary;
+}
+
+interface InteractiveElementsResponse extends BrowserApiResponse {
+  elements: InteractiveElement[];
+}
+
+interface AccessibilityTreeResponse extends BrowserApiResponse {
+  tree: AccessibilityNode;
+}
+
+interface QueryContentResponse extends BrowserApiResponse {
+  data: unknown;
+}
+
+interface AnnotatedScreenshotResponse extends BrowserApiResponse {
+  screenshot: string;
+  elements: AnnotatedScreenshotElement[];
+}
 
 /**
  * HTTP client for Unix socket communication
@@ -23,7 +84,8 @@ class UnixSocketHttpClient {
   async request(
     method: string,
     path: string,
-    body?: string
+    body?: string,
+    timeoutMs: number = 30000 // Default 30s timeout for screenshot operations
   ): Promise<{ statusCode: number; body: string }> {
     return new Promise((resolve, reject) => {
       const options: http.RequestOptions = {
@@ -55,6 +117,14 @@ class UnixSocketHttpClient {
         reject(err);
       });
 
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error(`Request timeout after ${timeoutMs}ms for ${path}`));
+      });
+
+      // Set timeout on the request
+      req.setTimeout(timeoutMs);
+
       if (body) {
         req.write(body);
       }
@@ -71,11 +141,12 @@ class UnixSocketHttpClient {
 export class NativeBrowserController implements BrowserController {
   private client: UnixSocketHttpClient;
 
-  private async requestJson(
+  private async requestJson<T = BrowserApiResponse>(
     method: string,
     path: string,
-    body?: Record<string, any>
-  ): Promise<any> {
+    body?: Record<string, unknown>,
+    timeoutMs?: number
+  ): Promise<T> {
     const payload = body
       ? JSON.stringify(
           Object.fromEntries(
@@ -84,11 +155,11 @@ export class NativeBrowserController implements BrowserController {
         )
       : undefined;
 
-    const response = await this.client.request(method, path, payload);
-    let parsed: any = {};
+    const response = await this.client.request(method, path, payload, timeoutMs);
+    let parsed: BrowserApiResponse = {};
 
     try {
-      parsed = response.body ? JSON.parse(response.body) : {};
+      parsed = response.body ? JSON.parse(response.body) as BrowserApiResponse : {};
     } catch (error) {
       throw new Error(
         `Failed to parse response from ${path}: ${
@@ -105,7 +176,7 @@ export class NativeBrowserController implements BrowserController {
       throw new Error(message);
     }
 
-    return parsed;
+    return parsed as T;
   }
 
   constructor() {
@@ -129,20 +200,20 @@ export class NativeBrowserController implements BrowserController {
 
     try {
       // Make HTTP POST to C++ internal server
-      const result = await this.requestJson('POST', '/internal/open_url', { url });
+      const result = await this.requestJson<NavigateResponse>('POST', '/internal/open_url', { url });
       const loadTimeMs =
         typeof result.loadTimeMs === 'number' ? result.loadTimeMs : Date.now() - startTime;
 
       logger.info('Native openUrl succeeded', {
-        url: result.finalUrl ?? url,
+        url: result.finalUrl,
         tabIndex: result.tabIndex,
         loadTimeMs
       });
 
       return {
         success: true,
-        finalUrl: result.finalUrl ?? url,
-        tabIndex: result.tabIndex ?? 0,
+        finalUrl: result.finalUrl,
+        tabIndex: result.tabIndex,
         loadTimeMs
       };
     } catch (error) {
@@ -162,80 +233,83 @@ export class NativeBrowserController implements BrowserController {
   async navigate(url: string, tabIndex?: number): Promise<void> {
     logger.info('Native navigate', { url, tabIndex });
 
-    const result = await this.requestJson('POST', '/internal/navigate', { url, tabIndex });
+    const result = await this.requestJson<NavigateResponse>('POST', '/internal/navigate', { url, tabIndex });
     logger.info('Native navigate completed', {
-      url: result.finalUrl ?? url,
-      tabIndex: result.tabIndex ?? tabIndex ?? 0,
+      url: result.finalUrl,
+      tabIndex: result.tabIndex,
       loadTimeMs: result.loadTimeMs
     });
   }
 
   async goBack(tabIndex?: number): Promise<void> {
-    const result = await this.requestJson('POST', '/internal/history', {
+    const result = await this.requestJson<NavigateResponse>('POST', '/internal/history', {
       action: 'back',
       tabIndex
     });
     logger.info('Native back completed', {
-      tabIndex: result.tabIndex ?? tabIndex ?? 0,
+      tabIndex: result.tabIndex,
       loadTimeMs: result.loadTimeMs,
       url: result.finalUrl
     });
   }
 
   async goForward(tabIndex?: number): Promise<void> {
-    const result = await this.requestJson('POST', '/internal/history', {
+    const result = await this.requestJson<NavigateResponse>('POST', '/internal/history', {
       action: 'forward',
       tabIndex
     });
     logger.info('Native forward completed', {
-      tabIndex: result.tabIndex ?? tabIndex ?? 0,
+      tabIndex: result.tabIndex,
       loadTimeMs: result.loadTimeMs,
       url: result.finalUrl
     });
   }
 
   async reload(tabIndex?: number, ignoreCache?: boolean): Promise<void> {
-    const result = await this.requestJson('POST', '/internal/reload', {
+    const result = await this.requestJson<NavigateResponse>('POST', '/internal/reload', {
       tabIndex,
       ignoreCache
     });
     logger.info('Native reload completed', {
-      tabIndex: result.tabIndex ?? tabIndex ?? 0,
+      tabIndex: result.tabIndex,
       loadTimeMs: result.loadTimeMs,
-      ignoreCache: result.ignoreCache
+      ignoreCache
     });
   }
 
   async getCurrentUrl(tabIndex?: number): Promise<string> {
-    const result = await this.requestJson('POST', '/internal/get_url', { tabIndex });
+    const result = await this.requestJson<UrlResponse>('POST', '/internal/get_url', { tabIndex });
     return result.url;
   }
 
   async getPageHtml(tabIndex?: number): Promise<string> {
-    const result = await this.requestJson('POST', '/internal/get_html', { tabIndex });
+    const result = await this.requestJson<HtmlResponse>('POST', '/internal/get_html', { tabIndex });
     return result.html;
   }
 
-  async executeJavaScript(code: string, tabIndex?: number): Promise<any> {
-    const result = await this.requestJson('POST', '/internal/execute_js', {
+  async executeJavaScript(code: string, tabIndex?: number): Promise<unknown> {
+    const result = await this.requestJson<ExecuteJsResponse>('POST', '/internal/execute_js', {
       code,
       tabIndex
     });
     return result.result;
   }
 
-  async screenshot(tabIndex?: number, fullPage?: boolean): Promise<string> {
-    const result = await this.requestJson('POST', '/internal/screenshot', {
-      tabIndex,
-      fullPage
-    });
+  async screenshot(tabIndex?: number, fullPage?: boolean, quality?: number, maxWidth?: number, maxHeight?: number): Promise<string> {
+    const screenshotTimeout = config.screenshotTimeoutMs || 90000;
+    const result = await this.requestJson<ScreenshotResponse>(
+      'POST',
+      '/internal/screenshot',
+      { tabIndex, fullPage, quality, maxWidth, maxHeight },
+      screenshotTimeout
+    );
     return result.screenshot;
   }
 
   async createTab(url: string): Promise<number> {
     logger.info('Native createTab', { url });
 
-    const result = await this.requestJson('POST', '/internal/tab/create', { url });
+    const result = await this.requestJson<TabResponse>('POST', '/internal/tab/create', { url });
     return result.tabIndex;
   }
 
@@ -248,13 +322,13 @@ export class NativeBrowserController implements BrowserController {
   }
 
   async getTabCount(): Promise<number> {
-    const result = await this.requestJson('GET', '/internal/tab_info');
-    return result.count ?? 0;
+    const result = await this.requestJson<TabInfoResponse>('GET', '/internal/tab_info');
+    return result.count;
   }
 
   async getActiveTabIndex(): Promise<number> {
-    const result = await this.requestJson('GET', '/internal/tab_info');
-    return result.activeTabIndex ?? 0;
+    const result = await this.requestJson<TabInfoResponse>('GET', '/internal/tab_info');
+    return result.activeTabIndex;
   }
 
   /**
@@ -262,8 +336,8 @@ export class NativeBrowserController implements BrowserController {
    * Returns title, headings, counts of interactive elements, etc.
    * Much smaller than full HTML (~1-2KB vs 100KB+).
    */
-  async getPageSummary(tabIndex?: number): Promise<any> {
-    const result = await this.requestJson('POST', '/internal/get_page_summary', { tabIndex });
+  async getPageSummary(tabIndex?: number): Promise<PageSummary> {
+    const result = await this.requestJson<PageSummaryResponse>('POST', '/internal/get_page_summary', { tabIndex });
     return result.summary;
   }
 
@@ -272,8 +346,8 @@ export class NativeBrowserController implements BrowserController {
    * Returns only visible, actionable elements (links, buttons, inputs, etc.).
    * Typical size: 5-20KB for complex pages.
    */
-  async getInteractiveElements(tabIndex?: number): Promise<any[]> {
-    const result = await this.requestJson('POST', '/internal/get_interactive_elements', { tabIndex });
+  async getInteractiveElements(tabIndex?: number): Promise<InteractiveElement[]> {
+    const result = await this.requestJson<InteractiveElementsResponse>('POST', '/internal/get_interactive_elements', { tabIndex });
 
     // Validate response
     if (!result || typeof result !== 'object') {
@@ -297,8 +371,8 @@ export class NativeBrowserController implements BrowserController {
    * Provides semantic structure without full HTML.
    * Typical size: 10-30KB.
    */
-  async getAccessibilityTree(tabIndex?: number): Promise<any> {
-    const result = await this.requestJson('POST', '/internal/get_accessibility_tree', { tabIndex });
+  async getAccessibilityTree(tabIndex?: number): Promise<AccessibilityNode> {
+    const result = await this.requestJson<AccessibilityTreeResponse>('POST', '/internal/get_accessibility_tree', { tabIndex });
     return result.tree;
   }
 
@@ -307,8 +381,8 @@ export class NativeBrowserController implements BrowserController {
    * Available types: 'forms', 'navigation', 'article', 'tables', 'media'
    * Returns only the requested content, much smaller than full HTML.
    */
-  async queryContent(queryType: string, tabIndex?: number): Promise<any> {
-    const result = await this.requestJson('POST', '/internal/query_content', {
+  async queryContent(queryType: string, tabIndex?: number): Promise<unknown> {
+    const result = await this.requestJson<QueryContentResponse>('POST', '/internal/query_content', {
       queryType,
       tabIndex
     });
@@ -320,8 +394,19 @@ export class NativeBrowserController implements BrowserController {
    * Returns base64 screenshot + array of element positions.
    * Useful for vision-based interactions.
    */
-  async getAnnotatedScreenshot(tabIndex?: number): Promise<{ screenshot: string; elements: any[] }> {
-    const result = await this.requestJson('POST', '/internal/get_annotated_screenshot', { tabIndex });
+  async getAnnotatedScreenshot(
+    tabIndex?: number,
+    quality?: number,
+    maxWidth?: number,
+    maxHeight?: number
+  ): Promise<{ screenshot: string; elements: AnnotatedScreenshotElement[] }> {
+    const screenshotTimeout = config.screenshotTimeoutMs || 90000;
+    const result = await this.requestJson<AnnotatedScreenshotResponse>(
+      'POST',
+      '/internal/get_annotated_screenshot',
+      { tabIndex, quality, maxWidth, maxHeight },
+      screenshotTimeout
+    );
     return {
       screenshot: result.screenshot,
       elements: result.elements

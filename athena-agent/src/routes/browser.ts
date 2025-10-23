@@ -6,7 +6,7 @@
  */
 
 import type { Request, Response } from 'express';
-import { Logger } from '../logger.js';
+import { Logger } from '../logger';
 
 const logger = new Logger('BrowserRoutes');
 
@@ -41,8 +41,8 @@ export interface BrowserController {
   getPageHtml(tabIndex?: number): Promise<string>;
 
   // Interaction
-  executeJavaScript(code: string, tabIndex?: number): Promise<any>;
-  screenshot(tabIndex?: number, fullPage?: boolean): Promise<string>; // Returns base64
+  executeJavaScript(code: string, tabIndex?: number): Promise<unknown>;
+  screenshot(tabIndex?: number, fullPage?: boolean, quality?: number, maxWidth?: number, maxHeight?: number): Promise<string>; // Returns base64
 
   // Tab management
   createTab(url: string): Promise<number>; // Returns tab index

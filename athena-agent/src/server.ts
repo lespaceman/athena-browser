@@ -9,18 +9,18 @@
 import express from 'express';
 import { unlinkSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
-import { Logger } from './logger.js';
-import { config, validateConfig } from './config.js';
-import { ClaudeClient } from './claude-client.js';
-import { SessionManager } from './session-manager.js';
-import { healthHandler } from './routes/health.js';
+import { Logger } from './logger';
+import { config, validateConfig } from './config';
+import { ClaudeClient } from './claude-client';
+import { SessionManager } from './session-manager';
+import { healthHandler } from './routes/health';
 import {
   createSendHandler,
   createContinueHandler,
   createClearHandler,
   createStreamHandler,
   capabilitiesHandler
-} from './routes/chat.js';
+} from './routes/chat';
 import {
   createListHandler,
   createGetHandler,
@@ -30,13 +30,13 @@ import {
   createSearchHandler,
   createPruneHandler,
   createStatsHandler
-} from './routes/sessions.js';
-import { setBrowserController } from './routes/browser.js';
-import { createMockBrowserController } from './browser-controller-impl.js';
-import { createNativeBrowserController } from './native-controller.js';
-import { openUrlHandler } from './routes/poc.js';
-import { createV1Router } from './api/v1.js';
-import { createAgentMcpServer } from './mcp-agent-adapter.js';
+} from './routes/sessions';
+import { setBrowserController } from './routes/browser';
+import { createMockBrowserController } from './browser-controller-impl';
+import { createNativeBrowserController } from './native-controller';
+import { openUrlHandler } from './routes/poc';
+import { createV1Router } from './api/v1';
+import { createAgentMcpServer } from './mcp-agent-adapter';
 
 const logger = new Logger('Server');
 
@@ -46,6 +46,9 @@ const logger = new Logger('Server');
 
 async function main() {
   try {
+    // Direct stderr write to test visibility
+    process.stderr.write('[ATHENA-AGENT] Starting up...\n');
+
     logger.info('Starting Athena Agent', {
       version: '1.0.0',
       nodeVersion: process.version,

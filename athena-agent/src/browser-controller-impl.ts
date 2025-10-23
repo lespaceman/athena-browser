@@ -12,8 +12,14 @@
  * 4. The implementation uses NodeRuntime::Call() to send HTTP requests back to C++
  */
 
-import type { BrowserController } from './routes/browser.js';
-import { Logger } from './logger.js';
+import type { BrowserController } from './routes/browser';
+import type {
+  PageSummary,
+  InteractiveElement,
+  AccessibilityNode,
+  AnnotatedScreenshotElement
+} from './types';
+import { Logger } from './logger';
 
 const logger = new Logger('BrowserControllerImpl');
 
@@ -80,7 +86,7 @@ export class MockBrowserController implements BrowserController {
     return `<html><body><h1>Mock Page</h1><p>URL: ${this.tabs[idx]?.url || 'unknown'}</p></body></html>`;
   }
 
-  async executeJavaScript(code: string, tabIndex?: number): Promise<any> {
+  async executeJavaScript(code: string, tabIndex?: number): Promise<unknown> {
     const idx = tabIndex ?? this.activeTabIndex;
     logger.info('Execute JavaScript', { codeLength: code.length, tabIndex: idx });
 
@@ -88,9 +94,9 @@ export class MockBrowserController implements BrowserController {
     return { success: true, message: 'JavaScript execution mocked' };
   }
 
-  async screenshot(tabIndex?: number, fullPage?: boolean): Promise<string> {
+  async screenshot(tabIndex?: number, fullPage?: boolean, quality?: number, maxWidth?: number, maxHeight?: number): Promise<string> {
     const idx = tabIndex ?? this.activeTabIndex;
-    logger.info('Screenshot', { tabIndex: idx, fullPage });
+    logger.info('Screenshot', { tabIndex: idx, fullPage, quality, maxWidth, maxHeight });
 
     // Mock: return dummy base64 data (1x1 transparent PNG)
     return 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -142,10 +148,102 @@ export class MockBrowserController implements BrowserController {
   }
 
   /**
+   * Get a compact summary of the current page.
+   */
+  async getPageSummary(tabIndex?: number): Promise<PageSummary> {
+    const idx = tabIndex ?? this.activeTabIndex;
+    logger.info('Get page summary', { tabIndex: idx });
+
+    return {
+      title: 'Mock Page',
+      url: this.tabs[idx]?.url || 'about:blank',
+      headings: ['Mock Heading 1', 'Mock Heading 2'],
+      forms: 1,
+      links: 5,
+      buttons: 3,
+      inputs: 2,
+      images: 4,
+      mainText: 'This is a mock page summary with some sample text content.'
+    };
+  }
+
+  /**
+   * Get list of interactive elements on the page.
+   */
+  async getInteractiveElements(tabIndex?: number): Promise<InteractiveElement[]> {
+    const idx = tabIndex ?? this.activeTabIndex;
+    logger.info('Get interactive elements', { tabIndex: idx });
+
+    return [
+      { index: 0, tag: 'button', type: '', text: 'Click me', bounds: { x: 10, y: 10, width: 100, height: 40 } },
+      { index: 1, tag: 'a', type: '', text: 'Link 1', href: '#link1', bounds: { x: 10, y: 60, width: 80, height: 20 } },
+      { index: 2, tag: 'input', type: 'text', placeholder: 'Enter text', bounds: { x: 10, y: 90, width: 200, height: 30 } }
+    ];
+  }
+
+  /**
+   * Get accessibility tree representation of the page.
+   */
+  async getAccessibilityTree(tabIndex?: number): Promise<AccessibilityNode> {
+    const idx = tabIndex ?? this.activeTabIndex;
+    logger.info('Get accessibility tree', { tabIndex: idx });
+
+    return {
+      role: 'WebArea',
+      name: 'Mock Page',
+      children: [
+        { role: 'heading', name: 'Mock Heading 1', level: 1 },
+        { role: 'button', name: 'Click me' },
+        { role: 'link', name: 'Link 1' }
+      ]
+    };
+  }
+
+  /**
+   * Query specific content types from the page.
+   */
+  async queryContent(queryType: string, tabIndex?: number): Promise<unknown> {
+    const idx = tabIndex ?? this.activeTabIndex;
+    logger.info('Query content', { queryType, tabIndex: idx });
+
+    const mockData: Record<string, unknown> = {
+      forms: [{ id: 'mock-form', fields: [{ name: 'email', type: 'email' }] }],
+      navigation: [{ text: 'Home', href: '/' }, { text: 'About', href: '/about' }],
+      article: { title: 'Mock Article', content: 'Mock article content here.' },
+      tables: [{ headers: ['Col1', 'Col2'], rows: [[' Cell1', 'Cell2']] }],
+      media: [{ type: 'image', src: '/mock.png', alt: 'Mock image' }]
+    };
+
+    return mockData[queryType] || {};
+  }
+
+  /**
+   * Get screenshot with interactive element annotations.
+   */
+  async getAnnotatedScreenshot(
+    tabIndex?: number,
+    quality?: number,
+    maxWidth?: number,
+    maxHeight?: number
+  ): Promise<{ screenshot: string; elements: AnnotatedScreenshotElement[] }> {
+    const idx = tabIndex ?? this.activeTabIndex;
+    logger.info('Get annotated screenshot', { tabIndex: idx, quality, maxWidth, maxHeight });
+
+    // Return mock base64 image (1x1 transparent PNG) + mock elements
+    return {
+      screenshot: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      elements: [
+        { index: 0, x: 10, y: 10, width: 100, height: 40, tag: 'button', text: 'Click me', type: '' },
+        { index: 1, x: 10, y: 60, width: 80, height: 20, tag: 'a', text: 'Link 1', type: '' }
+      ]
+    };
+  }
+
+  /**
    * POC: Open URL and wait for load complete.
    * Simulates navigation with realistic timing.
    */
-  async openUrl(url: string, timeoutMs: number = 10000): Promise<import('./routes/browser.js').OpenUrlResult> {
+  async openUrl(url: string, timeoutMs: number = 10000): Promise<import('./routes/browser').OpenUrlResult> {
     const startTime = Date.now();
 
     logger.info('POC: Opening URL', { url, timeoutMs });

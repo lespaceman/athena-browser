@@ -796,7 +796,7 @@ QString QtMainWindow::TakeScreenshot() const {
     return QString();
   }
 
-  // Call the GLRenderer's TakeScreenshot method
+  // Call the GLRenderer's TakeScreenshot method (automatically scaled to 0.5 for AI analysis)
   std::string base64_png = tab->renderer->TakeScreenshot();
   if (base64_png.empty()) {
     logger.Error("TakeScreenshot: Failed to capture screenshot");

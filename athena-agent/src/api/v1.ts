@@ -7,7 +7,7 @@
  */
 
 import express from 'express';
-import type { BrowserController } from '../routes/browser.js';
+import type { BrowserController } from '../routes/browser';
 
 function toErrorResponse(error: unknown): { success: false; error: string } {
   if (error instanceof Error) {

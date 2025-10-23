@@ -13,7 +13,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import http from 'http';
 import { URLSearchParams } from 'url';
-import { Logger } from './logger.js';
+import { Logger } from './logger';
+import { config } from './config';
 
 const logger = new Logger('MCPServer');
 
@@ -33,12 +34,17 @@ export function setBrowserApiBase(socketPath: string) {
 /**
  * Make HTTP call to the browser backend via Unix socket
  */
+interface BrowserApiCallResponse {
+  [key: string]: unknown;
+}
+
 async function callBrowserApi(
   endpoint: string,
   method: string = 'GET',
-  body?: any,
-  queryParams?: Record<string, string | number | boolean | undefined>
-): Promise<any> {
+  body?: Record<string, unknown>,
+  queryParams?: Record<string, string | number | boolean | undefined>,
+  timeoutMs: number = 30000 // Default 30s timeout for screenshot operations
+): Promise<BrowserApiCallResponse> {
   if (!browserApiSocketPath) {
     throw new Error('Browser API socket not configured. Call setBrowserApiBase() first.');
   }
@@ -145,6 +151,19 @@ async function callBrowserApi(
       });
       reject(error);
     });
+
+    req.on('timeout', () => {
+      req.destroy();
+      const error = new Error(`Request timeout after ${timeoutMs}ms for ${endpoint}`);
+      logger.error('Browser API request timeout', {
+        endpoint: options.path,
+        timeoutMs
+      });
+      reject(error);
+    });
+
+    // Set timeout on the request
+    req.setTimeout(timeoutMs);
 
     if (bodyStr) {
       req.write(bodyStr);
@@ -430,14 +449,15 @@ export function createAthenaBrowserMcpServer(): McpServer {
       try {
         const result = await callBrowserApi('/browser/html', 'GET', undefined, { tabIndex });
 
+        const html = typeof result.html === 'string' ? result.html : '';
         const output = {
-          html: result.html ?? ''
+          html
         };
 
         return {
           content: [{
             type: 'text',
-            text: output.html
+            text: html
           }],
           structuredContent: output
         };
@@ -480,17 +500,17 @@ export function createAthenaBrowserMcpServer(): McpServer {
       try {
         const result = await callBrowserApi('/browser/page-summary', 'GET', undefined, { tabIndex });
 
-        const summary = result.summary || {};
+        const summary = (result.summary && typeof result.summary === 'object' ? result.summary : {}) as Record<string, unknown>;
         const output = {
-          title: summary.title || 'N/A',
-          url: summary.url || 'N/A',
-          headings: summary.headings || [],
-          forms: summary.forms || 0,
-          links: summary.links || 0,
-          buttons: summary.buttons || 0,
-          inputs: summary.inputs || 0,
-          images: summary.images || 0,
-          mainText: summary.mainText || 'N/A'
+          title: typeof summary.title === 'string' ? summary.title : 'N/A',
+          url: typeof summary.url === 'string' ? summary.url : 'N/A',
+          headings: Array.isArray(summary.headings) ? summary.headings as string[] : [],
+          forms: typeof summary.forms === 'number' ? summary.forms : 0,
+          links: typeof summary.links === 'number' ? summary.links : 0,
+          buttons: typeof summary.buttons === 'number' ? summary.buttons : 0,
+          inputs: typeof summary.inputs === 'number' ? summary.inputs : 0,
+          images: typeof summary.images === 'number' ? summary.images : 0,
+          mainText: typeof summary.mainText === 'string' ? summary.mainText : 'N/A'
         };
 
         const text = `Page Summary:
@@ -569,7 +589,7 @@ ${output.mainText}`;
         const output = { elements };
 
         const text = `Found ${elements.length} interactive elements:
-${elements.slice(0, 10).map((el: any, i: number) =>
+${elements.slice(0, 10).map((el: { tag: string; type?: string; text?: string; ariaLabel?: string; href?: string }, i: number) =>
   `${i + 1}. ${el.tag}${el.type ? `[type="${el.type}"]` : ''}: ${el.text || el.ariaLabel || el.href || 'N/A'}`
 ).join('\n')}${elements.length > 10 ? `\n... and ${elements.length - 10} more` : ''}`;
 
@@ -686,9 +706,12 @@ ${elements.slice(0, 10).map((el: any, i: number) =>
     'browser_get_annotated_screenshot',
     {
       title: 'Get Annotated Screenshot',
-      description: 'Get screenshot with interactive element annotations. Returns base64 screenshot + array of element positions. Useful for vision-based interactions.',
+      description: 'Get screenshot with interactive element annotations. Returns base64 screenshot + array of element positions. Useful for vision-based interactions. Note: Large screenshots may take 30-90s to transfer.',
       inputSchema: {
-        tabIndex: z.number().optional().describe('Tab index (default: active tab)')
+        tabIndex: z.number().optional().describe('Tab index (default: active tab)'),
+        quality: z.number().min(1).max(100).optional().describe('Image quality (1-100, default: 85). Lower values (60-80) reduce file size and transfer time.'),
+        maxWidth: z.number().optional().describe('Maximum width in pixels. Image will be scaled down proportionally if larger.'),
+        maxHeight: z.number().optional().describe('Maximum height in pixels. Image will be scaled down proportionally if larger.')
       },
       outputSchema: {
         screenshot: z.string(),
@@ -704,26 +727,36 @@ ${elements.slice(0, 10).map((el: any, i: number) =>
         }))
       }
     },
-    async ({ tabIndex }) => {
-      logger.info('Tool: browser_get_annotated_screenshot', { tabIndex });
+    async ({ tabIndex, quality, maxWidth, maxHeight }) => {
+      logger.info('Tool: browser_get_annotated_screenshot', { tabIndex, quality, maxWidth, maxHeight });
       try {
-        const result = await callBrowserApi('/browser/annotated-screenshot', 'GET', undefined, { tabIndex });
+        const screenshotTimeout = config.screenshotTimeoutMs || 90000;
+        const result = await callBrowserApi(
+          '/browser/annotated-screenshot',
+          'GET',
+          undefined,
+          { tabIndex, quality, maxWidth, maxHeight },
+          screenshotTimeout
+        );
+
+        const screenshot = typeof result.screenshot === 'string' ? result.screenshot : '';
+        const elements = Array.isArray(result.elements) ? result.elements : [];
 
         const output = {
-          screenshot: result.screenshot || '',
-          elements: result.elements || []
+          screenshot,
+          elements
         };
 
         return {
           content: [
             {
               type: 'image',
-              data: output.screenshot,
+              data: screenshot,
               mimeType: 'image/png'
             },
             {
               type: 'text',
-              text: `Annotated ${output.elements.length} interactive elements on screenshot`
+              text: `Annotated ${elements.length} interactive elements on screenshot`
             }
           ],
           structuredContent: output
@@ -796,31 +829,40 @@ ${elements.slice(0, 10).map((el: any, i: number) =>
     'browser_screenshot',
     {
       title: 'Capture Screenshot',
-      description: 'Capture a screenshot of the current page',
+      description: 'Capture a screenshot of the current page. Note: Large screenshots may take 30-90s to transfer. Use quality parameter to reduce file size.',
       inputSchema: {
         tabIndex: z.number().optional().describe('Tab index (default: active tab)'),
-        fullPage: z.boolean().optional().describe('Capture full page scroll height')
+        fullPage: z.boolean().optional().describe('Capture full page scroll height'),
+        quality: z.number().min(1).max(100).optional().describe('Image quality (1-100, default: 85). Lower values (60-80) reduce file size and transfer time.'),
+        maxWidth: z.number().optional().describe('Maximum width in pixels. Image will be scaled down proportionally if larger.'),
+        maxHeight: z.number().optional().describe('Maximum height in pixels. Image will be scaled down proportionally if larger.')
       },
       outputSchema: {
         screenshot: z.string()
       }
     },
-    async ({ tabIndex, fullPage }) => {
-      logger.info('Tool: browser_screenshot', { tabIndex, fullPage });
+    async ({ tabIndex, fullPage, quality, maxWidth, maxHeight }) => {
+      logger.info('Tool: browser_screenshot', { tabIndex, fullPage, quality, maxWidth, maxHeight });
       try {
-        const result = await callBrowserApi('/browser/screenshot', 'POST', {
-          tabIndex,
-          fullPage
-        });
+        const screenshotTimeout = config.screenshotTimeoutMs || 90000;
+        const result = await callBrowserApi(
+          '/browser/screenshot',
+          'POST',
+          { tabIndex, fullPage, quality, maxWidth, maxHeight },
+          undefined,
+          screenshotTimeout
+        );
+
+        const screenshot = typeof result.screenshot === 'string' ? result.screenshot : '';
 
         return {
           content: [{
             type: 'image',
-            data: result.screenshot,
+            data: screenshot,
             mimeType: 'image/png'
           }],
           structuredContent: {
-            screenshot: result.screenshot
+            screenshot
           }
         };
       } catch (error) {

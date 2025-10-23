@@ -121,6 +121,8 @@ class GLRenderer {
 
   // Capture the current framebuffer as a PNG image.
   // Returns base64-encoded PNG data, or empty string on failure.
+  // Screenshots are automatically scaled to 50% resolution for optimal AI analysis.
+  // @return Base64-encoded PNG image data
   std::string TakeScreenshot() const;
 
  private:

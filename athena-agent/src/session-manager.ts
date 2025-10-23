@@ -9,7 +9,7 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { randomBytes } from 'crypto';
-import { Logger } from './logger.js';
+import { Logger } from './logger';
 import type {
   Session,
   SessionMetadata,
@@ -17,7 +17,7 @@ import type {
   SessionListOptions,
   SessionStore,
   Message
-} from './session-types.js';
+} from './session-types';
 
 const logger = new Logger('SessionManager');
 

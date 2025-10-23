@@ -40,8 +40,9 @@ std::string BrowserControlServer::HandleGetPageSummary(std::optional<size_t> tab
     }
 
     size_t target_tab = window->GetActiveTabIndex();
-    if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
-      return nlohmann::json{{"success", false}, {"error", "Page is still loading"}}.dump();
+    bool ready = window->WaitForLoadToComplete(target_tab, 2000);
+    if (!ready) {
+      logger.Warn("HandleGetPageSummary: page still reporting loading state, extracting anyway");
     }
 
     QString js = R"(
@@ -131,8 +132,9 @@ std::string BrowserControlServer::HandleGetInteractiveElements(std::optional<siz
     }
 
     size_t target_tab = window->GetActiveTabIndex();
-    if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
-      return nlohmann::json{{"success", false}, {"error", "Page is still loading"}}.dump();
+    bool ready = window->WaitForLoadToComplete(target_tab, 2000);
+    if (!ready) {
+      logger.Warn("HandleGetInteractiveElements: page still reporting loading state, extracting anyway");
     }
 
     QString js = R"(
@@ -254,8 +256,9 @@ std::string BrowserControlServer::HandleGetAccessibilityTree(std::optional<size_
     }
 
     size_t target_tab = window->GetActiveTabIndex();
-    if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
-      return nlohmann::json{{"success", false}, {"error", "Page is still loading"}}.dump();
+    bool ready = window->WaitForLoadToComplete(target_tab, 2000);
+    if (!ready) {
+      logger.Warn("HandleGetAccessibilityTree: page still reporting loading state, extracting anyway");
     }
 
     QString js = R"(
@@ -374,8 +377,9 @@ std::string BrowserControlServer::HandleQueryContent(const std::string& query_ty
     }
 
     size_t target_tab = window->GetActiveTabIndex();
-    if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
-      return nlohmann::json{{"success", false}, {"error", "Page is still loading"}}.dump();
+    bool ready = window->WaitForLoadToComplete(target_tab, 2000);
+    if (!ready) {
+      logger.Warn("HandleQueryContent: page still reporting loading state, extracting anyway");
     }
 
     // Define query types (return objects directly, not stringified)
@@ -469,11 +473,12 @@ std::string BrowserControlServer::HandleGetAnnotatedScreenshot(std::optional<siz
     }
 
     size_t target_tab = window->GetActiveTabIndex();
-    if (!window->WaitForLoadToComplete(target_tab, kDefaultContentTimeoutMs)) {
-      return nlohmann::json{{"success", false}, {"error", "Page is still loading"}}.dump();
+    bool ready = window->WaitForLoadToComplete(target_tab, 2000);
+    if (!ready) {
+      logger.Warn("HandleGetAnnotatedScreenshot: page still reporting loading state, capturing anyway");
     }
 
-    // Get screenshot
+    // Get screenshot (automatically scaled to 0.5 for AI analysis)
     QString screenshot_base64 = window->TakeScreenshot();
     if (screenshot_base64.isEmpty()) {
       return nlohmann::json{{"success", false}, {"error", "Failed to capture screenshot"}}.dump();
