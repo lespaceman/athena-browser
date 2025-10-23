@@ -330,6 +330,8 @@ function startServer(app: express.Application): Promise<void> {
 // ============================================================================
 
 main().catch((error) => {
-  console.error('Fatal error:', error);
+  // Use Logger for fatal errors (logged to stderr)
+  const fatalLogger = new Logger('Server');
+  fatalLogger.error('Fatal error:', error);
   process.exit(1);
 });

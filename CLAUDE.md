@@ -182,6 +182,129 @@ return utils::Ok(42);                  // For Result<int>
 return utils::Err("error message");    // For errors
 ```
 
+### Logging Pattern
+
+Athena uses a unified logging approach across C++ and Node.js with consistent behavior and configuration.
+
+**Architecture:**
+- **C++**: `utils::Logger` class with RAII and thread safety (app/src/utils/logging.{h,cpp})
+- **Node.js**: Winston-based structured logging to stderr (athena-agent/src/logger.ts)
+- **Control**: `LOG_LEVEL` environment variable works for both C++ and Node.js
+- **Output**: Both write to stderr (not stdout) to avoid conflicts with IPC
+
+**Using Logger in C++:**
+
+```cpp
+#include "utils/logging.h"
+
+class MyClass {
+ public:
+  MyClass() : logger_("MyClass") {
+    logger_.Info("MyClass initialized");
+  }
+
+  void DoWork() {
+    logger_.Debug("Starting work");
+
+    // Template-based formatting with {}
+    logger_.Info("Processing {} items", count);
+    logger_.Warn("Resource usage at {}%", usage);
+
+    if (error) {
+      logger_.Error("Operation failed: {}", error.Message());
+    }
+  }
+
+ private:
+  utils::Logger logger_;
+};
+```
+
+**Using Logger in Node.js:**
+
+```typescript
+import { Logger } from './logger';
+
+class MyService {
+  private logger: Logger;
+
+  constructor() {
+    this.logger = new Logger('MyService');
+    this.logger.info('MyService initialized');
+  }
+
+  async doWork() {
+    this.logger.debug('Starting work');
+
+    // Structured logging with metadata
+    this.logger.info('Processing items', { count: items.length });
+    this.logger.warn('Resource usage high', { usage: 85 });
+
+    if (error) {
+      this.logger.error('Operation failed', { error: error.message });
+    }
+  }
+}
+```
+
+**Log Levels:**
+
+Both C++ and Node.js support the same log levels:
+- `debug` - Detailed debugging information (verbose)
+- `info` - General informational messages (default)
+- `warn` - Warning messages for potentially harmful situations
+- `error` - Error messages for failures
+- `fatal` - Critical errors (C++ only)
+
+**Controlling Log Output:**
+
+```bash
+# Default: info level (shows info, warn, error)
+./scripts/run.sh
+
+# Debug mode: all logs including debug messages
+LOG_LEVEL=debug ./scripts/run.sh
+
+# Quiet mode: only warnings and errors
+LOG_LEVEL=warn ./scripts/run.sh
+
+# View logs in real-time with pretty formatting
+journalctl --user -u athena-browser.service -f | ./scripts/view-logs.sh
+
+# View recent logs
+journalctl --user -u athena-browser.service -n 100 | ./scripts/view-logs.sh
+```
+
+**Testing Logging:**
+
+```bash
+# Demo script showing all log modules
+./scripts/test-all-logs.sh
+
+# View logs with jq pretty-printing
+cat /tmp/athena.log | ./scripts/view-logs.sh
+```
+
+**Log Module Naming:**
+
+Use descriptive module names that identify the component:
+
+C++ modules:
+- Application, BrowserWindow, CEFEngine, GLRenderer, NodeRuntime
+
+Node.js modules:
+- Server, NativeController, BrowserApiClient, SessionManager, ClaudeClient, MCPServer
+
+**Important Notes:**
+
+- **Never use std::cout/cerr** directly in application code - use Logger
+- **Never use console.log/error** in Node.js - use Logger
+- **Exception**: stdout/stderr OK in signal handlers and after fork() (not async-signal-safe to use Logger)
+- **Exception**: `console.log("READY ...")` in server.ts startup is intentional for parent process detection
+- Logger instances are passed via dependency injection (no global state)
+- All logs written to stderr to avoid stdout IPC conflicts
+- Both C++ and Node.js produce compatible log formats
+
 ### CEF Integration Notes
 
 **Browser Creation Lifecycle:**
