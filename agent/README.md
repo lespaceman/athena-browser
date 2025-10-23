@@ -14,7 +14,7 @@ Athena Agent is a Node.js service that provides:
 ## Quick Start
 
 ```bash
-cd athena-agent
+cd agent
 npm install
 npm run build
 

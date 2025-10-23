@@ -1,6 +1,6 @@
 # Athena Browser
 
-A CEF-based desktop browser with Qt6 integration and React frontend.
+A CEF-based desktop browser with Qt6 integration, React homepage, and Claude AI integration.
 
 ## Prerequisites
 
@@ -37,8 +37,9 @@ Start the browser with hot module reloading:
 ```
 
 This script:
-- Starts the Vite dev server for the React frontend
+- Starts the Vite dev server for the React homepage
 - Builds the native app if needed (debug mode)
+- Builds the Claude integration agent
 - Launches the browser with Qt6 window system
 
 ## Build (Release)
@@ -48,22 +49,55 @@ This script:
 ```
 
 The script:
-- Builds the React app with Vite
+- Builds the homepage with Vite
+- Builds the Claude integration agent
 - Configures and builds the native Qt app
-- Copies web assets into `resources/web`
+- Copies homepage assets into `resources/homepage/`
 
 Binary output: `build/release/app/athena-browser`
 
 To run the release build:
 
 ```bash
+./scripts/run.sh
+# Or directly:
 build/release/app/athena-browser
 ```
+
+## Distribution Packaging
+
+Create a distributable Linux bundle:
+
+```bash
+# Build and package in one command
+PACKAGE=1 ./scripts/build.sh
+
+# Or package separately
+./scripts/package-linux.sh
+```
+
+The bundle will be created at `dist/linux/athena-browser/` and includes:
+- Athena Browser binary
+- CEF libraries and resources
+- Qt6 libraries and plugins
+- Claude integration agent with dependencies
+- Homepage resources
+- Launcher script (`athena-browser.sh`)
+
+To run the bundle:
+
+```bash
+cd dist/linux/athena-browser
+./athena-browser.sh
+```
+
+**Note:** The bundle requires Node.js 18+ to be installed on the target system.
 
 ## Architecture
 
 - **Qt6 Integration**: Uses Qt6 for cross-platform window management and UI
 - **CEF Integration**: Chromium Embedded Framework for web rendering
+- **Claude Agent**: Node.js runtime providing Claude AI chat integration
 - **Custom Scheme**: `app://` serves local resources with CSP
 - **IPC Bridge**: Message Router provides `window.Native` API for browser-app communication
 - **OpenGL Rendering**: Hardware-accelerated rendering using CEF's OSR mode
@@ -75,8 +109,29 @@ build/release/app/athena-browser
 - Resource paths are configured for ICU data and locale files
 - Navigation guards block unsafe schemes (`file://`, `chrome://`, etc.)
 
+## Project Structure
+
+```
+athena-browser/
+├── app/                    # C++ browser engine (Qt6 + CEF)
+├── homepage/               # Default homepage webapp (React + Vite)
+├── agent/                  # Node.js Claude integration
+├── resources/homepage/     # Built homepage assets (auto-generated)
+├── dist/                   # Distribution bundles (Linux, macOS, Windows)
+├── scripts/                # Build and packaging scripts
+└── third_party/            # CEF binary distribution
+```
+
+## Documentation
+
+- [CLAUDE.md](CLAUDE.md) - Comprehensive development guide for Claude Code
+- [REORGANIZATION_PLAN.md](REORGANIZATION_PLAN.md) - Packaging and distribution implementation plan
+- [app/tests/README.md](app/tests/README.md) - Testing guide
+
 ## Next Steps
 
 - Add more IPC methods to the `window.Native` bridge
-- Implement multi-window support
-- Add CI and platform packaging scripts
+- ✅ ~~Implement multi-window support~~ (Completed)
+- ✅ ~~Add platform packaging scripts~~ (Linux packaging completed)
+- Add CI/CD workflows (GitHub Actions)
+- Create release packages (AppImage, DMG)
