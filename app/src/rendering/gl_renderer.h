@@ -14,12 +14,7 @@
 #include <memory>
 #include <vector>
 
-// Platform-specific forward declarations
-#ifdef ATHENA_USE_QT
-// Qt doesn't need forward declarations (widget passed as void*)
-#else
-typedef struct _GtkWidget GtkWidget;
-#endif
+// Platform-specific: Qt doesn't need forward declarations (widget passed as void*)
 
 namespace athena {
 namespace rendering {
@@ -35,8 +30,8 @@ namespace rendering {
 // - GPU-based texture rendering with minimal CPU overhead
 //
 // Thread safety:
-// - All methods must be called on the GTK main thread
-// - OpenGL context is managed by GtkGLArea
+// - All methods must be called on the Qt main thread
+// - OpenGL context is managed by QOpenGLWidget
 //
 // Usage:
 //   GLRenderer renderer;
@@ -56,11 +51,9 @@ class GLRenderer {
 
   // Initialize the OpenGL environment with the given GL widget.
   // Must be called before any other methods.
-  // Must be called with the GL context current (inside realize callback).
+  // Must be called with the GL context current (inside Qt's initializeGL callback).
   //
-  // Platform-specific:
-  //   - GTK: Pass GtkGLArea* widget
-  //   - Qt: Pass QOpenGLWidget* widget
+  // Pass QOpenGLWidget* as void* parameter.
   //
   // Returns:
   //   - Ok(void) on success
@@ -68,7 +61,7 @@ class GLRenderer {
   utils::Result<void> Initialize(void* gl_widget);
 
   // Clean up OpenGL resources.
-  // Should be called before destroying the GtkGLArea.
+  // Should be called before destroying the QOpenGLWidget.
   void Cleanup();
 
   // Update texture from CEF paint buffer.
@@ -96,7 +89,7 @@ class GLRenderer {
   void OnPopupSize(CefRefPtr<CefBrowser> browser, const core::Rect& rect);
 
   // Render the current frame to the screen.
-  // This is called from the GtkGLArea "render" signal callback.
+  // This is called from QOpenGLWidget's paintGL() method.
   // The GL context is automatically current when this is called.
   //
   // Returns:
@@ -129,8 +122,7 @@ class GLRenderer {
   // Convert core::Rect to CefRect
   static CefRect ToCefRect(const core::Rect& rect);
 
-  // The GL widget we're rendering to (platform-specific)
-  // GTK: GtkGLArea*, Qt: QOpenGLWidget*
+  // The GL widget we're rendering to (QOpenGLWidget* stored as void*)
   void* gl_widget_;
 
   // CEF's official OpenGL renderer (does the heavy lifting)

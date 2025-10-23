@@ -56,8 +56,8 @@ utils::Result<void> BrowserWindow::Show() {
     return utils::Error("BrowserWindow::Show - Window not created");
   }
 
-  // Show the window - browser creation will happen asynchronously in
-  // GtkWindow::OnRealize() after the GTK main loop starts
+  // Show the window - browser creation will happen asynchronously
+  // after the GL context is initialized
   window_->Show();
 
   return utils::Ok();

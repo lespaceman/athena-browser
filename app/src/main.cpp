@@ -13,20 +13,13 @@
 #include "utils/logging.h"
 
 // Platform-specific includes
-#ifdef ATHENA_USE_QT
 #include "platform/qt_mainwindow.h"
 
 #include <QApplication>
 #include <QTimer>
+
 // Forward declare GTK function to avoid header conflicts with Qt
 extern "C" void gtk_disable_setlocale();
-#else
-#include "platform/gtk_window.h"
-
-#include <gtk/gtk.h>
-
-#include <glib.h>
-#endif
 
 #include <atomic>
 #include <csignal>
@@ -151,14 +144,8 @@ int main(int argc, char* argv[]) {
   // ============================================================================
 
   auto browser_engine = std::make_unique<browser::CefEngine>(app, &main_args);
-
-#ifdef ATHENA_USE_QT
   auto window_system = std::make_unique<platform::QtWindowSystem>();
   logger.Info("Using Qt window system");
-#else
-  auto window_system = std::make_unique<platform::GtkWindowSystem>();
-  logger.Info("Using GTK window system");
-#endif
 
   auto application = std::make_unique<core::Application>(
       config, std::move(browser_engine), std::move(window_system), std::move(node_runtime));
@@ -220,8 +207,6 @@ int main(int argc, char* argv[]) {
 
   // Set up periodic check for shutdown signal (every 100ms)
   // This allows the signal handler to request shutdown asynchronously
-#ifdef ATHENA_USE_QT
-  // Qt version using QTimer
   QTimer* shutdown_timer = new QTimer();
   QObject::connect(shutdown_timer, &QTimer::timeout, [&]() {
     if (shutdown_requested.load()) {
@@ -232,27 +217,6 @@ int main(int argc, char* argv[]) {
     }
   });
   shutdown_timer->start(100);  // Check every 100ms
-#else
-  // GTK version using g_timeout_add
-  auto check_shutdown = [&]() -> gboolean {
-    if (shutdown_requested.load()) {
-      logger.Info("Shutdown requested by signal, exiting event loop...");
-      application->Shutdown();
-      gtk_main_quit();
-      return G_SOURCE_REMOVE;  // Stop the timeout
-    }
-    return G_SOURCE_CONTINUE;  // Continue checking
-  };
-
-  static auto check_shutdown_func = check_shutdown;
-  g_timeout_add(
-      100,
-      +[](gpointer data) -> gboolean {
-        auto* func = static_cast<decltype(check_shutdown)*>(data);
-        return (*func)();
-      },
-      &check_shutdown_func);
-#endif
 
   application->Run();  // Blocking call
 

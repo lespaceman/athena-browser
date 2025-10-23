@@ -1,8 +1,7 @@
 /**
  * BrowserWidget Implementation
  *
- * Qt OpenGL widget for CEF browser rendering.
- * Replaces GTK's gl_area_ with Qt's signal/slot system.
+ * Qt OpenGL widget for CEF browser rendering using Qt's signal/slot system.
  */
 
 #include "platform/qt_browserwidget.h"
@@ -67,11 +66,11 @@ CefClient* BrowserWidget::GetCefClientForThisTab() const {
 }
 
 // ============================================================================
-// OpenGL Overrides (replace GTK GL callbacks)
+// OpenGL Overrides (Qt OpenGL widget callbacks)
 // ============================================================================
 
 void BrowserWidget::initializeGL() {
-  // Replaces GTK on_gl_realize callback
+  // Called when OpenGL context is ready
   logger.Info("OpenGL context initialized");
   logger.Info(std::string("OpenGL version: ") +
               reinterpret_cast<const char*>(glGetString(GL_VERSION)));
@@ -96,7 +95,7 @@ void BrowserWidget::initializeGL() {
 }
 
 void BrowserWidget::paintGL() {
-  // Replaces GTK on_gl_render callback
+  // Called to render the current frame
 
   if (!renderer_) {
     // No renderer yet, draw white background
@@ -113,7 +112,7 @@ void BrowserWidget::paintGL() {
 }
 
 void BrowserWidget::resizeGL(int w, int h) {
-  // Replaces GTK on_size_allocate callback (for GL widget only)
+  // Called when widget is resized
 
   glViewport(0, 0, w, h);
 
@@ -124,11 +123,11 @@ void BrowserWidget::resizeGL(int w, int h) {
 }
 
 // ============================================================================
-// Input Event Handlers (replace GTK input callbacks)
+// Input Event Handlers (Qt event callbacks)
 // ============================================================================
 
 void BrowserWidget::mouseMoveEvent(QMouseEvent* event) {
-  // Replaces GTK on_motion_notify
+  // Handle mouse movement
 
   auto* client = GetCefClientForThisTab();
   if (!client || !client->GetBrowser()) {
@@ -144,7 +143,7 @@ void BrowserWidget::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void BrowserWidget::mousePressEvent(QMouseEvent* event) {
-  // Replaces GTK on_button_press
+  // Handle mouse button press
 
   // Grab focus when clicked
   setFocus();
@@ -183,7 +182,7 @@ void BrowserWidget::mousePressEvent(QMouseEvent* event) {
 }
 
 void BrowserWidget::mouseReleaseEvent(QMouseEvent* event) {
-  // Replaces GTK on_button_release
+  // Handle mouse button release
 
   auto* client = GetCefClientForThisTab();
   if (!client || !client->GetBrowser()) {
@@ -214,7 +213,7 @@ void BrowserWidget::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 void BrowserWidget::wheelEvent(QWheelEvent* event) {
-  // Replaces GTK on_scroll
+  // Handle mouse wheel scrolling
 
   auto* client = GetCefClientForThisTab();
   if (!client || !client->GetBrowser()) {
@@ -232,7 +231,7 @@ void BrowserWidget::wheelEvent(QWheelEvent* event) {
   mouseEvent.modifiers = getCefModifiers(event->modifiers(), Qt::NoButton);
 
   // Qt uses delta in 8ths of a degree, CEF uses pixels
-  // Scale factor to match GTK behavior (GTK uses 40 pixels per scroll unit)
+  // Scale factor: 40 pixels per scroll unit (standard)
   int deltaX = event->angleDelta().x() / 8 * 5;
   int deltaY = event->angleDelta().y() / 8 * 5;
 
@@ -240,7 +239,7 @@ void BrowserWidget::wheelEvent(QWheelEvent* event) {
 }
 
 void BrowserWidget::keyPressEvent(QKeyEvent* event) {
-  // Replaces GTK on_key_press
+  // Handle key press events
 
   auto* client = GetCefClientForThisTab();
   if (!client || !client->GetBrowser()) {
@@ -278,7 +277,7 @@ void BrowserWidget::keyPressEvent(QKeyEvent* event) {
 }
 
 void BrowserWidget::keyReleaseEvent(QKeyEvent* event) {
-  // Replaces GTK on_key_release
+  // Handle key release events
 
   auto* client = GetCefClientForThisTab();
   if (!client || !client->GetBrowser()) {
@@ -299,7 +298,7 @@ void BrowserWidget::keyReleaseEvent(QKeyEvent* event) {
 }
 
 void BrowserWidget::focusInEvent(QFocusEvent* event) {
-  // Replaces GTK on_focus_in
+  // Handle focus gain
   QOpenGLWidget::focusInEvent(event);
 
   auto* client = GetCefClientForThisTab();
@@ -309,7 +308,7 @@ void BrowserWidget::focusInEvent(QFocusEvent* event) {
 }
 
 void BrowserWidget::focusOutEvent(QFocusEvent* event) {
-  // Replaces GTK on_focus_out
+  // Handle focus loss
   QOpenGLWidget::focusOutEvent(event);
 
   auto* client = GetCefClientForThisTab();
@@ -319,7 +318,7 @@ void BrowserWidget::focusOutEvent(QFocusEvent* event) {
 }
 
 // ============================================================================
-// Helper Methods (same logic as GTK callbacks)
+// Helper Methods
 // ============================================================================
 
 uint32_t BrowserWidget::getCefModifiers(Qt::KeyboardModifiers qtMods,
@@ -347,7 +346,6 @@ uint32_t BrowserWidget::getCefModifiers(Qt::KeyboardModifiers qtMods,
 
 int BrowserWidget::getWindowsKeyCode(int qtKey) const {
   // Map Qt keys to Windows virtual key codes
-  // Same logic as GTK's GetWindowsKeyCode
 
   if (qtKey >= Qt::Key_0 && qtKey <= Qt::Key_9) {
     return qtKey;  // '0'-'9' same in both

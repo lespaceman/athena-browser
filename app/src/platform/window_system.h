@@ -52,7 +52,7 @@ struct WindowCallbacks {
 /**
  * Abstract window system interface.
  *
- * This interface abstracts the underlying windowing system (GTK, Qt, Win32, etc.)
+ * This interface abstracts the underlying windowing system (Qt, Win32, etc.)
  * to make the codebase more testable and maintainable.
  *
  * Responsibilities:
@@ -185,13 +185,13 @@ class Window {
 
   /**
    * Get the native window handle.
-   * Type depends on platform: GtkWidget*, HWND, NSWindow*, etc.
+   * Type depends on platform: QMainWindow*, HWND, NSWindow*, etc.
    */
   virtual void* GetNativeHandle() const = 0;
 
   /**
    * Get the native GL area/widget handle for rendering.
-   * Type depends on platform: GtkGLArea*, etc.
+   * Type depends on platform: QOpenGLWidget*, etc.
    */
   virtual void* GetRenderWidget() const = 0;
 

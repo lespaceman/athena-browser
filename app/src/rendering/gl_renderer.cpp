@@ -11,42 +11,17 @@
 #include <iostream>
 
 // Platform-specific includes
-#ifdef ATHENA_USE_QT
 #include <QBuffer>
 #include <QByteArray>
 #include <QImage>
 #include <QOpenGLWidget>
-#else
-#include <gtk/gtk.h>
-#endif
 
 namespace athena {
 namespace rendering {
 
 namespace {
 
-#ifndef ATHENA_USE_QT
-// GTK-specific: Helper to manage GL context
-class ScopedGLContext {
- public:
-  explicit ScopedGLContext(void* gl_widget) : gl_widget_(gl_widget), valid_(false) {
-    if (!gl_widget_) {
-      return;
-    }
-
-    auto* gtk_widget = static_cast<GtkWidget*>(gl_widget_);
-    gtk_gl_area_make_current(GTK_GL_AREA(gtk_widget));
-    valid_ = gtk_gl_area_get_error(GTK_GL_AREA(gtk_widget)) == nullptr;
-  }
-
-  bool IsValid() const { return valid_; }
-
- private:
-  void* gl_widget_;
-  bool valid_;
-};
-#else
-// Qt-specific: Make GL context current for CEF threads
+// Helper to manage GL context for CEF threads
 class ScopedGLContext {
  public:
   explicit ScopedGLContext(void* gl_widget) : gl_widget_(gl_widget), valid_(false) {
@@ -72,7 +47,6 @@ class ScopedGLContext {
   void* gl_widget_;
   bool valid_;
 };
-#endif
 
 }  // namespace
 
@@ -106,16 +80,8 @@ utils::Result<void> GLRenderer::Initialize(void* gl_widget) {
     return utils::Error("gl_widget cannot be null");
   }
 
-#ifndef ATHENA_USE_QT
-  // GTK-specific validation
-  auto* gtk_widget = static_cast<GtkWidget*>(gl_widget);
-  if (!GTK_IS_GL_AREA(gtk_widget)) {
-    return utils::Error("widget must be a GtkGLArea");
-  }
-#else
-  // Qt-specific: Assume QOpenGLWidget* - context is managed by Qt
+  // Assume QOpenGLWidget* - context is managed by Qt
   // No validation needed, Qt handles everything
-#endif
 
   ScopedGLContext context(gl_widget);
   if (!context.IsValid()) {
@@ -143,19 +109,8 @@ void GLRenderer::Cleanup() {
   }
 
   if (osr_renderer_) {
-    // Platform-specific widget validation
-    bool widget_valid = false;
-
-#ifndef ATHENA_USE_QT
-    // GTK: Check if widget is still valid
-    if (gl_widget_) {
-      auto* gtk_widget = static_cast<GtkWidget*>(gl_widget_);
-      widget_valid = (G_IS_OBJECT(gtk_widget) && GTK_IS_GL_AREA(gtk_widget));
-    }
-#else
     // Qt: Widget pointer is valid (Qt manages lifecycle)
-    widget_valid = (gl_widget_ != nullptr);
-#endif
+    bool widget_valid = (gl_widget_ != nullptr);
 
     if (widget_valid) {
       ScopedGLContext context(gl_widget_);
@@ -310,7 +265,6 @@ std::string GLRenderer::TakeScreenshot() const {
     memcpy(&flipped[y * width * 4], &pixels[(height - 1 - y) * width * 4], width * 4);
   }
 
-#ifdef ATHENA_USE_QT
   // Use Qt to encode as PNG and convert to base64
   QImage image(flipped.data(), width, height, width * 4, QImage::Format_RGBA8888);
 
@@ -341,11 +295,6 @@ std::string GLRenderer::TakeScreenshot() const {
   // Convert to base64
   QByteArray base64 = byte_array.toBase64();
   return std::string(base64.constData(), base64.size());
-#else
-  // GTK version: Would need to implement PNG encoding using libpng
-  logger.Error("PNG encoding not yet implemented for GTK");
-  return "";
-#endif
 }
 
 }  // namespace rendering
