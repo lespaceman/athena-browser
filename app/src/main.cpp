@@ -111,19 +111,19 @@ int main(int argc, char* argv[]) {
 
   if (config.enable_node_runtime) {
     // Determine the path to the Athena Agent server script
-    // The script is at the project root: /path/to/project/athena-agent/dist/server.js
+    // The script is at the project root: /path/to/project/agent/dist/server.js
     // The binary is at: /path/to/project/build/release/app/athena-browser
     // So we need to go up 3 levels: app -> release -> build -> project
     std::filesystem::path exe_path(argv[0]);
     std::filesystem::path exe_dir = exe_path.parent_path();  // build/release/app
     std::filesystem::path project_root = exe_dir.parent_path().parent_path().parent_path();
-    std::filesystem::path runtime_script = project_root / "athena-agent" / "dist" / "server.js";
+    std::filesystem::path runtime_script = project_root / "agent" / "dist" / "server.js";
 
     // Check if the script exists
     if (!std::filesystem::exists(runtime_script)) {
       logger.Warn("Athena Agent script not found at: {}", runtime_script.string());
       logger.Warn("Claude chat integration will not be available.");
-      logger.Warn("Run 'cd athena-agent && npm run build' to build the agent.");
+      logger.Warn("Run 'cd agent && npm run build' to build the agent.");
     } else {
       runtime::NodeRuntimeConfig runtime_config;
       runtime_config.runtime_script_path = runtime_script.string();

@@ -25,7 +25,7 @@ struct ApplicationConfig {
   bool enable_windowless_rendering = true;
   int windowless_frame_rate = 60;
   bool enable_node_runtime = true;
-  std::string node_runtime_script_path;  // Path to athena-agent/dist/server.js
+  std::string node_runtime_script_path;  // Path to agent/dist/server.js
 };
 
 /**

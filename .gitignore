@@ -38,25 +38,25 @@ test_results.xml
 *.exe
 
 ############################
-# Frontend (Node/Vite)
+# Homepage (Node/Vite)
 ############################
-/frontend/node_modules/
-/frontend/dist/
-/frontend/.vite/
-/frontend/.cache/
-/frontend/coverage/
-/frontend/.eslintcache
+/homepage/node_modules/
+/homepage/dist/
+/homepage/.vite/
+/homepage/.cache/
+/homepage/coverage/
+/homepage/.eslintcache
 
 ############################
-# Athena Agent (Node/TypeScript)
+# Agent (Node/TypeScript)
 ############################
-/athena-agent/node_modules/
-/athena-agent/dist/
-/athena-agent/build/
-/athena-agent/.cache/
-/athena-agent/coverage/
-/athena-agent/.eslintcache
-/athena-agent/.test-sessions-resumption/
+/agent/node_modules/
+/agent/dist/
+/agent/build/
+/agent/.cache/
+/agent/coverage/
+/agent/.eslintcache
+/agent/.test-sessions-resumption/
 
 # Lockfiles are intentionally kept (package-lock.json, pnpm-lock.yaml, yarn.lock)
 
@@ -92,10 +92,10 @@ Thumbs.db
 .athena-sessions/
 
 ############################
-# Resources (built web bundle)
+# Resources (built homepage bundle)
 ############################
-/resources/web/*
-!/resources/web/.gitkeep
+/resources/homepage/*
+!/resources/homepage/.gitkeep
 
 ############################
 # Third-party vendor content
@@ -104,7 +104,7 @@ Thumbs.db
 /third_party/cef_binary_*/
 /third_party/cef_binary*.tar.*
 /third_party/cef_binary*.zip
-/frontend/third_party/*
+/homepage/third_party/*
 
 # Ignore everything else in third_party by default, but allow docs/placeholders
 /third_party/*

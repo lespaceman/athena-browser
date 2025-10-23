@@ -145,8 +145,8 @@ std::string AppSchemeHandler::GetMimeType(const std::string& path) {
 }
 
 bool AppSchemeHandler::LoadResource(const std::string& path) {
-  // Look for resources in resources/web directory (production build output)
-  fs::path resource_path = fs::path("resources/web") / path;
+  // Look for resources in resources/homepage directory (production build output)
+  fs::path resource_path = fs::path("resources/homepage") / path;
 
   // Also check executable directory
   if (!fs::exists(resource_path)) {
@@ -160,7 +160,7 @@ bool AppSchemeHandler::LoadResource(const std::string& path) {
     if (len != -1) {
       exe_path[len] = '\0';
       fs::path exe_dir = fs::path(exe_path).parent_path();
-      resource_path = exe_dir / "resources/web" / path;
+      resource_path = exe_dir / "resources/homepage" / path;
     }
 #endif
   }

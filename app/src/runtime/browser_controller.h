@@ -27,7 +27,7 @@ class NodeRuntime;
  *   Claude (MCP) → Node.js (Express) → HTTP over Unix Socket → BrowserController → QtMainWindow
  *
  * The controller is registered with the Node runtime and handles all
- * browser-related endpoints defined in athena-agent/src/routes/browser.ts
+ * browser-related endpoints defined in agent/src/routes/browser.ts
  */
 class BrowserController {
  public:

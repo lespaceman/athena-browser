@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --debug              Build in debug mode"
             echo "  --release            Build in release mode (default)"
-            echo "  --skip-agent         Skip building athena-agent (Claude integration)"
+            echo "  --skip-agent         Skip building agent (Claude integration)"
             echo "  --help               Show this help message"
             echo ""
             echo "Examples:"
@@ -56,7 +56,7 @@ BUILD_DIR="$ROOT_DIR/build/$BUILD_TYPE"
 # ============================================================================
 
 if [ "$BUILD_AGENT" = true ]; then
-    AGENT_DIR="$ROOT_DIR/athena-agent"
+    AGENT_DIR="$ROOT_DIR/agent"
 
     if [ -d "$AGENT_DIR" ]; then
         echo "======================================"
@@ -67,7 +67,7 @@ if [ "$BUILD_AGENT" = true ]; then
 
         # Check if node_modules exists, if not install dependencies
         if [ ! -d "node_modules" ]; then
-            echo "Installing athena-agent dependencies..."
+            echo "Installing agent dependencies..."
             npm install
         fi
 
@@ -80,7 +80,7 @@ if [ "$BUILD_AGENT" = true ]; then
 
         cd "$ROOT_DIR"
     else
-        echo "⚠️  Warning: athena-agent directory not found, skipping agent build"
+        echo "⚠️  Warning: agent directory not found, skipping agent build"
         echo ""
     fi
 fi
@@ -110,8 +110,8 @@ echo "======================================"
 echo ""
 echo "Browser binary: $BUILD_DIR/app/athena-browser"
 
-if [ "$BUILD_AGENT" = true ] && [ -d "$ROOT_DIR/athena-agent/dist" ]; then
-    echo "Agent script:   $ROOT_DIR/athena-agent/dist/server.js"
+if [ "$BUILD_AGENT" = true ] && [ -d "$ROOT_DIR/agent/dist" ]; then
+    echo "Agent script:   $ROOT_DIR/agent/dist/server.js"
 fi
 
 echo ""

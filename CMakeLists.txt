@@ -45,5 +45,5 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 add_subdirectory(app)
 
-# Optionally: copy frontend production bundle to resources/web (handled by scripts/build)
+# Optionally: copy homepage production bundle to resources/homepage (handled by scripts/build)
 

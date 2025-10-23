@@ -22,7 +22,7 @@ fi
 # Start Vite dev server
 echo "Starting Vite dev server..."
 (
-  cd "$ROOT_DIR/frontend"
+  cd "$ROOT_DIR/homepage"
   npm run dev
 ) &
 VITE_PID=$!

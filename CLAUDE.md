@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Athena Browser is a CEF-based desktop browser with Qt6 integration and React frontend. The project uses C++17 for the native application and TypeScript/React for the UI layer.
+Athena Browser is a CEF-based desktop browser with Qt6 integration and React homepage. The project uses C++17 for the native application and TypeScript/React for the UI layer.
 
 ## Architecture
 
@@ -67,7 +67,7 @@ DEV_URL=https://example.com ./scripts/run.sh
 build/release/app/athena-browser
 ```
 
-### Development Mode (Frontend)
+### Development Mode (Homepage)
 
 ```bash
 # Start Vite dev server + browser with HMR
@@ -188,7 +188,7 @@ Athena uses a unified logging approach across C++ and Node.js with consistent be
 
 **Architecture:**
 - **C++**: `utils::Logger` class with RAII and thread safety (app/src/utils/logging.{h,cpp})
-- **Node.js**: Winston-based structured logging to stderr (athena-agent/src/logger.ts)
+- **Node.js**: Winston-based structured logging to stderr (agent/src/logger.ts)
 - **Control**: `LOG_LEVEL` environment variable works for both C++ and Node.js
 - **Output**: Both write to stderr (not stdout) to avoid conflicts with IPC
 
@@ -402,16 +402,16 @@ cmake --build build/asan
 3. Download CEF binary to `third_party/cef_binary_${CEF_VERSION}_${PLATFORM}/`
 4. Rebuild: `rm -rf build && ./scripts/build.sh`
 
-### Running Frontend Only
+### Running Homepage Only
 
 ```bash
-cd frontend
+cd homepage
 npm run dev       # Development server
 npm run build     # Production build
 npm run preview   # Preview production build
 ```
 
-Frontend is built with Vite + React. Production builds are copied to `resources/web/`.
+Homepage is built with Vite + React. Production builds are copied to `resources/homepage/`.
 
 ## Important File Locations
 
