@@ -134,7 +134,8 @@ std::string BrowserControlServer::HandleGetInteractiveElements(std::optional<siz
     size_t target_tab = window->GetActiveTabIndex();
     bool ready = window->WaitForLoadToComplete(target_tab, 2000);
     if (!ready) {
-      logger.Warn("HandleGetInteractiveElements: page still reporting loading state, extracting anyway");
+      logger.Warn(
+          "HandleGetInteractiveElements: page still reporting loading state, extracting anyway");
     }
 
     QString js = R"(
@@ -258,7 +259,8 @@ std::string BrowserControlServer::HandleGetAccessibilityTree(std::optional<size_
     size_t target_tab = window->GetActiveTabIndex();
     bool ready = window->WaitForLoadToComplete(target_tab, 2000);
     if (!ready) {
-      logger.Warn("HandleGetAccessibilityTree: page still reporting loading state, extracting anyway");
+      logger.Warn(
+          "HandleGetAccessibilityTree: page still reporting loading state, extracting anyway");
     }
 
     QString js = R"(
@@ -475,7 +477,8 @@ std::string BrowserControlServer::HandleGetAnnotatedScreenshot(std::optional<siz
     size_t target_tab = window->GetActiveTabIndex();
     bool ready = window->WaitForLoadToComplete(target_tab, 2000);
     if (!ready) {
-      logger.Warn("HandleGetAnnotatedScreenshot: page still reporting loading state, capturing anyway");
+      logger.Warn(
+          "HandleGetAnnotatedScreenshot: page still reporting loading state, capturing anyway");
     }
 
     // Get screenshot (automatically scaled to 0.5 for AI analysis)

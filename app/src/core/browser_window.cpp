@@ -300,7 +300,7 @@ utils::Result<void> BrowserWindow::Initialize() {
   window_config.resizable = config_.resizable;
   window_config.enable_input = config_.enable_input;
   window_config.url = config_.url;                    // Pass URL for browser creation
-  window_config.node_runtime = config_.node_runtime;  // Pass Node runtime for Claude chat
+  window_config.node_runtime = config_.node_runtime;  // Pass Node runtime for Agent chat
 
   platform::WindowCallbacks window_callbacks;
   SetupWindowCallbacks();

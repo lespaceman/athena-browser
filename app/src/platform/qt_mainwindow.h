@@ -31,7 +31,7 @@ namespace platform {
 
 // Forward declarations
 class BrowserWidget;
-class ClaudePanel;
+class AgentPanel;
 
 /**
  * Represents a single browser tab (Qt version).
@@ -344,7 +344,7 @@ class QtMainWindow : public QMainWindow, public Window {
   void onNewTabClicked();
   void onTabCloseRequested(int index);
   void onCurrentTabChanged(int index);
-  void onClaudeButtonClicked();
+  void onAgentButtonClicked();
   void onTabMoved(int from, int to);
 
  private:
@@ -385,9 +385,9 @@ class QtMainWindow : public QMainWindow, public Window {
   QPushButton* reloadButton_;
   QPushButton* stopButton_;
   QPushButton* newTabButton_;  // "+" button to create new tabs
-  QPushButton* claudeButton_;  // Toggle Claude sidebar
+  QPushButton* agentButton_;   // Toggle Agent sidebar
   QTabWidget* tabWidget_;      // Tab container (replaces single browserWidget_)
-  ClaudePanel* claudePanel_;   // Claude chat sidebar
+  AgentPanel* agentPanel_;     // Agent chat sidebar
 
   // Tab management (Phase 2: full multi-tab support)
   std::vector<QtTab> tabs_;        // All open tabs

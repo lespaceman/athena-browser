@@ -1,8 +1,9 @@
-#include "qt_claude_panel.h"
+#include "qt_agent_panel.h"
 
 #include "qt_mainwindow.h"
 #include "runtime/node_runtime.h"
 
+#include <chrono>
 #include <QApplication>
 #include <QClipboard>
 #include <QDebug>
@@ -13,17 +14,16 @@
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QThread>
-#include <chrono>
 #include <thread>
 
 namespace athena {
 namespace platform {
 
 // ============================================================================
-// ClaudePanel Implementation
+// AgentPanel Implementation
 // ============================================================================
 
-ClaudePanel::ClaudePanel(QtMainWindow* window, QWidget* parent)
+AgentPanel::AgentPanel(QtMainWindow* window, QWidget* parent)
     : QWidget(parent),
       window_(window),
       node_runtime_(nullptr),
@@ -36,37 +36,12 @@ ClaudePanel::ClaudePanel(QtMainWindow* window, QWidget* parent)
   connectSignals();
 }
 
-ClaudePanel::~ClaudePanel() = default;
+AgentPanel::~AgentPanel() = default;
 
-void ClaudePanel::setupUI() {
+void AgentPanel::setupUI() {
   mainLayout_ = new QVBoxLayout(this);
   mainLayout_->setContentsMargins(0, 0, 0, 0);
   mainLayout_->setSpacing(0);
-
-  // ============================================================================
-  // Header
-  // ============================================================================
-
-  headerFrame_ = new QFrame(this);
-  auto* headerLayout = new QHBoxLayout(headerFrame_);
-  headerLayout->setContentsMargins(20, 16, 20, 16);  // More airy padding (was 16, 12)
-
-  // Claude logo/title
-  headerLabel_ = new QLabel("Claude", headerFrame_);
-  QFont headerFont = headerLabel_->font();
-  headerFont.setPixelSize(16);  // Use pixels, not points - slightly larger for header
-  headerFont.setBold(true);
-  headerLabel_->setFont(headerFont);
-
-  // Clear button
-  clearButton_ = new QPushButton("Clear", headerFrame_);
-  clearButton_->setCursor(Qt::PointingHandCursor);
-
-  headerLayout->addWidget(headerLabel_);
-  headerLayout->addStretch();
-  headerLayout->addWidget(clearButton_);
-
-  mainLayout_->addWidget(headerFrame_);
 
   // ============================================================================
   // Messages Area (Scrollable)
@@ -84,7 +59,7 @@ void ClaudePanel::setupUI() {
   messagesLayout_->setContentsMargins(16, 12, 16, 12);  // Minimal padding all around
   messagesLayout_->setSpacing(0);                       // Spacing handled dynamically per message
   messagesLayout_->setAlignment(Qt::AlignTop | Qt::AlignLeft);  // Align bubbles to left
-  messagesLayout_->addStretch();                        // Push messages to top
+  messagesLayout_->addStretch();                                // Push messages to top
 
   scrollArea_->setWidget(messagesContainer_);
   mainLayout_->addWidget(scrollArea_, 1);  // Stretch factor 1
@@ -104,7 +79,7 @@ void ClaudePanel::setupUI() {
   inputFrame_ = new QFrame(this);
   auto* inputLayout = new QVBoxLayout(inputFrame_);
   inputLayout->setContentsMargins(20, 16, 20, 16);  // More airy padding (was 16, 12)
-  inputLayout->setSpacing(12);  // More breathing room (was 8)
+  inputLayout->setSpacing(12);                      // More breathing room (was 8)
 
   // Input text area + send button row
   auto* inputRowWidget = new QWidget(inputFrame_);
@@ -113,7 +88,7 @@ void ClaudePanel::setupUI() {
   inputRowLayout->setSpacing(8);
 
   inputWidget_ = new ChatInputWidget(inputRowWidget);
-  inputWidget_->setPlaceholderText("Message Claude...");
+  inputWidget_->setPlaceholderText("Message Agent...");
 
   sendButton_ = new QPushButton("Send", inputRowWidget);
   sendButton_->setCursor(Qt::PointingHandCursor);
@@ -133,7 +108,8 @@ void ClaudePanel::setupUI() {
   // Keyboard shortcut hint (shown when input is focused)
   keyboardHintLabel_ = new QLabel("Press Enter to send • Shift+Enter for new line", inputFrame_);
   keyboardHintLabel_->setAlignment(Qt::AlignRight);
-  keyboardHintLabel_->setStyleSheet("color: #9AA0A6; font-size: 12px; padding: 4px 0; font-weight: 400;");
+  keyboardHintLabel_->setStyleSheet(
+      "color: #9AA0A6; font-size: 12px; padding: 4px 0; font-weight: 400;");
   keyboardHintLabel_->hide();  // Hidden by default, shown on focus
   inputLayout->addWidget(keyboardHintLabel_);
 
@@ -144,45 +120,14 @@ void ClaudePanel::setupUI() {
   setMinimumWidth(300);
 }
 
-void ClaudePanel::setupStyles() {
+void AgentPanel::setupStyles() {
   // Force light theme colors globally for the panel
   // This overrides any dark theme that might be applied by the system
   // NOTE: We don't set color on all children (*) to avoid conflicts with ChatBubble HTML rendering
   setStyleSheet(R"(
-    ClaudePanel {
+    AgentPanel {
       background-color: #FFFFFF;
       border: none;
-    }
-  )");
-
-  // Header styling - Modern clean design with better spacing
-  headerFrame_->setStyleSheet(R"(
-    QFrame {
-      background-color: #FFFFFF;
-      border: none;
-      border-bottom: 1px solid #F0F0F0;
-      padding-bottom: 12px;
-    }
-    QFrame QLabel {
-      color: #202124;
-      font-weight: 600;
-      background-color: transparent;
-    }
-    QFrame QPushButton {
-      background-color: transparent;
-      border: none;
-      border-radius: 8px;
-      padding: 8px 16px;
-      color: #5F6368;
-      font-size: 13px;
-      font-weight: 500;
-    }
-    QFrame QPushButton:hover {
-      background-color: #F1F3F4;
-      color: #202124;
-    }
-    QFrame QPushButton:pressed {
-      background-color: #E8EAED;
     }
   )");
 
@@ -274,32 +219,30 @@ void ClaudePanel::setupStyles() {
   )");
 }
 
-void ClaudePanel::connectSignals() {
-  connect(sendButton_, &QPushButton::clicked, this, &ClaudePanel::onSendClicked);
+void AgentPanel::connectSignals() {
+  connect(sendButton_, &QPushButton::clicked, this, &AgentPanel::onSendClicked);
 
-  connect(clearButton_, &QPushButton::clicked, this, &ClaudePanel::onClearClicked);
+  connect(regenerateButton_, &QPushButton::clicked, this, &AgentPanel::onRegenerateClicked);
 
-  connect(regenerateButton_, &QPushButton::clicked, this, &ClaudePanel::onRegenerateClicked);
+  connect(inputWidget_, &ChatInputWidget::sendRequested, this, &AgentPanel::onSendClicked);
 
-  connect(inputWidget_, &ChatInputWidget::sendRequested, this, &ClaudePanel::onSendClicked);
-
-  connect(inputWidget_, &QTextEdit::textChanged, this, &ClaudePanel::onInputTextChanged);
+  connect(inputWidget_, &QTextEdit::textChanged, this, &AgentPanel::onInputTextChanged);
 
   // Show/hide keyboard hint based on input focus
   connect(inputWidget_, &ChatInputWidget::focusChanged, keyboardHintLabel_, &QLabel::setVisible);
 }
 
-void ClaudePanel::SetNodeRuntime(runtime::NodeRuntime* runtime) {
+void AgentPanel::SetNodeRuntime(runtime::NodeRuntime* runtime) {
   node_runtime_ = runtime;
 }
 
-void ClaudePanel::SendMessage(const QString& message) {
+void AgentPanel::SendMessage(const QString& message) {
   if (message.trimmed().isEmpty()) {
     return;
   }
 
   if (waiting_for_response_) {
-    qWarning() << "[ClaudePanel] Already waiting for response";
+    qWarning() << "[AgentPanel] Already waiting for response";
     return;
   }
 
@@ -313,17 +256,17 @@ void ClaudePanel::SendMessage(const QString& message) {
 
   // Check if node runtime is available
   if (!node_runtime_ || !node_runtime_->IsReady()) {
-    qWarning() << "[ClaudePanel] Node runtime not available";
+    qWarning() << "[AgentPanel] Node runtime not available";
     showThinkingIndicator(false);
     addMessage("assistant",
-               "❌ **Error:** Claude Agent is not available. Please ensure the Node.js runtime is "
+               "❌ **Error:** Agent is not available. Please ensure the Node.js runtime is "
                "running.",
                true);
     waiting_for_response_ = false;
     return;
   }
 
-  qDebug() << "[ClaudePanel] Sending message to Claude:" << message;
+  qDebug() << "[AgentPanel] Sending message to Agent:" << message;
 
   // Add an empty assistant message bubble that we'll update as chunks arrive
   // IMPORTANT: Don't animate for streaming responses (would interfere with real-time updates)
@@ -352,10 +295,10 @@ void ClaudePanel::SendMessage(const QString& message) {
   if (!current_session_id_.isEmpty()) {
     json_body = QString("{\"message\":\"%1\",\"sessionId\":\"%2\"}")
                     .arg(escaped_message, current_session_id_);
-    qDebug() << "[ClaudePanel] Sending message with session ID:" << current_session_id_;
+    qDebug() << "[AgentPanel] Sending message with session ID:" << current_session_id_;
   } else {
     json_body = QString("{\"message\":\"%1\"}").arg(escaped_message);
-    qDebug() << "[ClaudePanel] Sending message (new session)";
+    qDebug() << "[AgentPanel] Sending message (new session)";
   }
 
   // Create streaming socket connection
@@ -369,21 +312,21 @@ void ClaudePanel::SendMessage(const QString& message) {
   headers_received_ = false;
 
   // Connect socket signals
-  connect(streaming_socket_, &QLocalSocket::connected, this, &ClaudePanel::onSocketConnected);
-  connect(streaming_socket_, &QLocalSocket::readyRead, this, &ClaudePanel::onSocketReadyRead);
-  connect(streaming_socket_, &QLocalSocket::errorOccurred, this, &ClaudePanel::onSocketError);
-  connect(streaming_socket_, &QLocalSocket::disconnected, this, &ClaudePanel::onSocketDisconnected);
+  connect(streaming_socket_, &QLocalSocket::connected, this, &AgentPanel::onSocketConnected);
+  connect(streaming_socket_, &QLocalSocket::readyRead, this, &AgentPanel::onSocketReadyRead);
+  connect(streaming_socket_, &QLocalSocket::errorOccurred, this, &AgentPanel::onSocketError);
+  connect(streaming_socket_, &QLocalSocket::disconnected, this, &AgentPanel::onSocketDisconnected);
 
   // Store JSON body for sending after connection
   streaming_socket_->setProperty("json_body", json_body);
 
   // Connect to Unix socket
   QString socket_path = QString::fromStdString(node_runtime_->GetSocketPath());
-  qDebug() << "[ClaudePanel] Connecting to socket:" << socket_path;
+  qDebug() << "[AgentPanel] Connecting to socket:" << socket_path;
   streaming_socket_->connectToServer(socket_path);
 }
 
-void ClaudePanel::addMessage(const QString& role, const QString& message, bool animate) {
+void AgentPanel::addMessage(const QString& role, const QString& message, bool animate) {
   ChatBubble::Role bubbleRole =
       (role == "user") ? ChatBubble::Role::User : ChatBubble::Role::Assistant;
 
@@ -416,16 +359,16 @@ void ClaudePanel::addMessage(const QString& role, const QString& message, bool a
   trimHistory();
 }
 
-void ClaudePanel::replaceLastAssistantMessage(const QString& message) {
-  qDebug() << "[ClaudePanel::replaceLastAssistantMessage] Called with message length:"
+void AgentPanel::replaceLastAssistantMessage(const QString& message) {
+  qDebug() << "[AgentPanel::replaceLastAssistantMessage] Called with message length:"
            << message.length();
-  qDebug() << "[ClaudePanel::replaceLastAssistantMessage] Message preview:" << message.left(100);
+  qDebug() << "[AgentPanel::replaceLastAssistantMessage] Message preview:" << message.left(100);
 
   // Find the last assistant message
   for (auto it = messageBubbles_.rbegin(); it != messageBubbles_.rend(); ++it) {
     if ((*it)->GetRole() == ChatBubble::Role::Assistant) {
       qDebug()
-          << "[ClaudePanel::replaceLastAssistantMessage] Found assistant bubble, updating message";
+          << "[AgentPanel::replaceLastAssistantMessage] Found assistant bubble, updating message";
       (*it)->SetMessage(message);
       scrollToBottom(true);
       return;
@@ -434,11 +377,11 @@ void ClaudePanel::replaceLastAssistantMessage(const QString& message) {
 
   // If no assistant message found, add a new one
   qDebug()
-      << "[ClaudePanel::replaceLastAssistantMessage] No assistant bubble found, adding new one";
+      << "[AgentPanel::replaceLastAssistantMessage] No assistant bubble found, adding new one";
   addMessage("assistant", message, true);
 }
 
-void ClaudePanel::showThinkingIndicator(bool show) {
+void AgentPanel::showThinkingIndicator(bool show) {
   if (show) {
     // Add thinking indicator before the stretch spacer (at the bottom)
     int insertIndex = messagesLayout_->count() - 1;
@@ -471,7 +414,7 @@ void ClaudePanel::showThinkingIndicator(bool show) {
   scrollToBottom(true);
 }
 
-void ClaudePanel::scrollToBottom(bool animated) {
+void AgentPanel::scrollToBottom(bool animated) {
   QScrollBar* scrollBar = scrollArea_->verticalScrollBar();
 
   // Smart scroll: Only auto-scroll if user is already near the bottom
@@ -504,7 +447,7 @@ void ClaudePanel::scrollToBottom(bool animated) {
   }
 }
 
-void ClaudePanel::trimHistory() {
+void AgentPanel::trimHistory() {
   while (messageBubbles_.size() > MAX_MESSAGES) {
     auto* bubble = messageBubbles_.front();
     messageBubbles_.pop_front();
@@ -513,7 +456,7 @@ void ClaudePanel::trimHistory() {
   }
 }
 
-void ClaudePanel::ClearHistory() {
+void AgentPanel::ClearHistory() {
   // Remove all message bubbles
   for (auto* bubble : messageBubbles_) {
     messagesLayout_->removeWidget(bubble);
@@ -523,10 +466,10 @@ void ClaudePanel::ClearHistory() {
 
   regenerateButton_->hide();
 
-  qDebug() << "[ClaudePanel] Chat history cleared";
+  qDebug() << "[AgentPanel] Chat history cleared";
 }
 
-void ClaudePanel::ToggleVisibility() {
+void AgentPanel::ToggleVisibility() {
   panel_visible_ = !panel_visible_;
   setVisible(panel_visible_);
   emit visibilityChanged(panel_visible_);
@@ -536,7 +479,7 @@ void ClaudePanel::ToggleVisibility() {
   }
 }
 
-void ClaudePanel::onSendClicked() {
+void AgentPanel::onSendClicked() {
   QString message = inputWidget_->GetText().trimmed();
   if (!message.isEmpty()) {
     SendMessage(message);
@@ -544,55 +487,12 @@ void ClaudePanel::onSendClicked() {
   }
 }
 
-void ClaudePanel::onClearClicked() {
-  // Clear UI
-  ClearHistory();
-
-  // Clear session ID to start fresh
-  current_session_id_.clear();
-  qDebug() << "[ClaudePanel] Cleared session ID";
-
-  // Also clear the server-side session
-  if (node_runtime_ && node_runtime_->IsReady()) {
-    qDebug() << "[ClaudePanel] Clearing server-side session";
-
-    // Create socket for clear request
-    auto* clearSocket = new QLocalSocket(this);
-
-    // Build HTTP request to clear endpoint
-    QString http_request = QString(
-        "POST /v1/chat/clear HTTP/1.1\r\n"
-        "Host: localhost\r\n"
-        "User-Agent: Athena-Browser/1.0\r\n"
-        "Content-Length: 0\r\n"
-        "\r\n"
-    );
-
-    // Connect and send
-    connect(clearSocket, &QLocalSocket::connected, this, [clearSocket, http_request]() {
-      qDebug() << "[ClaudePanel] Sending clear request";
-      clearSocket->write(http_request.toUtf8());
-      clearSocket->flush();
-      clearSocket->disconnectFromServer();
-    });
-
-    connect(clearSocket, &QLocalSocket::disconnected, clearSocket, &QLocalSocket::deleteLater);
-    connect(clearSocket, &QLocalSocket::errorOccurred, this, [clearSocket](QLocalSocket::LocalSocketError error) {
-      qWarning() << "[ClaudePanel] Clear request failed:" << error << clearSocket->errorString();
-      clearSocket->deleteLater();
-    });
-
-    QString socket_path = QString::fromStdString(node_runtime_->GetSocketPath());
-    clearSocket->connectToServer(socket_path);
-  }
-}
-
-void ClaudePanel::onInputTextChanged() {
+void AgentPanel::onInputTextChanged() {
   bool hasText = !inputWidget_->toPlainText().trimmed().isEmpty();
   sendButton_->setEnabled(hasText);
 }
 
-void ClaudePanel::onRegenerateClicked() {
+void AgentPanel::onRegenerateClicked() {
   // Find the last user message and resend it
   for (auto it = messageBubbles_.rbegin(); it != messageBubbles_.rend(); ++it) {
     if ((*it)->GetRole() == ChatBubble::Role::User) {
@@ -619,44 +519,44 @@ void ClaudePanel::onRegenerateClicked() {
 // Streaming Socket Handlers
 // ============================================================================
 
-void ClaudePanel::onSocketConnected() {
-  qDebug() << "[ClaudePanel] Socket connected, sending HTTP request";
+void AgentPanel::onSocketConnected() {
+  qDebug() << "[AgentPanel] Socket connected, sending HTTP request";
 
   // Get JSON body from socket property
   QString json_body = streaming_socket_->property("json_body").toString();
 
   // Build HTTP request
-  QString http_request = QString(
-      "POST /v1/chat/stream HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "User-Agent: Athena-Browser/1.0\r\n"
-      "Content-Type: application/json\r\n"
-      "Content-Length: %1\r\n"
-      "\r\n"
-      "%2"
-  ).arg(json_body.toUtf8().size()).arg(json_body);
+  QString http_request = QString("POST /v1/chat/stream HTTP/1.1\r\n"
+                                 "Host: localhost\r\n"
+                                 "User-Agent: Athena-Browser/1.0\r\n"
+                                 "Content-Type: application/json\r\n"
+                                 "Content-Length: %1\r\n"
+                                 "\r\n"
+                                 "%2")
+                             .arg(json_body.toUtf8().size())
+                             .arg(json_body);
 
-  qDebug() << "[ClaudePanel] Sending HTTP request:" << http_request;
+  qDebug() << "[AgentPanel] Sending HTTP request:" << http_request;
 
   // Send request
   streaming_socket_->write(http_request.toUtf8());
   streaming_socket_->flush();
 }
 
-void ClaudePanel::onSocketReadyRead() {
+void AgentPanel::onSocketReadyRead() {
   // Read all available data
   QByteArray data = streaming_socket_->readAll();
   response_buffer_.append(QString::fromUtf8(data));
 
-  qDebug() << "[ClaudePanel] Received" << data.size() << "bytes (total buffer size:"
-           << response_buffer_.size() << ")";
+  qDebug() << "[AgentPanel] Received" << data.size()
+           << "bytes (total buffer size:" << response_buffer_.size() << ")";
 
   // Parse HTTP headers if not yet received
   if (!headers_received_) {
     int header_end = response_buffer_.indexOf("\r\n\r\n");
     if (header_end != -1) {
       headers_received_ = true;
-      qDebug() << "[ClaudePanel] HTTP headers received, body starts at position" << (header_end + 4);
+      qDebug() << "[AgentPanel] HTTP headers received, body starts at position" << (header_end + 4);
 
       // Extract body and start parsing SSE
       QString body = response_buffer_.mid(header_end + 4);
@@ -674,23 +574,23 @@ void ClaudePanel::onSocketReadyRead() {
   }
 }
 
-void ClaudePanel::onSocketError(QLocalSocket::LocalSocketError error) {
+void AgentPanel::onSocketError(QLocalSocket::LocalSocketError error) {
   QString error_msg = streaming_socket_->errorString();
 
   // PeerClosedError is NOT an error - it's the normal way HTTP connections close
   // after the server finishes sending the response (res.end() in Node.js)
   if (error == QLocalSocket::PeerClosedError) {
-    qDebug() << "[ClaudePanel] Socket closed by peer (normal completion)";
+    qDebug() << "[AgentPanel] Socket closed by peer (normal completion)";
     return;  // Let onSocketDisconnected handle cleanup
   }
 
-  qWarning() << "[ClaudePanel] Socket error:" << error << "-" << error_msg;
+  qWarning() << "[AgentPanel] Socket error:" << error << "-" << error_msg;
 
   showThinkingIndicator(false);
   waiting_for_response_ = false;
 
   replaceLastAssistantMessage(
-      QString("❌ **Error:** Failed to communicate with Claude Agent: %1").arg(error_msg));
+      QString("❌ **Error:** Failed to communicate with Agent: %1").arg(error_msg));
 
   regenerateButton_->show();
 
@@ -701,14 +601,14 @@ void ClaudePanel::onSocketError(QLocalSocket::LocalSocketError error) {
   }
 }
 
-void ClaudePanel::onSocketDisconnected() {
-  qDebug() << "[ClaudePanel] Socket disconnected";
+void AgentPanel::onSocketDisconnected() {
+  qDebug() << "[AgentPanel] Socket disconnected";
 
   waiting_for_response_ = false;
 
   // If we have no accumulated text, show error
   if (accumulated_text_.isEmpty()) {
-    replaceLastAssistantMessage("❌ **Error:** No response received from Claude");
+    replaceLastAssistantMessage("❌ **Error:** No response received from Agent");
   } else {
     // Ensure final text is displayed
     replaceLastAssistantMessage(accumulated_text_);
@@ -723,7 +623,7 @@ void ClaudePanel::onSocketDisconnected() {
   }
 }
 
-void ClaudePanel::parseSSEChunks(const QString& data) {
+void AgentPanel::parseSSEChunks(const QString& data) {
   // Parse SSE format: lines starting with "data: " contain JSON chunks
   QStringList lines = data.split('\n');
 
@@ -739,10 +639,11 @@ void ClaudePanel::parseSSEChunks(const QString& data) {
       continue;
     }
 
-    qDebug() << "[ClaudePanel] Parsing SSE chunk:" << json_str;
+    qDebug() << "[AgentPanel] Parsing SSE chunk:" << json_str;
 
     // Parse JSON manually (simple parser for our known format)
-    // Format: {"type":"chunk","content":"text"} or {"type":"done"} or {"type":"error","error":"msg"}
+    // Format: {"type":"chunk","content":"text"} or {"type":"done"} or
+    // {"type":"error","error":"msg"}
 
     // Extract type
     int type_start = json_str.indexOf("\"type\":\"") + 8;
@@ -780,7 +681,7 @@ void ClaudePanel::parseSSEChunks(const QString& data) {
       chunk_content.replace("\\\"", "\"");
       chunk_content.replace("\\\\", "\\");
 
-      qDebug() << "[ClaudePanel] Chunk content:" << chunk_content;
+      qDebug() << "[AgentPanel] Chunk content:" << chunk_content;
 
       // Accumulate text
       accumulated_text_ += chunk_content;
@@ -798,7 +699,7 @@ void ClaudePanel::parseSSEChunks(const QString& data) {
         // Only update if we don't have a session ID yet or if it changed
         if (current_session_id_ != session_id) {
           current_session_id_ = session_id;
-          qDebug() << "[ClaudePanel] Received session ID from chunk:" << session_id;
+          qDebug() << "[AgentPanel] Received session ID from chunk:" << session_id;
         }
       }
 
@@ -810,11 +711,11 @@ void ClaudePanel::parseSSEChunks(const QString& data) {
         int error_end = json_str.indexOf("\"", error_start);
         QString error_msg = json_str.mid(error_start, error_end - error_start);
 
-        qWarning() << "[ClaudePanel] Received error:" << error_msg;
+        qWarning() << "[AgentPanel] Received error:" << error_msg;
         replaceLastAssistantMessage(QString("❌ **Error:** %1").arg(error_msg));
       }
     } else if (chunk_type == "done") {
-      qDebug() << "[ClaudePanel] Stream complete";
+      qDebug() << "[AgentPanel] Stream complete";
     }
   }
 }
@@ -943,7 +844,7 @@ ChatBubble::ChatBubble(Role role, const QString& message, QWidget* parent)
 void ChatBubble::setupUI() {
   layout_ = new QVBoxLayout(this);
   layout_->setContentsMargins(10, 6, 10, 6);  // Balanced padding - readable but compact
-  layout_->setSpacing(4);  // Tight spacing between role and content
+  layout_->setSpacing(4);                     // Tight spacing between role and content
 
   // Role label
   roleLabel_ = new QLabel(this);
@@ -951,7 +852,7 @@ void ChatBubble::setupUI() {
   labelFont.setPixelSize(12);  // Use pixels, not points
   labelFont.setBold(true);
   roleLabel_->setFont(labelFont);
-  roleLabel_->setText(role_ == Role::User ? "You" : "Claude");
+  roleLabel_->setText(role_ == Role::User ? "You" : "Agent");
 
   layout_->addWidget(roleLabel_);
 
@@ -977,18 +878,17 @@ void ChatBubble::setupUI() {
 
   // Method 2: Set default stylesheet on document (for HTML rendering)
   // This persists even when setHtml() is called
-  QString defaultCSS = QString("body { color: %1; background-color: %2; }")
-                          .arg(textColorHex, bgColorHex);
+  QString defaultCSS =
+      QString("body { color: %1; background-color: %2; }").arg(textColorHex, bgColorHex);
   contentWidget_->document()->setDefaultStyleSheet(defaultCSS);
 
   // FORCE text color via widget stylesheet (nuclear option)
-  QString widgetStyleSheet = QString(
-      "QTextEdit { "
-      "  background: transparent; "
-      "  border: none; "
-      "  color: %1; "
-      "}"
-  ).arg(textColorHex);
+  QString widgetStyleSheet = QString("QTextEdit { "
+                                     "  background: transparent; "
+                                     "  border: none; "
+                                     "  color: %1; "
+                                     "}")
+                                 .arg(textColorHex);
   contentWidget_->setStyleSheet(widgetStyleSheet);
 
   contentWidget_->setAutoFillBackground(false);
@@ -1037,7 +937,8 @@ void ChatBubble::setupStyles() {
       background-color: transparent;
       font-weight: 600;
     }
-  )").arg(bgColorHex, labelColorHex));
+  )")
+                    .arg(bgColorHex, labelColorHex));
 }
 
 void ChatBubble::renderMarkdown(const QString& markdown) {
@@ -1063,16 +964,17 @@ void ChatBubble::renderMarkdown(const QString& markdown) {
   // Preserve newlines
   html.replace("\n", "<br>");
 
-  // Modern HTML wrapper with better typography - colors come from widget stylesheet and document default CSS
-  QString wrappedHtml = QString(
-      "<div style='line-height: 1.7; word-wrap: break-word; overflow-wrap: break-word;'>%1</div>"
-  ).arg(html);
+  // Modern HTML wrapper with better typography - colors come from widget stylesheet and document
+  // default CSS
+  QString wrappedHtml = QString("<div style='line-height: 1.7; word-wrap: break-word; "
+                                "overflow-wrap: break-word;'>%1</div>")
+                            .arg(html);
 
   contentWidget_->setHtml(wrappedHtml);
 
   // Adjust height to fit content with dynamic width calculation
   // Get the actual available width from the widget, not a hardcoded value
-  int padding = 24 * 2;  // Left + right padding from layout
+  int padding = 24 * 2;                               // Left + right padding from layout
   int availableWidth = qMax(200, width() - padding);  // Use actual bubble width, min 200px
 
   // Set text width to available width to ensure proper wrapping
@@ -1102,13 +1004,12 @@ void ChatBubble::AnimateIn() {
   fadeInAnimation_->start();
 }
 
-
 // ============================================================================
 // ThinkingIndicator Implementation
 // ============================================================================
 
 ThinkingIndicator::ThinkingIndicator(QWidget* parent)
-    : QWidget(parent), animationFrame_(0), text_("Claude is thinking") {
+    : QWidget(parent), animationFrame_(0), text_("Agent is thinking") {
   animationTimer_ = new QTimer(this);
   connect(animationTimer_, &QTimer::timeout, this, &ThinkingIndicator::updateAnimation);
 

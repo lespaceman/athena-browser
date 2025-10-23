@@ -12,15 +12,14 @@
 #include "browser/cef_engine.h"
 #include "include/cef_app.h"
 #include "include/cef_browser.h"
+#include "platform/qt_agent_panel.h"
 #include "platform/qt_browserwidget.h"
-#include "platform/qt_claude_panel.h"
 #include "rendering/gl_renderer.h"
 #include "utils/logging.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <utility>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QCoreApplication>
@@ -30,14 +29,15 @@
 #include <QKeySequence>
 #include <QMetaObject>
 #include <QShortcut>
-#include <QTabBar>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStyle>
+#include <QTabBar>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <thread>
+#include <utility>
 
 namespace athena {
 namespace platform {
@@ -72,9 +72,9 @@ QtMainWindow::QtMainWindow(const WindowConfig& config,
       reloadButton_(nullptr),
       stopButton_(nullptr),
       newTabButton_(nullptr),
-      claudeButton_(nullptr),
+      agentButton_(nullptr),
       tabWidget_(nullptr),
-      claudePanel_(nullptr),
+      agentPanel_(nullptr),
       active_tab_index_(0),
       current_url_(QString::fromStdString(config.url)) {
   logger.Info("Creating Qt main window");
@@ -179,13 +179,13 @@ void QtMainWindow::createToolbar() {
   // Add separator
   toolbar_->addSeparator();
 
-  // Claude sidebar toggle button
-  claudeButton_ = new QPushButton(this);
-  claudeButton_->setText("Claude");
-  claudeButton_->setToolTip(tr("Toggle Claude Sidebar (Ctrl+Shift+C)"));
-  claudeButton_->setCheckable(true);
-  claudeButton_->setChecked(true);  // Sidebar visible by default
-  toolbar_->addWidget(claudeButton_);
+  // Agent sidebar toggle button
+  agentButton_ = new QPushButton(this);
+  agentButton_->setText("Agent");
+  agentButton_->setToolTip(tr("Toggle Agent Sidebar (Ctrl+Shift+C)"));
+  agentButton_->setCheckable(true);
+  agentButton_->setChecked(true);  // Sidebar visible by default
+  toolbar_->addWidget(agentButton_);
 }
 
 void QtMainWindow::createCentralWidget() {
@@ -195,16 +195,16 @@ void QtMainWindow::createCentralWidget() {
   tabWidget_->setMovable(true);       // Allow dragging tabs to reorder
   tabWidget_->setDocumentMode(true);  // Cleaner look
 
-  // Create Claude chat panel
-  claudePanel_ = new ClaudePanel(this, this);
-  claudePanel_->SetNodeRuntime(node_runtime_);
-  claudePanel_->setMinimumWidth(300);
-  claudePanel_->setMaximumWidth(500);  // Prevent sidebar from taking too much space
+  // Create Agent chat panel
+  agentPanel_ = new AgentPanel(this, this);
+  agentPanel_->SetNodeRuntime(node_runtime_);
+  agentPanel_->setMinimumWidth(300);
+  agentPanel_->setMaximumWidth(500);  // Prevent sidebar from taking too much space
 
-  // Create horizontal splitter: browser tabs on left, Claude sidebar on right
+  // Create horizontal splitter: browser tabs on left, Agent sidebar on right
   QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
-  splitter->addWidget(tabWidget_);    // Browser tabs (left)
-  splitter->addWidget(claudePanel_);  // Claude sidebar (right)
+  splitter->addWidget(tabWidget_);   // Browser tabs (left)
+  splitter->addWidget(agentPanel_);  // Agent sidebar (right)
 
   // Set stretch factors: 70% browser, 30% sidebar (more balanced)
   splitter->setStretchFactor(0, 7);  // Browser gets 7x weight
@@ -220,7 +220,7 @@ void QtMainWindow::createCentralWidget() {
 
   setCentralWidget(splitter);
 
-  logger.Info("Central widget created with Claude sidebar");
+  logger.Info("Central widget created with Agent sidebar");
 }
 
 void QtMainWindow::connectSignals() {
@@ -246,12 +246,12 @@ void QtMainWindow::connectSignals() {
     connect(tabBar, &QTabBar::tabMoved, this, &QtMainWindow::onTabMoved);
   }
 
-  // Claude button
-  connect(claudeButton_, &QPushButton::clicked, this, &QtMainWindow::onClaudeButtonClicked);
+  // Agent button
+  connect(agentButton_, &QPushButton::clicked, this, &QtMainWindow::onAgentButtonClicked);
 
   // Keyboard shortcut: Ctrl+Shift+C (or Cmd+Shift+C on macOS)
-  QShortcut* claudeShortcut = new QShortcut(QKeySequence("Ctrl+Shift+C"), this);
-  connect(claudeShortcut, &QShortcut::activated, this, &QtMainWindow::onClaudeButtonClicked);
+  QShortcut* agentShortcut = new QShortcut(QKeySequence("Ctrl+Shift+C"), this);
+  connect(agentShortcut, &QShortcut::activated, this, &QtMainWindow::onAgentButtonClicked);
 }
 
 void QtMainWindow::InitializeBrowser() {
@@ -424,14 +424,14 @@ void QtMainWindow::onCurrentTabChanged(int index) {
   }
 }
 
-void QtMainWindow::onClaudeButtonClicked() {
-  if (claudePanel_) {
-    claudePanel_->ToggleVisibility();
+void QtMainWindow::onAgentButtonClicked() {
+  if (agentPanel_) {
+    agentPanel_->ToggleVisibility();
 
     // Update button state
-    claudeButton_->setChecked(claudePanel_->IsVisible());
+    agentButton_->setChecked(agentPanel_->IsVisible());
 
-    logger.Info(claudePanel_->IsVisible() ? "Claude sidebar shown" : "Claude sidebar hidden");
+    logger.Info(agentPanel_->IsVisible() ? "Agent sidebar shown" : "Agent sidebar hidden");
   }
 }
 

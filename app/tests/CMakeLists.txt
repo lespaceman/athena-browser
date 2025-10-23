@@ -109,7 +109,7 @@ add_athena_test(cef_engine_test
 #   ../src/core/browser_window.cpp
 #   ../src/platform/qt_mainwindow.cpp
 #   ../src/platform/qt_browserwidget.cpp
-#   ../src/platform/qt_claude_panel.cpp
+#   ../src/platform/qt_agent_panel.cpp
 #   ../src/rendering/gl_renderer.cpp
 #   ../src/browser/cef_client.cpp
 #   ../src/browser/cef_engine.cpp

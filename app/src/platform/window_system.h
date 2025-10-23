@@ -36,7 +36,7 @@ struct WindowConfig {
   bool resizable = true;
   bool enable_input = true;
   std::string url = "about:blank";               // Initial URL to load
-  runtime::NodeRuntime* node_runtime = nullptr;  // Optional Node runtime for Claude chat
+  runtime::NodeRuntime* node_runtime = nullptr;  // Optional Node runtime for Agent chat
 };
 
 /**

@@ -130,7 +130,8 @@ int main(int argc, char* argv[]) {
     // Location 3: Bundle mode (macOS)
     // Binary at: Athena Browser.app/Contents/MacOS/athena-browser
     // Agent at:  Athena Browser.app/Contents/Resources/agent/server.js
-    std::filesystem::path macos_script = exe_dir.parent_path() / "Resources" / "agent" / "server.js";
+    std::filesystem::path macos_script =
+        exe_dir.parent_path() / "Resources" / "agent" / "server.js";
 
     // Try each location in order
     if (std::filesystem::exists(dev_script)) {
@@ -150,7 +151,7 @@ int main(int argc, char* argv[]) {
       logger.Warn("  Dev:    {}", dev_script.string());
       logger.Warn("  Bundle: {}", bundle_script.string());
       logger.Warn("  macOS:  {}", macos_script.string());
-      logger.Warn("Claude chat integration will not be available.");
+      logger.Warn("Agent chat integration will not be available.");
       logger.Warn("Run 'cd agent && npm run build' to build the agent.");
     } else {
       runtime::NodeRuntimeConfig runtime_config;

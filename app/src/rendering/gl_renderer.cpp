@@ -276,10 +276,15 @@ std::string GLRenderer::TakeScreenshot() const {
     scaled_width = std::max(1, scaled_width);
     scaled_height = std::max(1, scaled_height);
 
-    image = image.scaled(scaled_width, scaled_height, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    image =
+        image.scaled(scaled_width, scaled_height, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 
     logger.Debug("Screenshot scaled from {}x{} to {}x{} (scale={})",
-                 width, height, scaled_width, scaled_height, scale);
+                 width,
+                 height,
+                 scaled_width,
+                 scaled_height,
+                 scale);
   }
 
   QByteArray byte_array;

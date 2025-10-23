@@ -18,11 +18,16 @@ static LogLevel ParseLogLevel(const char* level_str) {
     c = std::tolower(c);
   }
 
-  if (level == "debug") return LogLevel::kDebug;
-  if (level == "info") return LogLevel::kInfo;
-  if (level == "warn") return LogLevel::kWarn;
-  if (level == "error") return LogLevel::kError;
-  if (level == "fatal") return LogLevel::kFatal;
+  if (level == "debug")
+    return LogLevel::kDebug;
+  if (level == "info")
+    return LogLevel::kInfo;
+  if (level == "warn")
+    return LogLevel::kWarn;
+  if (level == "error")
+    return LogLevel::kError;
+  if (level == "fatal")
+    return LogLevel::kFatal;
 
   // Default to info if unrecognized
   return LogLevel::kInfo;

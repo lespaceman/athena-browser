@@ -444,8 +444,8 @@ utils::Result<std::string> NodeRuntime::Call(const std::string& method,
       }
     }
 
-    logger.Debug("NodeRuntime::Call - Decoded body length: " + std::to_string(response_body.length()) +
-                 " bytes");
+    logger.Debug("NodeRuntime::Call - Decoded body length: " +
+                 std::to_string(response_body.length()) + " bytes");
   } else {
     // Parse Content-Length from headers
     size_t content_length = 0;

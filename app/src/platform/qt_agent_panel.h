@@ -1,5 +1,5 @@
-#ifndef ATHENA_PLATFORM_QT_CLAUDE_PANEL_H_
-#define ATHENA_PLATFORM_QT_CLAUDE_PANEL_H_
+#ifndef ATHENA_PLATFORM_QT_AGENT_PANEL_H_
+#define ATHENA_PLATFORM_QT_AGENT_PANEL_H_
 
 #include <deque>
 #include <memory>
@@ -30,31 +30,31 @@ class ChatInputWidget;
 class ThinkingIndicator;
 
 /**
- * Modern Claude chat panel with beautiful UI.
+ * Modern Agent chat panel with beautiful UI.
  *
  * Features:
  * - Chat bubbles with proper styling (user vs assistant)
  * - Markdown rendering support
  * - Code syntax highlighting
  * - Smooth scroll animations
- * - Typing indicators ("Claude is thinking...")
+ * - Typing indicators ("Agent is thinking...")
  * - Message history management
  * - Resizable input area
  * - Copy button for messages
  * - Regenerate button for last response
  *
- * Design inspired by Claude.ai's interface:
+ * Design inspired by modern chat interfaces:
  * - Clean, minimalist design
  * - Proper spacing and typography
  * - Subtle shadows and borders
  * - Smooth animations
  */
-class ClaudePanel : public QWidget {
+class AgentPanel : public QWidget {
   Q_OBJECT
 
  public:
-  explicit ClaudePanel(QtMainWindow* window, QWidget* parent = nullptr);
-  ~ClaudePanel() override;
+  explicit AgentPanel(QtMainWindow* window, QWidget* parent = nullptr);
+  ~AgentPanel() override;
 
   /**
    * Set the Node.js runtime for API calls.
@@ -63,7 +63,7 @@ class ClaudePanel : public QWidget {
   void SetNodeRuntime(runtime::NodeRuntime* runtime);
 
   /**
-   * Send a message to Claude.
+   * Send a message to the Agent.
    * Shows thinking indicator, makes async call to Athena Agent API.
    * @param message User message text
    */
@@ -97,7 +97,6 @@ class ClaudePanel : public QWidget {
 
  private slots:
   void onSendClicked();
-  void onClearClicked();
   void onInputTextChanged();
   void onRegenerateClicked();
 
@@ -173,11 +172,6 @@ class ClaudePanel : public QWidget {
   QWidget* messagesContainer_;
   QVBoxLayout* messagesLayout_;
 
-  // Header
-  QFrame* headerFrame_;
-  QLabel* headerLabel_;
-  QPushButton* clearButton_;
-
   // Footer / Input area
   QFrame* inputFrame_;
   ChatInputWidget* inputWidget_;
@@ -194,12 +188,12 @@ class ClaudePanel : public QWidget {
 
   // Streaming HTTP connection
   QLocalSocket* streaming_socket_;
-  QString response_buffer_;        // Buffers incomplete HTTP data
-  QString accumulated_text_;       // Accumulated SSE content for current response
-  bool headers_received_;          // Track if HTTP headers have been parsed
+  QString response_buffer_;   // Buffers incomplete HTTP data
+  QString accumulated_text_;  // Accumulated SSE content for current response
+  bool headers_received_;     // Track if HTTP headers have been parsed
 
   // Session management
-  QString current_session_id_;     // Current Claude session ID for continuity
+  QString current_session_id_;  // Current agent session ID for continuity
 };
 
 /**
@@ -303,7 +297,7 @@ class ChatBubble : public QFrame {
 
   // UI Components
   QVBoxLayout* layout_;
-  QLabel* roleLabel_;         // "You" or "Claude"
+  QLabel* roleLabel_;         // "You" or "Agent"
   QTextEdit* contentWidget_;  // Message content (read-only)
 
   // Animation
@@ -312,9 +306,9 @@ class ChatBubble : public QFrame {
 };
 
 /**
- * Animated thinking indicator ("Claude is thinking...").
+ * Animated thinking indicator ("Agent is thinking...").
  *
- * Shows animated dots while waiting for Claude's response.
+ * Shows animated dots while waiting for Agent's response.
  */
 class ThinkingIndicator : public QWidget {
   Q_OBJECT
@@ -348,4 +342,4 @@ class ThinkingIndicator : public QWidget {
 }  // namespace platform
 }  // namespace athena
 
-#endif  // ATHENA_PLATFORM_QT_CLAUDE_PANEL_H_
+#endif  // ATHENA_PLATFORM_QT_AGENT_PANEL_H_
