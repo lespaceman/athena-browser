@@ -376,8 +376,7 @@ void AgentPanel::replaceLastAssistantMessage(const QString& message) {
   }
 
   // If no assistant message found, add a new one
-  qDebug()
-      << "[AgentPanel::replaceLastAssistantMessage] No assistant bubble found, adding new one";
+  qDebug() << "[AgentPanel::replaceLastAssistantMessage] No assistant bubble found, adding new one";
   addMessage("assistant", message, true);
 }
 
