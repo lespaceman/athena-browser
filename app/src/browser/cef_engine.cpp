@@ -2,6 +2,7 @@
 
 #include "include/cef_browser.h"
 #include "include/wrapper/cef_helpers.h"
+#include "utils/logging.h"
 
 #include <iostream>
 #include <limits.h>
@@ -9,6 +10,9 @@
 
 namespace athena {
 namespace browser {
+
+// Static logger for this module
+static utils::Logger logger("CefEngine");
 
 // Helper: Get executable path for subprocess
 static std::string GetExecutablePath() {
@@ -74,7 +78,7 @@ utils::Result<void> CefEngine::Initialize(const EngineConfig& config) {
   }
 
   initialized_ = true;
-  std::cout << "[CefEngine::Initialize] CEF initialized successfully" << std::endl;
+  logger.Info("CEF initialized successfully");
   return utils::Ok();
 }
 
@@ -94,7 +98,7 @@ void CefEngine::Shutdown() {
   // Shutdown CEF
   CefShutdown();
   initialized_ = false;
-  std::cout << "[CefEngine::Shutdown] CEF shutdown complete" << std::endl;
+  logger.Info("CEF shutdown complete");
 }
 
 // ============================================================================
@@ -140,8 +144,7 @@ utils::Result<BrowserId> CefEngine::CreateBrowser(const BrowserConfig& config) {
     return utils::Err<BrowserId>("CefBrowserHost::CreateBrowser failed");
   }
 
-  std::cout << "[CefEngine::CreateBrowser] Browser " << id << " created with URL: " << config.url
-            << std::endl;
+  logger.Info("Browser {} created with URL: {}", id, config.url);
 
   // Return by value
   return utils::Result<BrowserId>(id);

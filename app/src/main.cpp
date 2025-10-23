@@ -10,6 +10,7 @@
 #include "core/application.h"
 #include "include/cef_app.h"
 #include "runtime/node_runtime.h"
+#include "utils/logging.h"
 
 // Platform-specific includes
 #ifdef ATHENA_USE_QT
@@ -60,6 +61,9 @@ void signal_handler(int signum) {
 int main(int argc, char* argv[]) {
   using namespace athena;
 
+  // Create logger for main
+  utils::Logger logger("Main");
+
   // ============================================================================
   // Signal Handler Registration
   // ============================================================================
@@ -69,7 +73,7 @@ int main(int argc, char* argv[]) {
   std::signal(SIGTERM, signal_handler);  // kill command
   std::signal(SIGABRT, signal_handler);  // abort()
 
-  std::cout << "Signal handlers registered (SIGINT, SIGTERM, SIGABRT)" << std::endl;
+  logger.Info("Signal handlers registered (SIGINT, SIGTERM, SIGABRT)");
 
   // ============================================================================
   // CEF Subprocess Handling
@@ -124,10 +128,9 @@ int main(int argc, char* argv[]) {
 
     // Check if the script exists
     if (!std::filesystem::exists(runtime_script)) {
-      std::cerr << "WARNING: Athena Agent script not found at: " << runtime_script << std::endl;
-      std::cerr << "         Claude chat integration will not be available." << std::endl;
-      std::cerr << "         Run 'cd athena-agent && npm run build' to build the agent."
-                << std::endl;
+      logger.Warn("Athena Agent script not found at: {}", runtime_script.string());
+      logger.Warn("Claude chat integration will not be available.");
+      logger.Warn("Run 'cd athena-agent && npm run build' to build the agent.");
     } else {
       runtime::NodeRuntimeConfig runtime_config;
       runtime_config.runtime_script_path = runtime_script.string();
@@ -139,7 +142,7 @@ int main(int argc, char* argv[]) {
 
       node_runtime = std::make_unique<runtime::NodeRuntime>(runtime_config);
 
-      std::cout << "Athena Agent will be initialized with script: " << runtime_script << std::endl;
+      logger.Info("Athena Agent will be initialized with script: {}", runtime_script.string());
     }
   }
 
@@ -151,10 +154,10 @@ int main(int argc, char* argv[]) {
 
 #ifdef ATHENA_USE_QT
   auto window_system = std::make_unique<platform::QtWindowSystem>();
-  std::cout << "Using Qt window system" << std::endl;
+  logger.Info("Using Qt window system");
 #else
   auto window_system = std::make_unique<platform::GtkWindowSystem>();
-  std::cout << "Using GTK window system" << std::endl;
+  logger.Info("Using GTK window system");
 #endif
 
   auto application = std::make_unique<core::Application>(
@@ -166,12 +169,11 @@ int main(int argc, char* argv[]) {
 
   auto init_result = application->Initialize(argc, argv);
   if (!init_result) {
-    std::cerr << "ERROR: Failed to initialize application: " << init_result.GetError().Message()
-              << std::endl;
+    logger.Error("Failed to initialize application: {}", init_result.GetError().Message());
     return 1;
   }
 
-  std::cout << "Athena Browser initialized successfully" << std::endl;
+  logger.Info("Athena Browser initialized successfully");
 
   // ============================================================================
   // Create Browser Window
@@ -183,20 +185,19 @@ int main(int argc, char* argv[]) {
   window_config.url = initial_url;
 
   core::BrowserWindowCallbacks window_callbacks;
-  window_callbacks.on_url_changed = [](const std::string& url) {
-    std::cout << "URL changed: " << url << std::endl;
+  window_callbacks.on_url_changed = [&logger](const std::string& url) {
+    logger.Debug("URL changed: {}", url);
   };
-  window_callbacks.on_title_changed = [](const std::string& title) {
-    std::cout << "Title changed: " << title << std::endl;
+  window_callbacks.on_title_changed = [&logger](const std::string& title) {
+    logger.Debug("Title changed: {}", title);
   };
-  window_callbacks.on_loading_state_changed = [](bool is_loading) {
-    std::cout << "Loading: " << (is_loading ? "true" : "false") << std::endl;
+  window_callbacks.on_loading_state_changed = [&logger](bool is_loading) {
+    logger.Debug("Loading: {}", (is_loading ? "true" : "false"));
   };
 
   auto window_result = application->CreateWindow(window_config, window_callbacks);
   if (!window_result) {
-    std::cerr << "ERROR: Failed to create window: " << window_result.GetError().Message()
-              << std::endl;
+    logger.Error("Failed to create window: {}", window_result.GetError().Message());
     return 1;
   }
 
@@ -205,17 +206,17 @@ int main(int argc, char* argv[]) {
   // Show the window
   auto show_result = window->Show();
   if (!show_result) {
-    std::cerr << "ERROR: Failed to show window: " << show_result.GetError().Message() << std::endl;
+    logger.Error("Failed to show window: {}", show_result.GetError().Message());
     return 1;
   }
 
-  std::cout << "Browser window created and shown" << std::endl;
+  logger.Info("Browser window created and shown");
 
   // ============================================================================
   // Run Main Event Loop
   // ============================================================================
 
-  std::cout << "Entering main event loop..." << std::endl;
+  logger.Info("Entering main event loop...");
 
   // Set up periodic check for shutdown signal (every 100ms)
   // This allows the signal handler to request shutdown asynchronously
@@ -224,7 +225,7 @@ int main(int argc, char* argv[]) {
   QTimer* shutdown_timer = new QTimer();
   QObject::connect(shutdown_timer, &QTimer::timeout, [&]() {
     if (shutdown_requested.load()) {
-      std::cout << "\n[Main] Shutdown requested by signal, exiting event loop..." << std::endl;
+      logger.Info("Shutdown requested by signal, exiting event loop...");
       application->Shutdown();
       QApplication::quit();
       shutdown_timer->stop();
@@ -235,7 +236,7 @@ int main(int argc, char* argv[]) {
   // GTK version using g_timeout_add
   auto check_shutdown = [&]() -> gboolean {
     if (shutdown_requested.load()) {
-      std::cout << "\n[Main] Shutdown requested by signal, exiting event loop..." << std::endl;
+      logger.Info("Shutdown requested by signal, exiting event loop...");
       application->Shutdown();
       gtk_main_quit();
       return G_SOURCE_REMOVE;  // Stop the timeout
@@ -259,11 +260,11 @@ int main(int argc, char* argv[]) {
   // Cleanup
   // ============================================================================
 
-  std::cout << "Shutting down..." << std::endl;
+  logger.Info("Shutting down...");
 
   // Check if shutdown was requested by signal handler
   if (shutdown_requested.load()) {
-    std::cout << "Shutdown initiated by signal" << std::endl;
+    logger.Info("Shutdown initiated by signal");
   }
 
   window.reset();  // Close window
@@ -273,6 +274,6 @@ int main(int argc, char* argv[]) {
   // The Shutdown() method checks initialized_ flag and returns early if already shut down
   application->Shutdown();
 
-  std::cout << "Shutdown complete" << std::endl;
+  logger.Info("Shutdown complete");
   return 0;
 }

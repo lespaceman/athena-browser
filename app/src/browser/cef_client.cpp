@@ -10,7 +10,7 @@
 namespace athena {
 namespace browser {
 
-static utils::Logger g_logger("CefClient");
+static utils::Logger logger("CefClient");
 CefClient::CefClient(void* native_window, rendering::GLRenderer* gl_renderer)
     : native_window_(native_window),
       browser_(nullptr),
@@ -31,8 +31,7 @@ CefClient::~CefClient() {
 void CefClient::OnAfterCreated(CefRefPtr<::CefBrowser> browser) {
   CEF_REQUIRE_UI_THREAD();
   browser_ = browser;
-  std::cout << "[CefClient::OnAfterCreated] OSR Browser created! Scale factor: "
-            << device_scale_factor_ << std::endl;
+  logger.Info("OSR Browser created! Scale factor: {}", device_scale_factor_);
 }
 
 bool CefClient::DoClose(CefRefPtr<::CefBrowser> browser) {
@@ -184,13 +183,13 @@ std::optional<std::string> CefClient::RequestJavaScriptEvaluation(const std::str
   CEF_REQUIRE_UI_THREAD();
 
   if (!browser_) {
-    g_logger.Warn("RequestJavaScriptEvaluation: browser_ is null");
+    logger.Warn("RequestJavaScriptEvaluation: browser_ is null");
     return std::nullopt;
   }
 
   auto frame = browser_->GetMainFrame();
   if (!frame) {
-    g_logger.Warn("RequestJavaScriptEvaluation: main frame is null");
+    logger.Warn("RequestJavaScriptEvaluation: main frame is null");
     return std::nullopt;
   }
 
@@ -205,7 +204,7 @@ std::optional<std::string> CefClient::RequestJavaScriptEvaluation(const std::str
   args->SetString(0, request_id);
   args->SetString(1, code);
 
-  g_logger.Debug("Dispatching JS evaluation request {}", request_id);
+  logger.Debug("Dispatching JS evaluation request {}", request_id);
   frame->SendProcessMessage(PID_RENDERER, message);
   return request_id;
 }
@@ -246,7 +245,7 @@ bool CefClient::OnProcessMessageReceived(CefRefPtr<::CefBrowser> browser,
 
   CefRefPtr<CefListValue> args = message->GetArgumentList();
   if (!args || args->GetSize() < 2) {
-    g_logger.Warn("ExecuteJavaScriptResult received with insufficient arguments");
+    logger.Warn("ExecuteJavaScriptResult received with insufficient arguments");
     return true;
   }
 
@@ -257,7 +256,7 @@ bool CefClient::OnProcessMessageReceived(CefRefPtr<::CefBrowser> browser,
     std::lock_guard<std::mutex> lock(js_mutex_);
     auto it = pending_js_.find(request_id);
     if (it == pending_js_.end()) {
-      g_logger.Warn("ExecuteJavaScriptResult for unknown request {}", request_id);
+      logger.Warn("ExecuteJavaScriptResult for unknown request {}", request_id);
       return true;
     }
 
@@ -265,7 +264,7 @@ bool CefClient::OnProcessMessageReceived(CefRefPtr<::CefBrowser> browser,
     it->second.result_json = payload;
   }
 
-  g_logger.Debug("ExecuteJavaScriptResult received for request {}", request_id);
+  logger.Debug("ExecuteJavaScriptResult received for request {}", request_id);
   return true;
 }
 

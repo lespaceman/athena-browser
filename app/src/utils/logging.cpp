@@ -1,14 +1,38 @@
 #include "utils/logging.h"
 
+#include <cstdlib>
 #include <ctime>
 
 namespace athena {
 namespace utils {
 
-static Logger* g_global_logger = nullptr;
+// Helper function to parse LOG_LEVEL environment variable
+static LogLevel ParseLogLevel(const char* level_str) {
+  if (!level_str) {
+    return LogLevel::kInfo;  // Default
+  }
+
+  std::string level(level_str);
+  // Convert to lowercase for case-insensitive comparison
+  for (char& c : level) {
+    c = std::tolower(c);
+  }
+
+  if (level == "debug") return LogLevel::kDebug;
+  if (level == "info") return LogLevel::kInfo;
+  if (level == "warn") return LogLevel::kWarn;
+  if (level == "error") return LogLevel::kError;
+  if (level == "fatal") return LogLevel::kFatal;
+
+  // Default to info if unrecognized
+  return LogLevel::kInfo;
+}
 
 Logger::Logger(const std::string& name)
-    : name_(name), level_(LogLevel::kInfo), console_output_(true), file_output_(false) {}
+    : name_(name),
+      level_(ParseLogLevel(std::getenv("LOG_LEVEL"))),
+      console_output_(true),
+      file_output_(false) {}
 
 Logger::~Logger() {
   if (file_stream_ && file_stream_->is_open()) {
@@ -129,18 +153,6 @@ std::string Logger::CurrentTimestamp() {
   oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S") << '.' << std::setfill('0') << std::setw(3)
       << now_ms.count();
   return oss.str();
-}
-
-Logger* GetGlobalLogger() {
-  if (!g_global_logger) {
-    static Logger default_logger("athena");
-    g_global_logger = &default_logger;
-  }
-  return g_global_logger;
-}
-
-void SetGlobalLogger(Logger* logger) {
-  g_global_logger = logger;
 }
 
 }  // namespace utils

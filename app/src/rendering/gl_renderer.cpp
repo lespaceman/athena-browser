@@ -76,6 +76,9 @@ class ScopedGLContext {
 
 }  // namespace
 
+// Static logger for this module
+static utils::Logger logger("GLRenderer");
+
 GLRenderer::GLRenderer()
     : gl_widget_(nullptr),
       osr_renderer_(nullptr),
@@ -129,7 +132,7 @@ utils::Result<void> GLRenderer::Initialize(void* gl_widget) {
 
   initialized_ = true;
 
-  std::cout << "[GLRenderer] Initialized successfully with OpenGL acceleration" << std::endl;
+  logger.Info("Initialized successfully with OpenGL acceleration");
 
   return utils::Ok();
 }
@@ -157,7 +160,7 @@ void GLRenderer::Cleanup() {
     if (widget_valid) {
       ScopedGLContext context(gl_widget_);
       if (!context.IsValid()) {
-        std::cerr << "[GLRenderer] Warning: GL context invalid during cleanup" << std::endl;
+        logger.Warn("GL context invalid during cleanup");
       }
       osr_renderer_->Cleanup();
     } else {
@@ -170,7 +173,7 @@ void GLRenderer::Cleanup() {
   initialized_ = false;
   gl_widget_ = nullptr;
 
-  std::cout << "[GLRenderer] Cleaned up" << std::endl;
+  logger.Info("Cleaned up");
 }
 
 void GLRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
@@ -180,14 +183,13 @@ void GLRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
                          int width,
                          int height) {
   if (!initialized_ || !osr_renderer_) {
-    std::cerr << "[GLRenderer] Warning: OnPaint called but renderer not initialized" << std::endl;
+    logger.Warn("OnPaint called but renderer not initialized");
     return;
   }
 
   ScopedGLContext context(gl_widget_);
   if (!context.IsValid()) {
-    std::cerr << "[GLRenderer] Warning: Unable to make GL context current during OnPaint"
-              << std::endl;
+    logger.Warn("Unable to make GL context current during OnPaint");
     return;
   }
 
@@ -269,8 +271,7 @@ CefRect GLRenderer::ToCefRect(const core::Rect& rect) {
 
 std::string GLRenderer::TakeScreenshot() const {
   if (!initialized_ || !osr_renderer_ || !gl_widget_) {
-    std::cerr << "[GLRenderer] Warning: Cannot take screenshot - renderer not initialized"
-              << std::endl;
+    logger.Warn("Cannot take screenshot - renderer not initialized");
     return "";
   }
 
@@ -280,8 +281,7 @@ std::string GLRenderer::TakeScreenshot() const {
   // Make GL context current
   ScopedGLContext context(gl_widget_);
   if (!context.IsValid()) {
-    std::cerr << "[GLRenderer] Warning: Unable to make GL context current for screenshot"
-              << std::endl;
+    logger.Warn("Unable to make GL context current for screenshot");
     return "";
   }
 
@@ -289,7 +289,7 @@ std::string GLRenderer::TakeScreenshot() const {
   int height = GetViewHeight();
 
   if (width <= 0 || height <= 0) {
-    std::cerr << "[GLRenderer] Warning: Invalid view size for screenshot" << std::endl;
+    logger.Warn("Invalid view size for screenshot");
     return "";
   }
 
@@ -300,7 +300,7 @@ std::string GLRenderer::TakeScreenshot() const {
   // Check for GL errors
   GLenum gl_error = glGetError();
   if (gl_error != GL_NO_ERROR) {
-    std::cerr << "[GLRenderer] OpenGL error during screenshot: " << gl_error << std::endl;
+    logger.Error("OpenGL error during screenshot: {}", gl_error);
     return "";
   }
 
@@ -325,9 +325,8 @@ std::string GLRenderer::TakeScreenshot() const {
 
     image = image.scaled(scaled_width, scaled_height, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 
-    std::cerr << "[GLRenderer] Screenshot scaled from " << width << "x" << height
-              << " to " << scaled_width << "x" << scaled_height
-              << " (scale=" << scale << ")" << std::endl;
+    logger.Debug("Screenshot scaled from {}x{} to {}x{} (scale={})",
+                 width, height, scaled_width, scaled_height, scale);
   }
 
   QByteArray byte_array;
@@ -335,7 +334,7 @@ std::string GLRenderer::TakeScreenshot() const {
   buffer.open(QIODevice::WriteOnly);
 
   if (!image.save(&buffer, "PNG")) {
-    std::cerr << "[GLRenderer] Failed to encode PNG" << std::endl;
+    logger.Error("Failed to encode PNG");
     return "";
   }
 
@@ -344,7 +343,7 @@ std::string GLRenderer::TakeScreenshot() const {
   return std::string(base64.constData(), base64.size());
 #else
   // GTK version: Would need to implement PNG encoding using libpng
-  std::cerr << "[GLRenderer] PNG encoding not yet implemented for GTK" << std::endl;
+  logger.Error("PNG encoding not yet implemented for GTK");
   return "";
 #endif
 }

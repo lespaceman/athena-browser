@@ -100,10 +100,6 @@ class Logger {
   mutable std::mutex mutex_;
 };
 
-// Global logger instance
-Logger* GetGlobalLogger();
-void SetGlobalLogger(Logger* logger);
-
 }  // namespace utils
 }  // namespace athena
 

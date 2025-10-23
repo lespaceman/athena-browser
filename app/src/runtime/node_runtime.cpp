@@ -614,6 +614,7 @@ utils::Result<void> NodeRuntime::SpawnProcess() {
            nullptr);
 
     // If we get here, exec failed
+    // Note: Using raw stderr after fork() - Logger is not safe in child process
     std::cerr << "Failed to exec Node: " << strerror(errno) << std::endl;
     _exit(1);
   }
