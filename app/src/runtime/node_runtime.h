@@ -15,7 +15,7 @@ namespace runtime {
  */
 struct NodeRuntimeConfig {
   std::string node_executable = "node";
-  std::string runtime_script_path;  // Path to server.js
+  std::string runtime_script_path;  // Path to athena-agent/dist/server.js
   std::string socket_path;          // Unix socket path (auto-generated if empty)
   int startup_timeout_ms = 5000;
   int health_check_interval_ms = 10000;
@@ -71,7 +71,7 @@ struct HealthStatus {
  * Example:
  * ```cpp
  * NodeRuntimeConfig config;
- * config.runtime_script_path = "/path/to/node-runtime/server.js";
+ * config.runtime_script_path = "/path/to/athena-agent/dist/server.js";
  *
  * auto runtime = std::make_unique<NodeRuntime>(config);
  * if (auto result = runtime->Initialize(); !result) {
