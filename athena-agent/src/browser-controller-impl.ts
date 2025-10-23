@@ -3,7 +3,7 @@
  *
  * This file provides a mock implementation of the BrowserController interface
  * for development and testing. In production, the C++ application will register
- * a real controller that calls into GtkWindow methods.
+ * a real controller that calls into QtMainWindow methods.
  *
  * To integrate with C++:
  * 1. The C++ code creates a callback mechanism

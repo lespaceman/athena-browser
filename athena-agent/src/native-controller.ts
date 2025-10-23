@@ -136,7 +136,7 @@ class UnixSocketHttpClient {
 
 /**
  * Native browser controller implementation.
- * Calls C++ GtkWindow methods via HTTP over Unix socket.
+ * Calls C++ QtMainWindow methods via HTTP over Unix socket.
  */
 export class NativeBrowserController implements BrowserController {
   private client: UnixSocketHttpClient;

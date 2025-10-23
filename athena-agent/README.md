@@ -9,7 +9,7 @@ Athena Agent is a Node.js service that provides:
 1. **Claude Chat Integration** - AI assistant powered by Claude 3.5 Sonnet
 2. **MCP Browser Control Tools** - 17 tools for controlling the browser via Claude Agent SDK
 3. **HTTP API** - RESTful endpoints for browser control and chat
-4. **Unix Socket IPC** - Efficient communication with the C++ GTK application
+4. **Unix Socket IPC** - Efficient communication with the C++ Qt application
 
 ## Quick Start
 
@@ -38,7 +38,7 @@ browser-api-client.ts
     ↓ (Unix socket)
 Express Server
     ↓
-C++ GTK Browser
+C++ Qt Browser
 ```
 
 **Key Components:**

@@ -8,7 +8,7 @@
 
 namespace athena {
 namespace platform {
-class GtkWindow;
+class QtMainWindow;
 }
 
 namespace runtime {
@@ -16,15 +16,15 @@ class NodeRuntime;
 
 /**
  * BrowserController provides an HTTP API bridge between the Node.js runtime
- * and the C++ GtkWindow browser controls.
+ * and the C++ QtMainWindow browser controls.
  *
  * This class:
  * - Receives HTTP requests from the Node.js server (via MCP tools)
- * - Translates them into GtkWindow method calls
+ * - Translates them into QtMainWindow method calls
  * - Returns results as HTTP responses
  *
  * Architecture:
- *   Claude (MCP) → Node.js (Express) → HTTP over Unix Socket → BrowserController → GtkWindow
+ *   Claude (MCP) → Node.js (Express) → HTTP over Unix Socket → BrowserController → QtMainWindow
  *
  * The controller is registered with the Node runtime and handles all
  * browser-related endpoints defined in athena-agent/src/routes/browser.ts
@@ -34,10 +34,10 @@ class BrowserController {
   /**
    * Create a browser controller.
    *
-   * @param window The GtkWindow to control (non-owning pointer)
+   * @param window The QtMainWindow to control (non-owning pointer)
    * @param runtime The Node runtime for IPC (non-owning pointer)
    */
-  BrowserController(platform::GtkWindow* window, NodeRuntime* runtime);
+  BrowserController(platform::QtMainWindow* window, NodeRuntime* runtime);
 
   ~BrowserController();
 
@@ -66,8 +66,8 @@ class BrowserController {
   bool IsRegistered() const;
 
  private:
-  platform::GtkWindow* window_;  // Non-owning
-  NodeRuntime* runtime_;         // Non-owning
+  platform::QtMainWindow* window_;  // Non-owning
+  NodeRuntime* runtime_;            // Non-owning
   bool registered_;
 
   // Internal helper to execute JavaScript that calls C++ functions

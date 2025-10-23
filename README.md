@@ -15,7 +15,7 @@ A CEF-based desktop browser with Qt6 integration and React frontend.
 sudo apt-get install qt6-base-dev qt6-tools-dev libqt6opengl6-dev libgtk-3-dev libx11-dev pkg-config
 ```
 
-Note: GTK3 headers are still needed as CEF has GTK dependencies.
+**Note:** Athena uses Qt6 for its window system. GTK3 headers are required only because CEF (Chromium Embedded Framework) has internal GTK dependencies on Linux. Your application code uses Qt exclusively.
 
 ## CEF Setup
 

@@ -3,7 +3,7 @@
  * Athena Agent Main Server
  *
  * AI-powered agent for Athena Browser with Claude Agent SDK and MCP tools.
- * Listens on Unix socket for IPC with the GTK application.
+ * Listens on Unix socket for IPC with the Qt application.
  */
 
 import express from 'express';

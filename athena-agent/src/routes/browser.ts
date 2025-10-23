@@ -27,7 +27,7 @@ export interface OpenUrlResult {
 
 /**
  * Interface for browser control operations.
- * This will be implemented by a bridge to the C++ GtkWindow API.
+ * This will be implemented by a bridge to the C++ QtMainWindow API.
  */
 export interface BrowserController {
   // Navigation
