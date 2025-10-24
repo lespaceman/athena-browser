@@ -31,6 +31,8 @@
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QSplitter>
+#include <QPalette>
+#include <QColor>
 #include <QStyle>
 #include <QTabBar>
 #include <QTimer>
@@ -181,7 +183,7 @@ void QtMainWindow::createToolbar() {
 
   // Agent sidebar toggle button
   agentButton_ = new QPushButton(this);
-  agentButton_->setText("Agent");
+  agentButton_->setText(tr("Ask AI"));
   agentButton_->setToolTip(tr("Toggle Agent Sidebar (Ctrl+Shift+C)"));
   agentButton_->setCheckable(true);
   agentButton_->setChecked(true);  // Sidebar visible by default
@@ -217,6 +219,12 @@ void QtMainWindow::createCentralWidget() {
 
   // Allow user to resize the splitter, but prevent collapse
   splitter->setChildrenCollapsible(false);
+  splitter->setHandleWidth(0);
+
+  const QColor splitterColor = QApplication::palette().color(QPalette::Window);
+  splitter->setStyleSheet(QStringLiteral(
+      "QSplitter::handle { background-color: %1; border: none; margin: 0; padding: 0; }")
+                              .arg(splitterColor.name(QColor::HexRgb)));
 
   setCentralWidget(splitter);
 

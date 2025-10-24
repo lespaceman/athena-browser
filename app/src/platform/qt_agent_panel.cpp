@@ -7,10 +7,14 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QDebug>
+#include <QEvent>
 #include <QFontMetrics>
+#include <QGraphicsDropShadowEffect>
 #include <QGraphicsOpacityEffect>
 #include <QKeyEvent>
 #include <QPainter>
+#include <QPainterPath>
+#include <QObject>
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QThread>
@@ -18,6 +22,68 @@
 
 namespace athena {
 namespace platform {
+
+namespace {
+
+QString colorToCss(const QColor& color) {
+  return color.alpha() == 255 ? color.name(QColor::HexRgb) : color.name(QColor::HexArgb);
+}
+
+QColor lighten(const QColor& color, int percentage) {
+  QColor c = color;
+  return c.lighter(percentage);
+}
+
+QColor darken(const QColor& color, int percentage) {
+  QColor c = color;
+  return c.darker(percentage);
+}
+
+QIcon createSendIcon(const QColor& color, qreal devicePixelRatio = 1.0) {
+  const int baseSize = 24;
+  QPixmap pixmap(static_cast<int>(baseSize * devicePixelRatio),
+                 static_cast<int>(baseSize * devicePixelRatio));
+  pixmap.fill(Qt::transparent);
+  pixmap.setDevicePixelRatio(devicePixelRatio);
+
+  QPainter painter(&pixmap);
+  painter.setRenderHint(QPainter::Antialiasing, true);
+  painter.setBrush(color);
+  painter.setPen(Qt::NoPen);
+
+  QPainterPath plane;
+  plane.moveTo(5, 12);
+  plane.lineTo(5, 5);
+  plane.lineTo(21, 12);
+  plane.lineTo(5, 19);
+  plane.lineTo(5, 14.5);
+  plane.lineTo(13, 12);
+  plane.lineTo(5, 9.5);
+  plane.closeSubpath();
+  painter.drawPath(plane);
+
+  return QIcon(pixmap);
+}
+
+QIcon createStopIcon(const QColor& color, qreal devicePixelRatio = 1.0) {
+  const int baseSize = 24;
+  QPixmap pixmap(static_cast<int>(baseSize * devicePixelRatio),
+                 static_cast<int>(baseSize * devicePixelRatio));
+  pixmap.fill(Qt::transparent);
+  pixmap.setDevicePixelRatio(devicePixelRatio);
+
+  QPainter painter(&pixmap);
+  painter.setRenderHint(QPainter::Antialiasing, true);
+  painter.setBrush(color);
+  painter.setPen(Qt::NoPen);
+
+  QRectF square(7, 7, 10, 10);
+  painter.drawRoundedRect(square, 3, 3);
+
+  return QIcon(pixmap);
+}
+
+}  // namespace
 
 // ============================================================================
 // AgentPanel Implementation
@@ -29,6 +95,7 @@ AgentPanel::AgentPanel(QtMainWindow* window, QWidget* parent)
       node_runtime_(nullptr),
       panel_visible_(true),
       waiting_for_response_(false),
+      userCanceledResponse_(false),
       streaming_socket_(nullptr),
       headers_received_(false) {
   setupUI();
@@ -40,11 +107,11 @@ AgentPanel::~AgentPanel() = default;
 
 void AgentPanel::setupUI() {
   mainLayout_ = new QVBoxLayout(this);
-  mainLayout_->setContentsMargins(0, 0, 0, 0);
+  mainLayout_->setContentsMargins(0, 12, 0, 0);
   mainLayout_->setSpacing(0);
 
   // ============================================================================
-  // Messages Area (Scrollable)
+  // Header
   // ============================================================================
 
   scrollArea_ = new QScrollArea(this);
@@ -54,10 +121,9 @@ void AgentPanel::setupUI() {
   scrollArea_->setFrameShape(QFrame::NoFrame);  // Remove frame border
 
   messagesContainer_ = new QWidget();
-  messagesContainer_->setStyleSheet("background-color: #FFFFFF;");  // Ensure white background
   messagesLayout_ = new QVBoxLayout(messagesContainer_);
-  messagesLayout_->setContentsMargins(16, 12, 16, 12);  // Minimal padding all around
-  messagesLayout_->setSpacing(0);                       // Spacing handled dynamically per message
+  messagesLayout_->setContentsMargins(24, 12, 24, 16);
+  messagesLayout_->setSpacing(10);  // Spacing handled dynamically per message
   messagesLayout_->setAlignment(Qt::AlignTop | Qt::AlignLeft);  // Align bubbles to left
   messagesLayout_->addStretch();                                // Push messages to top
 
@@ -78,40 +144,53 @@ void AgentPanel::setupUI() {
 
   inputFrame_ = new QFrame(this);
   auto* inputLayout = new QVBoxLayout(inputFrame_);
-  inputLayout->setContentsMargins(20, 16, 20, 16);  // More airy padding (was 16, 12)
-  inputLayout->setSpacing(12);                      // More breathing room (was 8)
+  inputLayout->setContentsMargins(0, 10, 0, 0);
+  inputLayout->setSpacing(0);
+
+  inputCard_ = new QFrame(inputFrame_);
+  auto* cardLayout = new QVBoxLayout(inputCard_);
+  cardLayout->setContentsMargins(12, 12, 12, 12);
+  cardLayout->setSpacing(6);
+  inputShadow_ = new QGraphicsDropShadowEffect(inputCard_);
+  inputShadow_->setBlurRadius(18);
+  inputShadow_->setOffset(0, 3);
+  inputShadow_->setColor(QColor(0, 0, 0, 32));
+  inputCard_->setGraphicsEffect(inputShadow_);
 
   // Input text area + send button row
-  auto* inputRowWidget = new QWidget(inputFrame_);
+  auto* inputRowWidget = new QWidget(inputCard_);
   auto* inputRowLayout = new QHBoxLayout(inputRowWidget);
   inputRowLayout->setContentsMargins(0, 0, 0, 0);
-  inputRowLayout->setSpacing(8);
+  inputRowLayout->setSpacing(12);
 
   inputWidget_ = new ChatInputWidget(inputRowWidget);
-  inputWidget_->setPlaceholderText("Message Agent...");
+  inputWidget_->setPlaceholderText(tr("Follow up..."));
 
-  sendButton_ = new QPushButton("Send", inputRowWidget);
+  stopButton_ = new QPushButton(inputRowWidget);
+  stopButton_->setCursor(Qt::PointingHandCursor);
+  stopButton_->setVisible(false);
+  stopButton_->setEnabled(false);
+  stopButton_->setFlat(true);
+  stopButton_->setIconSize(QSize(22, 22));
+  stopButton_->setToolTip(tr("Stop response"));
+  stopButton_->setMinimumSize(44, 44);
+  stopButton_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+  sendButton_ = new QPushButton(inputRowWidget);
   sendButton_->setCursor(Qt::PointingHandCursor);
   sendButton_->setEnabled(false);  // Disabled until text is entered
+  sendButton_->setFlat(true);
+  sendButton_->setIconSize(QSize(22, 22));
+  sendButton_->setToolTip(tr("Send message"));
+  sendButton_->setMinimumSize(44, 44);
+  sendButton_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
   inputRowLayout->addWidget(inputWidget_, 1);
+  inputRowLayout->addWidget(stopButton_);
   inputRowLayout->addWidget(sendButton_);
 
-  inputLayout->addWidget(inputRowWidget);
-
-  // Regenerate button (hidden by default)
-  regenerateButton_ = new QPushButton("↻ Regenerate", inputFrame_);
-  regenerateButton_->setCursor(Qt::PointingHandCursor);
-  regenerateButton_->hide();
-  inputLayout->addWidget(regenerateButton_);
-
-  // Keyboard shortcut hint (shown when input is focused)
-  keyboardHintLabel_ = new QLabel("Press Enter to send • Shift+Enter for new line", inputFrame_);
-  keyboardHintLabel_->setAlignment(Qt::AlignRight);
-  keyboardHintLabel_->setStyleSheet(
-      "color: #9AA0A6; font-size: 12px; padding: 4px 0; font-weight: 400;");
-  keyboardHintLabel_->hide();  // Hidden by default, shown on focus
-  inputLayout->addWidget(keyboardHintLabel_);
+  cardLayout->addWidget(inputRowWidget);
+  inputLayout->addWidget(inputCard_);
 
   mainLayout_->addWidget(inputFrame_);
 
@@ -121,36 +200,139 @@ void AgentPanel::setupUI() {
 }
 
 void AgentPanel::setupStyles() {
-  // Force light theme colors globally for the panel
-  // This overrides any dark theme that might be applied by the system
-  // NOTE: We don't set color on all children (*) to avoid conflicts with ChatBubble HTML rendering
-  setStyleSheet(R"(
-    AgentPanel {
-      background-color: #FFFFFF;
-      border: none;
-    }
-  )");
+  palette_ = buildPalette(detectDarkMode());
+  applyPalette();
+  updateActionButtons();
+}
 
-  // Scroll area styling - Fix scrollbar issues
-  scrollArea_->setStyleSheet(R"(
+AgentPanelPalette AgentPanel::buildPalette(bool darkMode) const {
+  AgentPanelPalette palette;
+  palette.dark = darkMode;
+
+  const QPalette systemPalette = QApplication::palette();
+  QColor window = systemPalette.color(QPalette::Window);
+  QColor base = systemPalette.color(QPalette::Base);
+  QColor text = systemPalette.color(QPalette::WindowText);
+  QColor placeholder = systemPalette.color(QPalette::PlaceholderText);
+  QColor highlight = systemPalette.color(QPalette::Highlight);
+  QColor highlightedText = systemPalette.color(QPalette::HighlightedText);
+
+  if (!highlight.isValid() || highlight.alpha() == 0) {
+    highlight = darkMode ? QColor("#3B82F6") : QColor("#2563EB");
+  }
+  if (!highlightedText.isValid() || highlightedText.alpha() == 0) {
+    highlightedText = darkMode ? QColor("#0F172A") : QColor("#FFFFFF");
+  }
+  if (!placeholder.isValid() || placeholder == text) {
+    placeholder = darkMode ? lighten(text, 180) : darken(text, 130);
+  }
+
+  palette.panelBackground = window;
+  palette.panelBorder = darkMode ? lighten(window, 130) : darken(window, 110);
+  palette.messageAreaBackground = window;
+  palette.keyboardHintText = placeholder;
+  palette.thinkingBackground = darkMode ? darken(window, 120) : lighten(window, 108);
+  palette.thinkingText = darkMode ? lighten(text, 140) : darken(text, 120);
+  palette.secondaryText = palette.keyboardHintText;
+  palette.accent = highlight;
+
+  palette.scrollbar.track = darkMode ? darken(window, 130) : lighten(window, 115);
+  palette.scrollbar.thumb = darkMode ? darken(highlight, 130) : darken(highlight, 110);
+  palette.scrollbar.thumbHover = darkMode ? darken(highlight, 110) : darken(highlight, 130);
+
+  BubblePalette userBubble;
+  userBubble.background = highlight;
+  userBubble.text = highlightedText;
+  userBubble.label = highlightedText;
+  QColor userCodeBg = highlight;
+  userCodeBg.setAlphaF(darkMode ? 0.25 : 0.18);
+  userBubble.codeBackground = userCodeBg;
+  userBubble.codeText = highlightedText;
+  palette.userBubble = userBubble;
+
+  BubblePalette assistantBubble;
+  assistantBubble.background = darkMode ? darken(window, 130) : lighten(window, 112);
+  assistantBubble.text = darkMode ? lighten(text, 150) : text;
+  assistantBubble.label = darkMode ? lighten(text, 130) : darken(text, 120);
+  QColor assistantCodeBg = darkMode ? darken(window, 120) : lighten(window, 120);
+  assistantBubble.codeBackground = assistantCodeBg;
+  assistantBubble.codeText = assistantBubble.text;
+  palette.assistantBubble = assistantBubble;
+
+  QColor inputBackground = darkMode ? darken(window, 140) : lighten(base, 108);
+  palette.input = {inputBackground,
+                   darkMode ? darken(window, 110) : darken(inputBackground, 110),
+                   highlight,
+                   darkMode ? lighten(text, 150) : text,
+                   placeholder,
+                   highlight};
+
+  palette.sendButton = {highlight,
+                        darken(highlight, 110),
+                        darken(highlight, 130),
+                        darkMode ? darken(window, 120) : lighten(window, 120),
+                        highlightedText,
+                        darkMode ? lighten(window, 170) : darken(window, 150)};
+
+  QColor stopBackground = darkMode ? darken(window, 120) : lighten(window, 114);
+  palette.stopButton = {stopBackground,
+                        darken(stopBackground, 110),
+                        darken(stopBackground, 125),
+                        darkMode ? darken(window, 110) : lighten(window, 125),
+                        darkMode ? lighten(text, 160) : darken(text, 110),
+                        darkMode ? lighten(window, 180) : darken(window, 140)};
+
+  palette.chip = {darkMode ? darken(window, 130) : lighten(window, 120),
+                  darkMode ? lighten(text, 160) : darken(text, 110),
+                  darkMode ? darken(window, 110) : lighten(window, 130)};
+
+  return palette;
+}
+
+bool AgentPanel::detectDarkMode() const {
+  const QPalette systemPalette = QApplication::palette();
+  const QColor windowColor = systemPalette.color(QPalette::Window);
+  const QColor textColor = systemPalette.color(QPalette::WindowText);
+  return windowColor.lightness() < textColor.lightness();
+}
+
+void AgentPanel::applyPalette() {
+  setAutoFillBackground(true);
+  setStyleSheet(QStringLiteral("AgentPanel { background-color: %1; border-left: 1px solid %2; }")
+                    .arg(colorToCss(palette_.panelBackground), colorToCss(palette_.panelBorder)));
+
+  applyPaletteToScrollArea();
+  applyPaletteToInput();
+  applyPaletteToButtons();
+  applyPaletteToMessages();
+  applyPaletteToThinkingIndicator();
+  refreshSendStopIcons();
+}
+
+void AgentPanel::applyPaletteToScrollArea() {
+  messagesContainer_->setStyleSheet(
+      QStringLiteral("QWidget { background-color: %1; }")
+          .arg(colorToCss(palette_.messageAreaBackground)));
+
+  scrollArea_->setStyleSheet(QStringLiteral(R"(
     QScrollArea {
       border: none;
-      background-color: #FFFFFF;
+      background-color: %1;
     }
     QScrollBar:vertical {
-      background: #F9FAFB;
+      background: %2;
       width: 12px;
       border: none;
       margin: 0px;
     }
     QScrollBar::handle:vertical {
-      background: #D1D5DB;
+      background: %3;
       border-radius: 6px;
-      min-height: 30px;
+      min-height: 40px;
       margin: 2px;
     }
     QScrollBar::handle:vertical:hover {
-      background: #9CA3AF;
+      background: %4;
     }
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
       height: 0px;
@@ -159,77 +341,112 @@ void AgentPanel::setupStyles() {
     QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
       background: none;
     }
-  )");
-
-  // Input area styling - Clean modern footer with subtle separator
-  inputFrame_->setStyleSheet(R"(
-    QFrame {
-      background-color: #FFFFFF;
-      border: none;
-      border-top: 1px solid #F0F0F0;
-      padding: 0px;
-    }
-  )");
-
-  // Send button styling - Modern with better visual feedback and polish
-  sendButton_->setStyleSheet(R"(
-    QPushButton {
-      background-color: #4285F4;
-      color: white;
-      border: none;
-      border-radius: 10px;
-      padding: 10px 20px;
-      font-weight: 600;
-      font-size: 14px;
-      min-width: 70px;
-    }
-    QPushButton:hover:enabled {
-      background-color: #3367D6;
-    }
-    QPushButton:pressed:enabled {
-      background-color: #2B5DBA;
-      transform: scale(0.98);
-    }
-    QPushButton:disabled {
-      background-color: #E8EAED;
-      color: #9AA0A6;
-    }
-  )");
-
-  // Regenerate button styling - Modern clean design with better visual hierarchy
-  regenerateButton_->setStyleSheet(R"(
-    QPushButton {
-      background-color: #F8F9FA;
-      border: 1px solid #E8EAED;
-      border-radius: 10px;
-      padding: 10px 18px;
-      color: #5F6368;
-      font-size: 13px;
-      font-weight: 500;
-    }
-    QPushButton:hover {
-      background-color: #F1F3F4;
-      border-color: #DADCE0;
-      color: #202124;
-    }
-    QPushButton:pressed {
-      background-color: #E8EAED;
-      border-color: #DADCE0;
-    }
-  )");
+  )")
+                             .arg(colorToCss(palette_.messageAreaBackground),
+                                  colorToCss(palette_.scrollbar.track),
+                                  colorToCss(palette_.scrollbar.thumb),
+                                  colorToCss(palette_.scrollbar.thumbHover)));
 }
 
+void AgentPanel::applyPaletteToInput() {
+  inputFrame_->setStyleSheet(
+      QStringLiteral("QFrame { background-color: %1; border: none; }")
+          .arg(colorToCss(palette_.panelBackground)));
+  inputCard_->setStyleSheet(
+      QStringLiteral("QFrame { background-color: %1; border-radius: 0px; border: none; }")
+          .arg(colorToCss(palette_.composerBackground)));
+
+  if (inputShadow_) {
+    inputShadow_->setColor(palette_.composerShadow);
+    inputShadow_->setBlurRadius(palette_.dark ? 18 : 22);
+    inputShadow_->setOffset(0, palette_.dark ? 3 : 4);
+  }
+
+  inputWidget_->ApplyTheme(palette_);
+}
+
+void AgentPanel::applyPaletteToButtons() {
+  auto iconButtonStyle = [](const IconButtonPalette& colors) {
+    return QStringLiteral(R"(
+      QPushButton {
+        background-color: %1;
+        border: none;
+        border-radius: 20px;
+        padding: 0;
+      }
+      QPushButton:hover:enabled {
+        background-color: %2;
+      }
+      QPushButton:pressed:enabled {
+        background-color: %3;
+      }
+      QPushButton:disabled {
+        background-color: %4;
+      }
+    )")
+        .arg(colorToCss(colors.background),
+             colorToCss(colors.backgroundHover),
+             colorToCss(colors.backgroundPressed),
+             colorToCss(colors.backgroundDisabled));
+  };
+
+  sendButton_->setStyleSheet(iconButtonStyle(palette_.sendButton));
+  stopButton_->setStyleSheet(iconButtonStyle(palette_.stopButton));
+}
+
+void AgentPanel::applyPaletteToMessages() {
+  for (auto* bubble : messageBubbles_) {
+    if (bubble) {
+      bubble->ApplyTheme(palette_);
+    }
+  }
+}
+
+void AgentPanel::applyPaletteToThinkingIndicator() {
+  thinkingIndicator_->ApplyTheme(palette_);
+}
+
+void AgentPanel::refreshSendStopIcons() {
+  const qreal devicePixelRatio = devicePixelRatioF();
+
+  const QColor sendColor =
+      sendButton_->isEnabled() ? palette_.sendButton.icon : palette_.sendButton.iconDisabled;
+  sendButton_->setIcon(createSendIcon(sendColor, devicePixelRatio));
+
+  const QColor stopColor =
+      stopButton_->isEnabled() ? palette_.stopButton.icon : palette_.stopButton.iconDisabled;
+  stopButton_->setIcon(createStopIcon(stopColor, devicePixelRatio));
+}
+
+void AgentPanel::updateActionButtons() {
+  bool streaming = waiting_for_response_;
+  bool hasText = !inputWidget_->toPlainText().trimmed().isEmpty();
+
+  sendButton_->setVisible(!streaming);
+  sendButton_->setEnabled(!streaming && hasText);
+
+  stopButton_->setVisible(streaming);
+  stopButton_->setEnabled(streaming);
+
+  refreshSendStopIcons();
+}
+
+void AgentPanel::changeEvent(QEvent* event) {
+  if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange) {
+    palette_ = buildPalette(detectDarkMode());
+    applyPalette();
+    updateActionButtons();
+  }
+
+  QWidget::changeEvent(event);
+}
 void AgentPanel::connectSignals() {
   connect(sendButton_, &QPushButton::clicked, this, &AgentPanel::onSendClicked);
-
-  connect(regenerateButton_, &QPushButton::clicked, this, &AgentPanel::onRegenerateClicked);
+  connect(stopButton_, &QPushButton::clicked, this, &AgentPanel::onStopClicked);
 
   connect(inputWidget_, &ChatInputWidget::sendRequested, this, &AgentPanel::onSendClicked);
 
   connect(inputWidget_, &QTextEdit::textChanged, this, &AgentPanel::onInputTextChanged);
-
-  // Show/hide keyboard hint based on input focus
-  connect(inputWidget_, &ChatInputWidget::focusChanged, keyboardHintLabel_, &QLabel::setVisible);
 }
 
 void AgentPanel::SetNodeRuntime(runtime::NodeRuntime* runtime) {
@@ -246,13 +463,15 @@ void AgentPanel::SendMessage(const QString& message) {
     return;
   }
 
+  userCanceledResponse_ = false;
+
   // Add user message
   addMessage("user", message, true);
 
   // Show thinking indicator
   showThinkingIndicator(true);
   waiting_for_response_ = true;
-  regenerateButton_->hide();
+  updateActionButtons();
 
   // Check if node runtime is available
   if (!node_runtime_ || !node_runtime_->IsReady()) {
@@ -263,6 +482,7 @@ void AgentPanel::SendMessage(const QString& message) {
                "running.",
                true);
     waiting_for_response_ = false;
+    updateActionButtons();
     return;
   }
 
@@ -330,7 +550,7 @@ void AgentPanel::addMessage(const QString& role, const QString& message, bool an
   ChatBubble::Role bubbleRole =
       (role == "user") ? ChatBubble::Role::User : ChatBubble::Role::Assistant;
 
-  auto* bubble = new ChatBubble(bubbleRole, message, messagesContainer_);
+  auto* bubble = new ChatBubble(bubbleRole, message, palette_, messagesContainer_);
 
   // Insert before the stretch spacer
   int insertIndex = messagesLayout_->count() - 1;
@@ -340,8 +560,7 @@ void AgentPanel::addMessage(const QString& role, const QString& message, bool an
     ChatBubble* lastBubble = messageBubbles_.back();
     bool sameRole = (lastBubble->GetRole() == bubbleRole);
 
-    // Very tight spacing - minimal gaps between messages
-    int spacing = sameRole ? 2 : 4;
+    int spacing = sameRole ? 4 : 14;
     messagesLayout_->insertSpacing(insertIndex, spacing);
     insertIndex++;
   }
@@ -463,9 +682,9 @@ void AgentPanel::ClearHistory() {
   }
   messageBubbles_.clear();
 
-  regenerateButton_->hide();
-
   qDebug() << "[AgentPanel] Chat history cleared";
+
+  updateActionButtons();
 }
 
 void AgentPanel::ToggleVisibility() {
@@ -486,32 +705,35 @@ void AgentPanel::onSendClicked() {
   }
 }
 
-void AgentPanel::onInputTextChanged() {
-  bool hasText = !inputWidget_->toPlainText().trimmed().isEmpty();
-  sendButton_->setEnabled(hasText);
+void AgentPanel::onStopClicked() {
+  if (!waiting_for_response_) {
+    return;
+  }
+
+  qDebug() << "[AgentPanel] Stop requested by user";
+
+  userCanceledResponse_ = true;
+  waiting_for_response_ = false;
+  showThinkingIndicator(false);
+
+  if (streaming_socket_) {
+    disconnect(streaming_socket_, nullptr, this, nullptr);
+    streaming_socket_->abort();
+    streaming_socket_->deleteLater();
+    streaming_socket_ = nullptr;
+  }
+
+  if (accumulated_text_.isEmpty()) {
+    replaceLastAssistantMessage("Response stopped.");
+  } else {
+    replaceLastAssistantMessage(accumulated_text_);
+  }
+
+  updateActionButtons();
 }
 
-void AgentPanel::onRegenerateClicked() {
-  // Find the last user message and resend it
-  for (auto it = messageBubbles_.rbegin(); it != messageBubbles_.rend(); ++it) {
-    if ((*it)->GetRole() == ChatBubble::Role::User) {
-      QString lastUserMessage = (*it)->GetMessage();
-
-      // Remove the last assistant message if it exists
-      for (auto it2 = messageBubbles_.rbegin(); it2 != messageBubbles_.rend(); ++it2) {
-        if ((*it2)->GetRole() == ChatBubble::Role::Assistant) {
-          messagesLayout_->removeWidget(*it2);
-          (*it2)->deleteLater();
-          messageBubbles_.erase(std::next(it2).base());
-          break;
-        }
-      }
-
-      // Resend the message
-      SendMessage(lastUserMessage);
-      return;
-    }
-  }
+void AgentPanel::onInputTextChanged() {
+  updateActionButtons();
 }
 
 // ============================================================================
@@ -587,11 +809,11 @@ void AgentPanel::onSocketError(QLocalSocket::LocalSocketError error) {
 
   showThinkingIndicator(false);
   waiting_for_response_ = false;
+  userCanceledResponse_ = false;
+  updateActionButtons();
 
   replaceLastAssistantMessage(
       QString("❌ **Error:** Failed to communicate with Agent: %1").arg(error_msg));
-
-  regenerateButton_->show();
 
   // Clean up socket
   if (streaming_socket_) {
@@ -604,16 +826,17 @@ void AgentPanel::onSocketDisconnected() {
   qDebug() << "[AgentPanel] Socket disconnected";
 
   waiting_for_response_ = false;
+  updateActionButtons();
 
-  // If we have no accumulated text, show error
-  if (accumulated_text_.isEmpty()) {
+  if (userCanceledResponse_ && accumulated_text_.isEmpty()) {
+    replaceLastAssistantMessage("Response stopped.");
+  } else if (accumulated_text_.isEmpty()) {
     replaceLastAssistantMessage("❌ **Error:** No response received from Agent");
   } else {
     // Ensure final text is displayed
     replaceLastAssistantMessage(accumulated_text_);
   }
-
-  regenerateButton_->show();
+  userCanceledResponse_ = false;
 
   // Clean up socket
   if (streaming_socket_) {
@@ -734,23 +957,6 @@ void ChatInputWidget::setupUI() {
   setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
-  // Styling - Modern clean design with subtle background and smooth transitions
-  setStyleSheet(R"(
-    QTextEdit {
-      background-color: #F8F9FA;
-      border: 2px solid #E8EAED;
-      border-radius: 12px;
-      padding: 12px 16px;
-      font-size: 14px;
-      color: #202124;
-    }
-    QTextEdit:focus {
-      border-color: #4285F4;
-      background-color: #FFFFFF;
-      /* Padding stays the same - no content shift */
-    }
-  )");
-
   // Set document margin to prevent text from touching edges
   document()->setDocumentMargin(2);
 
@@ -759,6 +965,58 @@ void ChatInputWidget::setupUI() {
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
   adjustHeight();
+}
+
+void ChatInputWidget::ApplyTheme(const AgentPanelPalette& palette) {
+  currentPalette_ = palette;
+  applyPalette(palette);
+}
+
+void ChatInputWidget::applyPalette(const AgentPanelPalette& palette) {
+  QColor focusBackground = palette.dark ? darken(palette.input.background, 90) : QColor("#FFFFFF");
+
+  QString style = QStringLiteral(R"(
+    QTextEdit {
+      background-color: %1;
+      border: 1px solid %2;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 14px;
+      color: %3;
+      caret-color: %6;
+    }
+    QTextEdit:focus {
+      border: 1px solid %4;
+      background-color: %5;
+      caret-color: %6;
+    }
+  )");
+  style = style.arg(colorToCss(palette.input.background),
+                    colorToCss(palette.input.border),
+                    colorToCss(palette.input.text),
+                    colorToCss(palette.input.borderFocused),
+                    colorToCss(focusBackground),
+                    colorToCss(palette.input.caret));
+  setStyleSheet(style);
+
+  QPalette widgetPalette = this->palette();
+  widgetPalette.setColor(QPalette::Base, palette.input.background);
+  widgetPalette.setColor(QPalette::Text, palette.input.text);
+  widgetPalette.setColor(QPalette::Highlight, palette.accent);
+  widgetPalette.setColor(QPalette::HighlightedText,
+                         palette.dark ? QColor("#0F172A") : QColor("#FFFFFF"));
+  widgetPalette.setColor(QPalette::PlaceholderText, palette.input.placeholder);
+  setPalette(widgetPalette);
+
+  QPalette viewportPalette = viewport()->palette();
+  viewportPalette.setColor(QPalette::Base, palette.input.background);
+  viewportPalette.setColor(QPalette::Text, palette.input.text);
+  viewport()->setPalette(viewportPalette);
+
+  document()->setDefaultStyleSheet(
+      QStringLiteral("body { color: %1; }").arg(colorToCss(palette.input.text)));
+
+  setCursorWidth(2);
 }
 
 void ChatInputWidget::keyPressEvent(QKeyEvent* event) {
@@ -822,11 +1080,13 @@ void ChatInputWidget::Clear() {
 // ChatBubble Implementation
 // ============================================================================
 
-ChatBubble::ChatBubble(Role role, const QString& message, QWidget* parent)
+ChatBubble::ChatBubble(Role role,
+                       const QString& message,
+                       const AgentPanelPalette& palette,
+                       QWidget* parent)
     : QFrame(parent), role_(role), message_(message) {
   setupUI();
-  setupStyles();
-  renderMarkdown(message);
+  ApplyTheme(palette);
 
   // Setup fade-in animation
   opacityEffect_ = new QGraphicsOpacityEffect(this);
@@ -842,94 +1102,55 @@ ChatBubble::ChatBubble(Role role, const QString& message, QWidget* parent)
 
 void ChatBubble::setupUI() {
   layout_ = new QVBoxLayout(this);
-  layout_->setContentsMargins(10, 6, 10, 6);  // Balanced padding - readable but compact
-  layout_->setSpacing(4);                     // Tight spacing between role and content
+  layout_->setContentsMargins(16, 10, 16, 10);
+  layout_->setSpacing(4);
 
-  // Role label
   roleLabel_ = new QLabel(this);
   QFont labelFont = roleLabel_->font();
-  labelFont.setPixelSize(12);  // Use pixels, not points
+  labelFont.setPixelSize(12);
   labelFont.setBold(true);
   roleLabel_->setFont(labelFont);
-  roleLabel_->setText(role_ == Role::User ? "You" : "Agent");
-
+  roleLabel_->setText(role_ == Role::User ? QObject::tr("You") : QObject::tr("Agent"));
   layout_->addWidget(roleLabel_);
 
-  // Content widget (use QTextBrowser for better HTML rendering)
   contentWidget_ = new QTextEdit(this);
   contentWidget_->setReadOnly(true);
   contentWidget_->setFrameShape(QFrame::NoFrame);
   contentWidget_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   contentWidget_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   contentWidget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-  // Don't set maximum width - let it adapt to container width
-
-  // CRITICAL FIX: Override system dark theme with explicit colors
-  // System may use dark theme (white text), but we need dark text on light bubble
-  QString textColorHex = (role_ == Role::User) ? "#1565C0" : "#202124";
-  QString bgColorHex = (role_ == Role::User) ? "#D6EAF8" : "#ECF0F1";
-
-  // Method 1: Set palette (for plain text rendering)
-  QPalette lightPalette;
-  lightPalette.setColor(QPalette::Text, QColor(textColorHex));
-  lightPalette.setColor(QPalette::Base, QColor(bgColorHex));
-  contentWidget_->setPalette(lightPalette);
-
-  // Method 2: Set default stylesheet on document (for HTML rendering)
-  // This persists even when setHtml() is called
-  QString defaultCSS =
-      QString("body { color: %1; background-color: %2; }").arg(textColorHex, bgColorHex);
-  contentWidget_->document()->setDefaultStyleSheet(defaultCSS);
-
-  // FORCE text color via widget stylesheet (nuclear option)
-  QString widgetStyleSheet = QString("QTextEdit { "
-                                     "  background: transparent; "
-                                     "  border: none; "
-                                     "  color: %1; "
-                                     "}")
-                                 .arg(textColorHex);
-  contentWidget_->setStyleSheet(widgetStyleSheet);
-
-  contentWidget_->setAutoFillBackground(false);
-
-  // Set explicit font size for consistent rendering - standard readable size
-  QFont contentFont = contentWidget_->font();
-  contentFont.setPixelSize(14);  // Use pixels, not points - matches input field
-  contentWidget_->setFont(contentFont);
-
-  // Enable word wrapping
   contentWidget_->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
   contentWidget_->setLineWrapMode(QTextEdit::WidgetWidth);
+  contentWidget_->setAutoFillBackground(false);
+
+  QFont contentFont = contentWidget_->font();
+  contentFont.setPixelSize(14);
+  contentWidget_->setFont(contentFont);
 
   layout_->addWidget(contentWidget_);
 
-  // Use Box frame with no border for clean background
-  setFrameShape(QFrame::Box);
-  setFrameShadow(QFrame::Plain);
-  setLineWidth(0);  // No border line
-
-  // Adaptive width - expand to fill container while maintaining readability
-  // Maximum width constraint removed to prevent horizontal scrolling in narrow panels
+  setFrameShape(QFrame::NoFrame);
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 }
 
-void ChatBubble::setupStyles() {
-  // Determine colors based on role
-  QString bgColorHex = (role_ == Role::User) ? "#D6EAF8" : "#ECF0F1";
-  QString labelColorHex = (role_ == Role::User) ? "#1565C0" : "#3C4043";
+void ChatBubble::ApplyTheme(const AgentPanelPalette& palette) {
+  bubblePalette_ = (role_ == Role::User) ? palette.userBubble : palette.assistantBubble;
+  applyPalette(palette);
+  renderMarkdown(message_);
+}
 
-  // Set background using palette (more reliable than stylesheet for QFrame)
-  QPalette bubblePalette = palette();
-  bubblePalette.setColor(QPalette::Window, QColor(bgColorHex));
-  setPalette(bubblePalette);
+void ChatBubble::applyPalette(const AgentPanelPalette& palette) {
   setAutoFillBackground(true);
 
-  // Use QFrame stylesheet syntax with border-radius
-  setStyleSheet(QString(R"(
+  QPalette framePalette = this->palette();
+  framePalette.setColor(QPalette::Window, bubblePalette_.background);
+  setPalette(framePalette);
+
+  setStyleSheet(QStringLiteral(R"(
     QFrame {
       background-color: %1;
       border: none;
-      border-radius: 12px;
+      border-radius: 20px;
     }
     QLabel {
       color: %2;
@@ -937,51 +1158,63 @@ void ChatBubble::setupStyles() {
       font-weight: 600;
     }
   )")
-                    .arg(bgColorHex, labelColorHex));
+                    .arg(colorToCss(bubblePalette_.background),
+                         colorToCss(bubblePalette_.label)));
+
+  QPalette textPalette = contentWidget_->palette();
+  textPalette.setColor(QPalette::Base, bubblePalette_.background);
+  textPalette.setColor(QPalette::Text, bubblePalette_.text);
+  textPalette.setColor(QPalette::Highlight, palette.accent);
+  textPalette.setColor(QPalette::HighlightedText,
+                       palette.dark ? QColor("#0F172A") : QColor("#FFFFFF"));
+  contentWidget_->setPalette(textPalette);
+
+  QString defaultCSS = QStringLiteral(
+      "body { color: %1; background-color: %2; font-size: 14px; } "
+      "code { background-color: %3; color: %4; padding: 2px 4px; border-radius: 4px; "
+      "font-family: 'Fira Code', 'JetBrains Mono', monospace; } "
+      "a { color: %5; text-decoration: none; font-weight: 600; } "
+      "a:hover { text-decoration: underline; } "
+      "strong { font-weight: 600; } "
+      "em { font-style: italic; } "
+      "ul { padding-left: 20px; margin: 12px 0; } "
+      "li { margin-bottom: 6px; }")
+                             .arg(colorToCss(bubblePalette_.text),
+                                  colorToCss(bubblePalette_.background),
+                                  colorToCss(bubblePalette_.codeBackground),
+                                  colorToCss(bubblePalette_.codeText),
+                                  colorToCss(palette.accent));
+
+  contentWidget_->document()->setDefaultStyleSheet(defaultCSS);
 }
 
 void ChatBubble::renderMarkdown(const QString& markdown) {
-  // Simple markdown rendering with proper color handling
   QString html = markdown;
 
-  // Escape HTML special characters first
   html.replace("&", "&amp;");
   html.replace("<", "&lt;");
   html.replace(">", "&gt;");
 
-  // Bold: **text** -> <b>text</b>
   html.replace(QRegularExpression("\\*\\*([^*]+)\\*\\*"), "<b>\\1</b>");
-
-  // Italic: *text* -> <i>text</i>
   html.replace(QRegularExpression("(?<!\\*)\\*([^*]+)\\*(?!\\*)"), "<i>\\1</i>");
+  html.replace(QRegularExpression("`([^`]+)`"), "<code>\\1</code>");
 
-  // Code: `code` -> <code>code</code>
-  html.replace(QRegularExpression("`([^`]+)`"),
-               "<code style='background-color: rgba(0,0,0,0.05); padding: 2px 4px; "
-               "border-radius: 3px; font-family: monospace;'>\\1</code>");
-
-  // Preserve newlines
   html.replace("\n", "<br>");
 
-  // Modern HTML wrapper with better typography - colors come from widget stylesheet and document
-  // default CSS
-  QString wrappedHtml = QString("<div style='line-height: 1.7; word-wrap: break-word; "
-                                "overflow-wrap: break-word;'>%1</div>")
-                            .arg(html);
-
+  QString wrappedHtml = QStringLiteral(
+      "<div style='line-height:1.7; word-wrap:break-word; white-space:pre-wrap;'>%1</div>")
+                               .arg(html);
   contentWidget_->setHtml(wrappedHtml);
 
-  // Adjust height to fit content with dynamic width calculation
-  // Get the actual available width from the widget, not a hardcoded value
-  int padding = 24 * 2;                               // Left + right padding from layout
-  int availableWidth = qMax(200, width() - padding);  // Use actual bubble width, min 200px
-
-  // Set text width to available width to ensure proper wrapping
+  int availableWidth = contentWidget_->viewport()->width();
+  if (availableWidth <= 0) {
+    availableWidth = qMax(220, width() - 36);
+  }
   contentWidget_->document()->setTextWidth(availableWidth);
 
   QSizeF docSize = contentWidget_->document()->size();
-  int idealHeight = static_cast<int>(docSize.height()) + 20;
-  idealHeight = qMax(idealHeight, 40);
+  int idealHeight = static_cast<int>(docSize.height()) + 12;
+  idealHeight = qBound(36, idealHeight, 600);
 
   contentWidget_->setMinimumHeight(idealHeight);
   contentWidget_->setMaximumHeight(idealHeight);
@@ -992,7 +1225,7 @@ void ChatBubble::renderMarkdown(const QString& markdown) {
 
 void ChatBubble::SetMessage(const QString& message) {
   message_ = message;
-  renderMarkdown(message);
+  renderMarkdown(message_);
 }
 
 QString ChatBubble::GetMessage() const {
@@ -1008,27 +1241,17 @@ void ChatBubble::AnimateIn() {
 // ============================================================================
 
 ThinkingIndicator::ThinkingIndicator(QWidget* parent)
-    : QWidget(parent), animationFrame_(0), text_("Agent is thinking") {
+    : QWidget(parent),
+      animationFrame_(0),
+      text_("Agent is thinking"),
+      textColor_(QColor("#5F6368")),
+      backgroundColor_(QColor("#F8F9FA")) {
   animationTimer_ = new QTimer(this);
   connect(animationTimer_, &QTimer::timeout, this, &ThinkingIndicator::updateAnimation);
 
   setFixedHeight(36);  // Compact height to match bubble sizing
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-
-  // Set background using palette for reliability
-  QPalette pal = palette();
-  pal.setColor(QPalette::Window, QColor("#F8F9FA"));
-  setPalette(pal);
-  setAutoFillBackground(true);
-
-  // Styling - Modern, clean, subtle background
-  setStyleSheet(R"(
-    QWidget {
-      background-color: #F8F9FA;
-      border: none;
-      border-radius: 12px;
-    }
-  )");
+  setAttribute(Qt::WA_TranslucentBackground, true);
 }
 
 void ThinkingIndicator::Start() {
@@ -1039,6 +1262,12 @@ void ThinkingIndicator::Start() {
 
 void ThinkingIndicator::Stop() {
   animationTimer_->stop();
+}
+
+void ThinkingIndicator::ApplyTheme(const AgentPanelPalette& palette) {
+  backgroundColor_ = palette.thinkingBackground;
+  textColor_ = palette.thinkingText;
+  update();
 }
 
 void ThinkingIndicator::updateAnimation() {
@@ -1054,6 +1283,11 @@ void ThinkingIndicator::paintEvent(QPaintEvent* event) {
   painter.setRenderHint(QPainter::Antialiasing);
   painter.setRenderHint(QPainter::TextAntialiasing);
 
+  QRectF bubbleRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+  painter.setBrush(backgroundColor_);
+  painter.setPen(Qt::NoPen);
+  painter.drawRoundedRect(bubbleRect, 18, 18);
+
   // Draw text with animated dots
   QString dots;
   for (int i = 0; i <= animationFrame_; ++i) {
@@ -1067,7 +1301,7 @@ void ThinkingIndicator::paintEvent(QPaintEvent* event) {
   font.setPixelSize(14);  // Use pixels, not points
   font.setWeight(QFont::Medium);
   painter.setFont(font);
-  painter.setPen(QColor("#5F6368"));
+  painter.setPen(textColor_);
 
   // Left-align with padding matching bubble style
   QRect textRect = rect().adjusted(10, 0, -10, 0);

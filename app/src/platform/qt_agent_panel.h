@@ -3,8 +3,10 @@
 
 #include <deque>
 #include <memory>
+#include <QColor>
 #include <QFrame>
 #include <QGraphicsOpacityEffect>
+#include <QGraphicsDropShadowEffect>
 #include <QLabel>
 #include <QLineEdit>
 #include <QLocalSocket>
@@ -16,12 +18,75 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+class QEvent;
+
 namespace athena {
 namespace runtime {
 class NodeRuntime;
 }
 
 namespace platform {
+
+struct ScrollbarPalette {
+  QColor track;
+  QColor thumb;
+  QColor thumbHover;
+};
+
+struct BubblePalette {
+  QColor background;
+  QColor text;
+  QColor label;
+  QColor codeBackground;
+  QColor codeText;
+};
+
+struct InputPalette {
+  QColor background;
+  QColor border;
+  QColor borderFocused;
+  QColor text;
+  QColor placeholder;
+  QColor caret;
+};
+
+struct IconButtonPalette {
+  QColor background;
+  QColor backgroundHover;
+  QColor backgroundPressed;
+  QColor backgroundDisabled;
+  QColor icon;
+  QColor iconDisabled;
+};
+
+struct ChipPalette {
+  QColor background;
+  QColor text;
+  QColor border;
+};
+
+struct AgentPanelPalette {
+  bool dark = false;
+  QColor panelBackground;
+  QColor panelBorder;
+  QColor messageAreaBackground;
+  QColor composerBackground;
+  QColor composerBorder;
+  QColor composerShadow;
+  QColor keyboardHintText;
+  QColor thinkingBackground;
+  QColor thinkingText;
+  QColor secondaryText;
+  QColor accent;
+
+  ScrollbarPalette scrollbar;
+  BubblePalette userBubble;
+  BubblePalette assistantBubble;
+  InputPalette input;
+  IconButtonPalette sendButton;
+  IconButtonPalette stopButton;
+  ChipPalette chip;
+};
 
 // Forward declarations
 class QtMainWindow;
@@ -41,7 +106,6 @@ class ThinkingIndicator;
  * - Message history management
  * - Resizable input area
  * - Copy button for messages
- * - Regenerate button for last response
  *
  * Design inspired by modern chat interfaces:
  * - Clean, minimalist design
@@ -93,18 +157,21 @@ class AgentPanel : public QWidget {
   /**
    * Emitted when panel visibility changes.
    */
-  void visibilityChanged(bool visible);
+ void visibilityChanged(bool visible);
 
  private slots:
   void onSendClicked();
+  void onStopClicked();
   void onInputTextChanged();
-  void onRegenerateClicked();
 
   // Streaming socket handlers
   void onSocketConnected();
   void onSocketReadyRead();
   void onSocketError(QLocalSocket::LocalSocketError error);
   void onSocketDisconnected();
+
+ protected:
+  void changeEvent(QEvent* event) override;
 
  private:
   // ============================================================================
@@ -113,6 +180,16 @@ class AgentPanel : public QWidget {
 
   void setupUI();
   void setupStyles();
+  void applyPalette();
+  void refreshSendStopIcons();
+  void applyPaletteToInput();
+  void applyPaletteToScrollArea();
+  void applyPaletteToButtons();
+  void applyPaletteToMessages();
+  void applyPaletteToThinkingIndicator();
+  void updateActionButtons();
+  AgentPanelPalette buildPalette(bool darkMode) const;
+  bool detectDarkMode() const;
   void connectSignals();
 
   // ============================================================================
@@ -174,10 +251,11 @@ class AgentPanel : public QWidget {
 
   // Footer / Input area
   QFrame* inputFrame_;
+  QFrame* inputCard_;
   ChatInputWidget* inputWidget_;
   QPushButton* sendButton_;
-  QPushButton* regenerateButton_;
-  QLabel* keyboardHintLabel_;
+  QPushButton* stopButton_;
+  QGraphicsDropShadowEffect* inputShadow_;
 
   // Thinking indicator
   ThinkingIndicator* thinkingIndicator_;
@@ -185,6 +263,7 @@ class AgentPanel : public QWidget {
   // Message tracking
   std::deque<ChatBubble*> messageBubbles_;
   bool waiting_for_response_;
+  bool userCanceledResponse_;
 
   // Streaming HTTP connection
   QLocalSocket* streaming_socket_;
@@ -194,6 +273,9 @@ class AgentPanel : public QWidget {
 
   // Session management
   QString current_session_id_;  // Current agent session ID for continuity
+
+  // Theming
+  AgentPanelPalette palette_;
 };
 
 /**
@@ -221,6 +303,11 @@ class ChatInputWidget : public QTextEdit {
    */
   void Clear();
 
+  /**
+   * Apply themed styling.
+   */
+  void ApplyTheme(const AgentPanelPalette& palette);
+
  signals:
   /**
    * Emitted when user presses Enter (without Shift).
@@ -243,9 +330,11 @@ class ChatInputWidget : public QTextEdit {
  private:
   void setupUI();
   int calculateIdealHeight();
+  void applyPalette(const AgentPanelPalette& palette);
 
   static constexpr int MIN_HEIGHT = 40;
   static constexpr int MAX_HEIGHT = 120;
+  AgentPanelPalette currentPalette_;
 };
 
 /**
@@ -264,7 +353,10 @@ class ChatBubble : public QFrame {
  public:
   enum class Role { User, Assistant };
 
-  explicit ChatBubble(Role role, const QString& message, QWidget* parent = nullptr);
+  explicit ChatBubble(Role role,
+                      const QString& message,
+                      const AgentPanelPalette& palette,
+                      QWidget* parent = nullptr);
 
   /**
    * Update the message content.
@@ -287,13 +379,19 @@ class ChatBubble : public QFrame {
    */
   void AnimateIn();
 
+  /**
+   * Apply theme colors to the bubble.
+   */
+ void ApplyTheme(const AgentPanelPalette& palette);
+
  private:
   void setupUI();
-  void setupStyles();
   void renderMarkdown(const QString& markdown);
+  void applyPalette(const AgentPanelPalette& palette);
 
   Role role_;
   QString message_;
+  BubblePalette bubblePalette_;
 
   // UI Components
   QVBoxLayout* layout_;
@@ -326,6 +424,11 @@ class ThinkingIndicator : public QWidget {
    */
   void Stop();
 
+  /**
+   * Apply theme styling.
+   */
+  void ApplyTheme(const AgentPanelPalette& palette);
+
  protected:
   void paintEvent(QPaintEvent* event) override;
 
@@ -337,6 +440,8 @@ class ThinkingIndicator : public QWidget {
   int animationFrame_;
   QString text_;
   static constexpr int ANIMATION_FRAMES = 4;  // ".", "..", "...", "...."
+  QColor textColor_;
+  QColor backgroundColor_;
 };
 
 }  // namespace platform
