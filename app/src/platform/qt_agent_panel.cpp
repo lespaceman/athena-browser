@@ -122,7 +122,7 @@ void AgentPanel::setupUI() {
 
   messagesContainer_ = new QWidget();
   messagesLayout_ = new QVBoxLayout(messagesContainer_);
-  messagesLayout_->setContentsMargins(24, 12, 24, 16);
+  messagesLayout_->setContentsMargins(12, 12, 12, 16);
   messagesLayout_->setSpacing(10);  // Spacing handled dynamically per message
   messagesLayout_->setAlignment(Qt::AlignTop | Qt::AlignLeft);  // Align bubbles to left
   messagesLayout_->addStretch();                                // Push messages to top
@@ -266,6 +266,11 @@ AgentPanelPalette AgentPanel::buildPalette(bool darkMode) const {
                    darkMode ? lighten(text, 150) : text,
                    placeholder,
                    highlight};
+
+  // Composer (input card) background should be slightly darker than input field
+  palette.composerBackground = darkMode ? darken(inputBackground, 105) : darken(inputBackground, 103);
+  palette.composerBorder = darkMode ? darken(window, 110) : lighten(window, 110);
+  palette.composerShadow = QColor(0, 0, 0, darkMode ? 32 : 40);
 
   palette.sendButton = {highlight,
                         darken(highlight, 110),
@@ -600,36 +605,17 @@ void AgentPanel::replaceLastAssistantMessage(const QString& message) {
 }
 
 void AgentPanel::showThinkingIndicator(bool show) {
-  if (show) {
-    // Add thinking indicator before the stretch spacer (at the bottom)
-    int insertIndex = messagesLayout_->count() - 1;
-
-    // Add spacing before thinking indicator if there are messages
-    if (!messageBubbles_.empty()) {
-      messagesLayout_->insertSpacing(insertIndex, 4);  // Minimal spacing before thinking indicator
-      insertIndex++;
-    }
-
-    messagesLayout_->insertWidget(insertIndex, thinkingIndicator_);
-    thinkingIndicator_->show();
-    thinkingIndicator_->Start();
-  } else {
-    thinkingIndicator_->Stop();
-    thinkingIndicator_->hide();
-
-    // Remove thinking indicator from layout
-    messagesLayout_->removeWidget(thinkingIndicator_);
-
-    // Remove the spacing that was added before it
-    if (messagesLayout_->count() > 1) {
-      QLayoutItem* item = messagesLayout_->itemAt(messagesLayout_->count() - 2);
-      if (item && item->spacerItem()) {
-        messagesLayout_->removeItem(item);
-        delete item;
-      }
-    }
+  if (!thinkingIndicator_) {
+    return;
   }
-  scrollToBottom(true);
+
+  // Thinking bubble is disabled; ensure the indicator stays hidden regardless of state.
+  thinkingIndicator_->Stop();
+  thinkingIndicator_->hide();
+
+  if (!show) {
+    scrollToBottom(true);
+  }
 }
 
 void AgentPanel::scrollToBottom(bool animated) {
@@ -1102,8 +1088,8 @@ ChatBubble::ChatBubble(Role role,
 
 void ChatBubble::setupUI() {
   layout_ = new QVBoxLayout(this);
-  layout_->setContentsMargins(16, 10, 16, 10);
-  layout_->setSpacing(4);
+  layout_->setContentsMargins(14, 6, 14, 6);
+  layout_->setSpacing(1);
 
   roleLabel_ = new QLabel(this);
   QFont labelFont = roleLabel_->font();
@@ -1150,7 +1136,7 @@ void ChatBubble::applyPalette(const AgentPanelPalette& palette) {
     QFrame {
       background-color: %1;
       border: none;
-      border-radius: 20px;
+      border-radius: 6px;
     }
     QLabel {
       color: %2;
@@ -1202,7 +1188,7 @@ void ChatBubble::renderMarkdown(const QString& markdown) {
   html.replace("\n", "<br>");
 
   QString wrappedHtml = QStringLiteral(
-      "<div style='line-height:1.7; word-wrap:break-word; white-space:pre-wrap;'>%1</div>")
+      "<div style='line-height:1.4; word-wrap:break-word; white-space:pre-wrap;'>%1</div>")
                                .arg(html);
   contentWidget_->setHtml(wrappedHtml);
 
@@ -1213,8 +1199,8 @@ void ChatBubble::renderMarkdown(const QString& markdown) {
   contentWidget_->document()->setTextWidth(availableWidth);
 
   QSizeF docSize = contentWidget_->document()->size();
-  int idealHeight = static_cast<int>(docSize.height()) + 12;
-  idealHeight = qBound(36, idealHeight, 600);
+  int idealHeight = static_cast<int>(docSize.height());
+  idealHeight = qMin(idealHeight, 600);  // Only enforce maximum, no minimum
 
   contentWidget_->setMinimumHeight(idealHeight);
   contentWidget_->setMaximumHeight(idealHeight);
@@ -1286,7 +1272,7 @@ void ThinkingIndicator::paintEvent(QPaintEvent* event) {
   QRectF bubbleRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
   painter.setBrush(backgroundColor_);
   painter.setPen(Qt::NoPen);
-  painter.drawRoundedRect(bubbleRect, 18, 18);
+  painter.drawRoundedRect(bubbleRect, 6, 6);
 
   // Draw text with animated dots
   QString dots;
