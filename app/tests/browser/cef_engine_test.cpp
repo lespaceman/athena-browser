@@ -296,6 +296,7 @@ TEST_F(CefEngineTest, BrowserConfigDefaults) {
   EXPECT_FLOAT_EQ(config.device_scale_factor, 1.0f);
   EXPECT_EQ(config.gl_renderer, nullptr);
   EXPECT_EQ(config.native_window_handle, nullptr);
+  EXPECT_FALSE(config.isolate_cookies);  // Default: shared cookies/cache
 }
 
 TEST_F(CefEngineTest, EngineConfigCustomValues) {
@@ -324,6 +325,7 @@ TEST_F(CefEngineTest, BrowserConfigCustomValues) {
   config.device_scale_factor = 2.5f;
   config.gl_renderer = &dummy_renderer;
   config.native_window_handle = dummy_window;
+  config.isolate_cookies = true;
 
   EXPECT_EQ(config.url, "https://example.com");
   EXPECT_EQ(config.width, 3840);
@@ -331,6 +333,21 @@ TEST_F(CefEngineTest, BrowserConfigCustomValues) {
   EXPECT_FLOAT_EQ(config.device_scale_factor, 2.5f);
   EXPECT_EQ(config.gl_renderer, &dummy_renderer);
   EXPECT_EQ(config.native_window_handle, dummy_window);
+  EXPECT_TRUE(config.isolate_cookies);
+}
+
+TEST_F(CefEngineTest, BrowserConfigCookieIsolationEnabled) {
+  BrowserConfig config;
+  config.isolate_cookies = true;
+
+  EXPECT_TRUE(config.isolate_cookies);
+}
+
+TEST_F(CefEngineTest, BrowserConfigCookieIsolationDisabled) {
+  BrowserConfig config;
+  config.isolate_cookies = false;
+
+  EXPECT_FALSE(config.isolate_cookies);
 }
 
 // ============================================================================

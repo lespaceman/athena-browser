@@ -94,6 +94,13 @@ add_athena_test(cef_engine_test
   ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
 )
 
+add_athena_test(thread_safety_test
+  browser/thread_safety_test.cpp
+)
+
+# Enable Qt MOC for thread_safety_test (required for Q_OBJECT)
+set_target_properties(thread_safety_test PROPERTIES AUTOMOC ON)
+
 # Platform tests (Phase 4)
 # TODO: Add Qt-specific platform tests
 

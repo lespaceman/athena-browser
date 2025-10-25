@@ -401,12 +401,18 @@ Use per-tab RequestContext with shared disk storage:
 ```cpp
 BrowserConfig config;
 config.url = "https://example.com";
-config.isolate_cookies = true;  // Creates new in-memory context
+config.isolate_cookies = true;  // Creates isolated context (shares disk storage)
 auto result = engine->CreateBrowser(config);
 ```
 
+**How it works:**
+- Creates a new `CefRequestContext` that inherits from the global context
+- Cookies and cache are isolated per-tab
+- Disk storage is shared (avoids duplicate cache files)
+- Each tab gets independent session storage
+
 **Trade-offs:**
-- Isolated cookies: Better privacy, slower first load
+- Isolated cookies: Better privacy, isolated sessions, slight memory overhead
 - Shared cookies: Faster, but sessions leak across tabs
 
 ---
