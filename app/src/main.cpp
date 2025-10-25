@@ -13,7 +13,7 @@
 #include "utils/logging.h"
 
 // Platform-specific includes
-#include "platform/qt_mainwindow.h"
+#include "platform/qt_window_system.h"
 
 #include <QApplication>
 #include <QTimer>

@@ -9,6 +9,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CEF_VERSION "139.0.38+g7656fe3+chromium-139.0.7258.139" CACHE STRING "Pinned CEF version")
 include(cmake/DownloadCEF.cmake)
 
+# Disable Doxygen documentation generation (prevents warnings from CEF headers)
+set(CMAKE_DISABLE_FIND_PACKAGE_Doxygen TRUE)
+
 # Add CEF binary cmake tree if available
 if(EXISTS "${CEF_ROOT}/CMakeLists.txt")
   message(STATUS "Using CEF from ${CEF_ROOT}")

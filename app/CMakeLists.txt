@@ -19,7 +19,11 @@ set(CMAKE_AUTOUIC ON)
 
 # Define platform source files
 set(PLATFORM_SOURCES
+  src/platform/qt_window_system.cpp
   src/platform/qt_mainwindow.cpp
+  src/platform/qt_mainwindow_toolbar.cpp
+  src/platform/qt_mainwindow_tabs.cpp
+  src/platform/qt_mainwindow_browser.cpp
   src/platform/qt_browserwidget.cpp
   src/platform/qt_agent_panel.cpp
   src/platform/qt_agent_panel_theme.cpp

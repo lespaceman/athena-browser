@@ -397,55 +397,6 @@ class QtMainWindow : public QMainWindow, public Window {
   QString current_url_;
 };
 
-/**
- * Qt-based window system implementation.
- *
- * Manages Qt initialization and the main event loop.
- * Integrates CEF message loop with Qt's event loop using QTimer.
- */
-class QtWindowSystem : public WindowSystem {
- public:
-  QtWindowSystem();
-  ~QtWindowSystem() override;
-
-  // Disable copy and move
-  QtWindowSystem(const QtWindowSystem&) = delete;
-  QtWindowSystem& operator=(const QtWindowSystem&) = delete;
-  QtWindowSystem(QtWindowSystem&&) = delete;
-  QtWindowSystem& operator=(QtWindowSystem&&) = delete;
-
-  // ============================================================================
-  // Lifecycle Management
-  // ============================================================================
-
-  utils::Result<void> Initialize(int& argc, char* argv[], browser::BrowserEngine* engine) override;
-  void Shutdown() override;
-  bool IsInitialized() const override;
-
-  // ============================================================================
-  // Window Management
-  // ============================================================================
-
-  utils::Result<std::shared_ptr<Window>> CreateWindow(const WindowConfig& config,
-                                                      const WindowCallbacks& callbacks) override;
-
-  // ============================================================================
-  // Event Loop
-  // ============================================================================
-
-  void Run() override;
-  void Quit() override;
-  bool IsRunning() const override;
-
- private:
-  bool initialized_;
-  bool running_;
-  browser::BrowserEngine* engine_;        // Non-owning
-  class QApplication* app_;               // Qt application instance (owned)
-  class QTimer* cef_timer_;               // CEF message pump timer (owned by app_)
-  std::shared_ptr<QtMainWindow> window_;  // Main window instance
-};
-
 }  // namespace platform
 }  // namespace athena
 
