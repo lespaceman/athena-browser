@@ -328,6 +328,33 @@ if (exit_code >= 0) {
 - No global state for CEF clients or renderers
 - Clean separation between Qt UI layer and CEF rendering
 
+**Thread Safety (CEF↔Qt):**
+
+CEF runs callbacks on the CEF UI thread, but Qt widgets must only be accessed from the Qt main thread. Athena uses a thread-safe marshaling pattern for all CEF→Qt callbacks:
+
+```cpp
+#include "browser/thread_safety.h"
+
+// Safe pattern: marshal from CEF thread → Qt main thread
+tab.cef_client->SetTitleChangeCallback([this, browser_id](const std::string& title) {
+  SafeInvokeQtCallback(
+      this,  // QObject* to validate
+      [browser_id, title](QtMainWindow* window) {
+        // This runs on Qt main thread with validated window pointer
+        window->UpdateTabTitle(browser_id, title);
+      });
+});
+```
+
+The `SafeInvokeQtCallback` helper provides:
+- **Weak pointer validation** using `QPointer<T>` (silently drops callback if object destroyed)
+- **Thread marshaling** via `QMetaObject::invokeMethod` with `Qt::QueuedConnection`
+- **Crash prevention** for widget destruction during async callbacks
+
+**IMPORTANT:** Always use `SafeInvokeQtCallback` for CEF→Qt communication. Never call Qt widget methods directly from CEF callbacks.
+
+See `app/src/browser/thread_safety.h` for implementation details and `docs/KNOWN_ISSUES.md#3` for full documentation.
+
 **Platform Flag Presets:**
 
 Athena uses a centralized platform flags system (`app/src/browser/platform_flags.{h,cpp}`) that applies battle-tested CEF command-line flags based on:

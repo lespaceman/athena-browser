@@ -88,7 +88,109 @@ void MessageRouterHandler::OnContextReleased(
 
 ---
 
-### 3. Renderer Process Crashes
+### 3. Cross-Thread Safety: CEF↔Qt Communication ✅ FIXED
+
+**Status:** Fixed in Athena (app/src/browser/thread_safety.h, app/src/platform/qt_mainwindow_tabs.cpp)
+
+**Problem:**
+CEF runs callbacks on the CEF UI thread, but Qt widgets must only be accessed from the Qt main thread. Direct widget access from CEF callbacks can cause crashes, especially if the widget is destroyed during an async callback.
+
+**Symptoms:**
+- Random crashes when closing tabs during page load
+- Segfaults when widget is destroyed while CEF callback is in flight
+- Use-after-free errors in ASAN builds
+- Crashes in Qt event loop (`QMetaObject`, `QWidget::update`)
+
+**Root Cause:**
+CEF callbacks execute on CEF's UI thread, which is different from Qt's main thread. Accessing Qt widgets directly from CEF callbacks violates Qt's thread safety model. Even worse, if a widget is destroyed between the CEF callback firing and the Qt method call, you get use-after-free.
+
+**Solution:**
+Use weak pointer validation + thread marshaling for all CEF→Qt callbacks:
+
+```cpp
+// In qt_mainwindow_tabs.cpp (callback registration)
+tab.cef_client->SetTitleChangeCallback([this, bid](const std::string& title) {
+  // Marshal from CEF thread → Qt main thread with weak pointer validation
+  SafeInvokeQtCallback(
+      this,  // QObject* to validate
+      [bid, title](QtMainWindow* window) {
+        // This lambda runs on Qt main thread
+        // 'window' is validated - if null, callback is dropped
+        if (window->closed_) {
+          return;
+        }
+        window->UpdateTitle(title);
+      });
+});
+```
+
+**Implementation Details:**
+
+The `SafeInvokeQtCallback` helper (app/src/browser/thread_safety.h) provides:
+
+1. **Weak Pointer Validation:** Uses `QPointer<T>` to detect if Qt object was destroyed
+2. **Thread Marshaling:** Uses `QMetaObject::invokeMethod` with `Qt::QueuedConnection`
+3. **Silent Drop:** If object is destroyed, callback is silently dropped (no crash)
+4. **C++17 Compatible:** Uses `std::tuple` + `std::apply` for argument forwarding
+
+**Pattern Used:**
+```cpp
+template <typename QObjectType, typename Func, typename... Args>
+void SafeInvokeQtCallback(QObjectType* obj, Func&& func, Args&&... args) {
+  QPointer<QObjectType> weak_ptr(obj);
+  auto args_tuple = std::make_tuple(std::forward<Args>(args)...);
+
+  QMetaObject::invokeMethod(obj, [weak_ptr, func, args_tuple]() mutable {
+    if (weak_ptr) {  // Validate object still exists
+      std::apply([&](auto&&... unpacked) {
+        func(weak_ptr.data(), std::forward<decltype(unpacked)>(unpacked)...);
+      }, std::move(args_tuple));
+    }
+  }, Qt::QueuedConnection);
+}
+```
+
+**What Changed in Athena:**
+
+All CEF→Qt callbacks now use `SafeInvokeQtCallback`:
+- `SetAddressChangeCallback` (qt_mainwindow_tabs.cpp:157)
+- `SetLoadingStateChangeCallback` (qt_mainwindow_tabs.cpp:181)
+- `SetTitleChangeCallback` (qt_mainwindow_tabs.cpp:208)
+- `SetRenderInvalidatedCallback` (qt_mainwindow_tabs.cpp:231)
+
+**Blocking Variant (Use Sparingly):**
+
+For synchronous operations (e.g., modal dialogs), use `SafeInvokeQtCallbackBlocking`:
+
+```cpp
+bool result = SafeInvokeQtCallbackBlocking(
+    widget,
+    [](MyWidget* w) {
+      return w->showModalDialog();
+    },
+    5000  // timeout in ms
+);
+```
+
+**WARNING:** Blocking calls can deadlock if Qt main thread is waiting for CEF. Always prefer async `SafeInvokeQtCallback`.
+
+**Testing:**
+Run stress test to verify thread safety:
+```bash
+# Open/close tabs rapidly during page loads
+# Should not crash even with ASAN enabled
+build/release/app/athena-browser
+# Ctrl+T (new tab), Ctrl+W (close), repeat rapidly
+```
+
+**References:**
+- QCefView's approach: `CefViewCoreProtocol.h:66-95` (weak pointer macros)
+- Qt thread safety: https://doc.qt.io/qt-6/threads-qobject.html
+- CEF threading: https://bitbucket.org/chromiumembedded/cef/wiki/GeneralUsage#markdown-header-threads
+
+---
+
+### 4. Renderer Process Crashes
 
 **Problem:**
 CEF renderer processes can crash independently, requiring proper cleanup and restart.

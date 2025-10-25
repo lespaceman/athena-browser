@@ -8,6 +8,7 @@
 #include "browser/browser_engine.h"
 #include "browser/cef_client.h"
 #include "browser/cef_engine.h"
+#include "browser/thread_safety.h"
 #include "include/cef_browser.h"
 #include "platform/qt_agent_panel.h"
 #include "platform/qt_browserwidget.h"
@@ -149,80 +150,80 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
     if (client) {
       tab.cef_client = client.get();
 
-      // Wire up CEF callbacks for this tab
+      // Wire up CEF callbacks for this tab with thread-safe marshaling
       browser::BrowserId bid = tab.browser_id;
 
+      // Address change callback: marshals to Qt thread with weak pointer validation
       tab.cef_client->SetAddressChangeCallback([this, bid](const std::string& url_str) {
-        // Thread safety: Check if window is still valid (CEF #3870 workaround)
-        if (closed_) {
-          return;
-        }
+        // Use thread-safe callback wrapper to marshal from CEF → Qt main thread
+        SafeInvokeQtCallback(
+            this,
+            [bid, url_str](QtMainWindow* window) {
+              // This runs on Qt main thread with validated window pointer
+              if (window->closed_) {
+                return;
+              }
 
-        std::lock_guard<std::mutex> lock(tabs_mutex_);
-        auto it = std::find_if(
-            tabs_.begin(), tabs_.end(), [bid](const QtTab& t) { return t.browser_id == bid; });
-        if (it != tabs_.end()) {
-          it->url = QString::fromStdString(url_str);
-          size_t tab_idx = std::distance(tabs_.begin(), it);
-          if (tab_idx == active_tab_index_) {
-            this->UpdateAddressBar(QString::fromStdString(url_str));
-          }
-        }
+              std::lock_guard<std::mutex> lock(window->tabs_mutex_);
+              auto it = std::find_if(window->tabs_.begin(), window->tabs_.end(),
+                                     [bid](const QtTab& t) { return t.browser_id == bid; });
+              if (it != window->tabs_.end()) {
+                it->url = QString::fromStdString(url_str);
+                size_t tab_idx = std::distance(window->tabs_.begin(), it);
+                if (tab_idx == window->active_tab_index_) {
+                  window->UpdateAddressBar(QString::fromStdString(url_str));
+                }
+              }
+            });
       });
 
+      // Loading state callback: marshals to Qt thread with weak pointer validation
       tab.cef_client->SetLoadingStateChangeCallback(
           [this, bid](bool is_loading, bool can_go_back, bool can_go_forward) {
-            // Thread safety: Check if window is still valid
-            if (closed_) {
-              return;
-            }
+            // Use thread-safe callback wrapper to marshal from CEF → Qt main thread
+            SafeInvokeQtCallback(
+                this,
+                [bid, is_loading, can_go_back, can_go_forward](QtMainWindow* window) {
+                  // This runs on Qt main thread with validated window pointer
+                  if (window->closed_) {
+                    return;
+                  }
 
-            std::lock_guard<std::mutex> lock(tabs_mutex_);
-            auto it = std::find_if(
-                tabs_.begin(), tabs_.end(), [bid](const QtTab& t) { return t.browser_id == bid; });
-            if (it != tabs_.end()) {
-              it->is_loading = is_loading;
-              it->can_go_back = can_go_back;
-              it->can_go_forward = can_go_forward;
-              size_t tab_idx = std::distance(tabs_.begin(), it);
-              if (tab_idx == active_tab_index_) {
-                this->UpdateNavigationButtons(is_loading, can_go_back, can_go_forward);
-              }
-            }
+                  std::lock_guard<std::mutex> lock(window->tabs_mutex_);
+                  auto it = std::find_if(window->tabs_.begin(), window->tabs_.end(),
+                                         [bid](const QtTab& t) { return t.browser_id == bid; });
+                  if (it != window->tabs_.end()) {
+                    it->is_loading = is_loading;
+                    it->can_go_back = can_go_back;
+                    it->can_go_forward = can_go_forward;
+                    size_t tab_idx = std::distance(window->tabs_.begin(), it);
+                    if (tab_idx == window->active_tab_index_) {
+                      window->UpdateNavigationButtons(is_loading, can_go_back, can_go_forward);
+                    }
+                  }
+                });
           });
 
+      // Title change callback: marshals to Qt thread with weak pointer validation
       tab.cef_client->SetTitleChangeCallback([this, bid](const std::string& title_str) {
-        // Thread safety: Check if window is still valid
-        if (closed_) {
-          return;
-        }
+        // Use thread-safe callback wrapper to marshal from CEF → Qt main thread
+        SafeInvokeQtCallback(
+            this,
+            [bid, title_str](QtMainWindow* window) {
+              // This runs on Qt main thread with validated window pointer
+              if (window->closed_) {
+                return;
+              }
 
-        std::lock_guard<std::mutex> lock(tabs_mutex_);
-        auto it = std::find_if(
-            tabs_.begin(), tabs_.end(), [bid](const QtTab& t) { return t.browser_id == bid; });
-        if (it != tabs_.end()) {
-          it->title = QString::fromStdString(title_str);
-
-          // Update tab title on Qt main thread
-          QMetaObject::invokeMethod(
-              this,
-              [this, bid, title_str]() {
-                // Double-check validity after thread switch
-                if (closed_)
-                  return;
-
-                std::lock_guard<std::mutex> lock(tabs_mutex_);
-                auto it2 = std::find_if(tabs_.begin(), tabs_.end(), [bid](const QtTab& t) {
-                  return t.browser_id == bid;
-                });
-
-                if (it2 != tabs_.end()) {
-                  size_t tab_idx = std::distance(tabs_.begin(), it2);
-                  tabWidget_->setTabText(tab_idx, QString::fromStdString(title_str));
-                }
-              },
-              Qt::QueuedConnection);
-        }
+              std::lock_guard<std::mutex> lock(window->tabs_mutex_);
+              auto it = std::find_if(window->tabs_.begin(), window->tabs_.end(),
+                                     [bid](const QtTab& t) { return t.browser_id == bid; });
+              if (it != window->tabs_.end()) {
+                it->title = QString::fromStdString(title_str);
+                size_t tab_idx = std::distance(window->tabs_.begin(), it);
+                window->tabWidget_->setTabText(tab_idx, QString::fromStdString(title_str));
+              }
+            });
       });
 
       // CRITICAL: Wire up render invalidation callback
@@ -231,29 +232,24 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
           [this, bid](CefRenderHandler::PaintElementType type) {
             (void)type;  // Unused parameter
 
-            // Thread safety: Check if window is still valid
-            if (closed_) {
-              return;
-            }
+            // Use thread-safe callback wrapper to marshal from CEF → Qt main thread
+            SafeInvokeQtCallback(
+                this,
+                [bid](QtMainWindow* window) {
+                  // This runs on Qt main thread with validated window pointer
+                  if (window->closed_) {
+                    return;
+                  }
 
-            std::lock_guard<std::mutex> lock(tabs_mutex_);
-            auto it = std::find_if(
-                tabs_.begin(), tabs_.end(), [bid](const QtTab& t) { return t.browser_id == bid; });
-            if (it != tabs_.end() && it->browser_widget) {
-              // Use QPointer for safe widget access across threads
-              QPointer<BrowserWidget> widget_ptr = it->browser_widget;
-
-              // Schedule a repaint of the widget on the Qt main thread
-              QMetaObject::invokeMethod(
-                  qApp,
-                  [widget_ptr]() {
-                    // Validate widget pointer before using (thread-safe weak pointer pattern)
-                    if (widget_ptr) {
-                      widget_ptr->update();
-                    }
-                  },
-                  Qt::QueuedConnection);
-            }
+                  std::lock_guard<std::mutex> lock(window->tabs_mutex_);
+                  auto it = std::find_if(window->tabs_.begin(), window->tabs_.end(),
+                                         [bid](const QtTab& t) { return t.browser_id == bid; });
+                  if (it != window->tabs_.end() && it->browser_widget) {
+                    // Widget is guaranteed to be valid here since we're on Qt thread
+                    // and holding the tabs_mutex_
+                    it->browser_widget->update();
+                  }
+                });
           });
 
       logger.Info("Callbacks wired for browser_id: " + std::to_string(bid));
