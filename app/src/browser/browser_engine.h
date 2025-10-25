@@ -38,6 +38,11 @@ struct BrowserConfig {
   float device_scale_factor = 1.0f;
   rendering::GLRenderer* gl_renderer = nullptr;  // Non-owning pointer
   void* native_window_handle = nullptr;          // Platform-specific (QWidget*, HWND, etc.)
+
+  // Cookie/cache isolation: When true, creates a separate RequestContext for this browser.
+  // This provides per-tab cookie/cache isolation while sharing disk storage.
+  // Benefits: Isolated sessions, independent cookie stores, separate cache entries.
+  bool isolate_cookies = false;
 };
 
 /**

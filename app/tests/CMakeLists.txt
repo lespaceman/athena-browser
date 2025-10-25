@@ -75,6 +75,7 @@ add_athena_test(scaling_manager_test rendering/scaling_manager_test.cpp ../src/r
 add_athena_test(cef_client_test
   browser/cef_client_test.cpp
   ../src/browser/cef_client.cpp
+  ../src/browser/message_router_handler.cpp
   ../src/rendering/gl_renderer.cpp
   ../src/utils/logging.cpp
   ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
@@ -84,6 +85,7 @@ add_athena_test(cef_engine_test
   browser/cef_engine_test.cpp
   ../src/browser/cef_engine.cpp
   ../src/browser/cef_client.cpp
+  ../src/browser/message_router_handler.cpp
   ../src/browser/app_handler.cpp
   ../src/resources/scheme_handler.cpp
   ../src/rendering/gl_renderer.cpp

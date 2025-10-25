@@ -1,6 +1,7 @@
 #include "browser/cef_engine.h"
 
 #include "include/cef_browser.h"
+#include "include/cef_request_context.h"
 #include "include/wrapper/cef_helpers.h"
 #include "utils/logging.h"
 
@@ -49,6 +50,10 @@ utils::Result<void> CefEngine::Initialize(const EngineConfig& config) {
   settings.multi_threaded_message_loop = false;
   settings.external_message_pump = false;
   settings.windowless_rendering_enabled = config.enable_windowless_rendering;
+
+  // Enable remote debugging on port 9222
+  // This allows debugging with Chrome DevTools at chrome://inspect
+  settings.remote_debugging_port = 9222;
 
   // Set cache path
   if (!config.cache_path.empty()) {
@@ -120,6 +125,9 @@ utils::Result<BrowserId> CefEngine::CreateBrowser(const BrowserConfig& config) {
   // Create CEF client
   CefRefPtr<CefClient> client = new CefClient(config.native_window_handle, config.gl_renderer);
 
+  // Initialize message router for JS↔C++ bridge
+  client->InitializeMessageRouter();
+
   client->SetDeviceScaleFactor(config.device_scale_factor);
   client->SetSize(config.width, config.height);
 
@@ -130,16 +138,32 @@ utils::Result<BrowserId> CefEngine::CreateBrowser(const BrowserConfig& config) {
   CefBrowserSettings browser_settings;
   browser_settings.windowless_frame_rate = 60;
 
+  // Create RequestContext for per-tab cookie/cache isolation (if requested)
+  CefRefPtr<::CefRequestContext> request_context = nullptr;
+  if (config.isolate_cookies) {
+    // Create a new context that shares storage with the global context
+    // This provides cookie/cache isolation while avoiding separate disk caches
+    CefRequestContextSettings context_settings;
+    request_context =
+        CefRequestContext::CreateContext(CefRequestContext::GetGlobalContext(), nullptr);
+    logger.Debug("Browser {}: Created isolated RequestContext for cookie/cache isolation", id);
+  } else {
+    // Use global context (shared cookies/cache across all tabs)
+    request_context = nullptr;  // nullptr = use global context
+    logger.Debug("Browser {}: Using global RequestContext (shared cookies/cache)", id);
+  }
+
   // Store browser info (browser will be set in OnAfterCreated callback)
   BrowserInfo info;
   info.id = id;
   info.client = client;
   info.browser = nullptr;  // Will be set after creation
+  info.request_context = request_context;
   browsers_[id] = info;
 
   // Create browser asynchronously
   if (!CefBrowserHost::CreateBrowser(
-          window_info, client, config.url, browser_settings, nullptr, nullptr)) {
+          window_info, client, config.url, browser_settings, nullptr, request_context)) {
     browsers_.erase(id);
     return utils::Err<BrowserId>("CefBrowserHost::CreateBrowser failed");
   }
@@ -270,6 +294,12 @@ void CefEngine::SetFocus(BrowserId id, bool focus) {
   CefRefPtr<::CefBrowser> browser = GetCefBrowser(id);
   if (browser) {
     browser->GetHost()->SetFocus(focus);
+
+    // Update CefClient's focus state for CEF #3870 workaround
+    CefRefPtr<CefClient> client = GetCefClient(id);
+    if (client) {
+      client->SetFocus(focus);
+    }
   }
 }
 
@@ -281,6 +311,21 @@ void CefEngine::DoMessageLoopWork() {
   if (initialized_) {
     CefDoMessageLoopWork();
   }
+}
+
+void CefEngine::ShowDevTools(BrowserId id) {
+  if (!initialized_) {
+    logger.Warn("ShowDevTools: CEF engine not initialized");
+    return;
+  }
+
+  CefRefPtr<CefClient> client = GetCefClient(id);
+  if (!client) {
+    logger.Warn("ShowDevTools: No client found for browser ID {}", id);
+    return;
+  }
+
+  client->ShowDevTools();
 }
 
 // ============================================================================

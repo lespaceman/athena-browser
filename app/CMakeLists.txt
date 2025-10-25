@@ -59,6 +59,7 @@ add_executable(athena-browser
   src/browser/cef_client.cpp
   src/browser/cef_engine.cpp
   src/browser/app_handler.cpp
+  src/browser/message_router_handler.cpp
   ${PLATFORM_SOURCES}
   src/core/browser_window.cpp
   src/core/application.cpp

@@ -15,8 +15,16 @@ void AppHandler::OnBeforeCommandLineProcessing(const CefString& process_type,
                                                CefRefPtr<CefCommandLine> command_line) {
   // Empty process_type means browser process
   if (process_type.empty()) {
+#if defined(OS_LINUX)
+    // Platform-specific flags for Linux
+
     // Force X11 platform for proper child window embedding
     command_line->AppendSwitchWithValue("ozone-platform", "x11");
+
+    // Use ANGLE with OpenGL ES/EGL for better OSR compatibility
+    // Reference: https://github.com/chromiumembedded/cef/issues/3953
+    // QCefView finding: Recent CEF versions on Linux need this for OSR
+    command_line->AppendSwitchWithValue("use-angle", "gl-egl");
 
     // Use in-process GPU to avoid window handle issues
     command_line->AppendSwitch("in-process-gpu");
@@ -30,6 +38,13 @@ void AppHandler::OnBeforeCommandLineProcessing(const CefString& process_type,
     // Logging for debugging
     command_line->AppendSwitch("enable-logging");
     command_line->AppendSwitchWithValue("v", "1");
+#elif defined(OS_WIN)
+    // Platform-specific flags for Windows
+    // TODO: Add Windows-specific flags if needed
+#elif defined(OS_MAC)
+    // Platform-specific flags for macOS
+    // TODO: Add macOS-specific flags if needed
+#endif
   }
 }
 

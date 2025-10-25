@@ -16,7 +16,9 @@
 #include "utils/logging.h"
 
 #include <algorithm>
+#include <QApplication>
 #include <QMetaObject>
+#include <QPointer>
 #include <QSignalBlocker>
 #include <QTabBar>
 
@@ -151,6 +153,11 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
       browser::BrowserId bid = tab.browser_id;
 
       tab.cef_client->SetAddressChangeCallback([this, bid](const std::string& url_str) {
+        // Thread safety: Check if window is still valid (CEF #3870 workaround)
+        if (closed_) {
+          return;
+        }
+
         std::lock_guard<std::mutex> lock(tabs_mutex_);
         auto it = std::find_if(
             tabs_.begin(), tabs_.end(), [bid](const QtTab& t) { return t.browser_id == bid; });
@@ -165,6 +172,11 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
 
       tab.cef_client->SetLoadingStateChangeCallback(
           [this, bid](bool is_loading, bool can_go_back, bool can_go_forward) {
+            // Thread safety: Check if window is still valid
+            if (closed_) {
+              return;
+            }
+
             std::lock_guard<std::mutex> lock(tabs_mutex_);
             auto it = std::find_if(
                 tabs_.begin(), tabs_.end(), [bid](const QtTab& t) { return t.browser_id == bid; });
@@ -180,6 +192,11 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
           });
 
       tab.cef_client->SetTitleChangeCallback([this, bid](const std::string& title_str) {
+        // Thread safety: Check if window is still valid
+        if (closed_) {
+          return;
+        }
+
         std::lock_guard<std::mutex> lock(tabs_mutex_);
         auto it = std::find_if(
             tabs_.begin(), tabs_.end(), [bid](const QtTab& t) { return t.browser_id == bid; });
@@ -190,6 +207,7 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
           QMetaObject::invokeMethod(
               this,
               [this, bid, title_str]() {
+                // Double-check validity after thread switch
                 if (closed_)
                   return;
 
@@ -212,16 +230,26 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
       tab.cef_client->SetRenderInvalidatedCallback(
           [this, bid](CefRenderHandler::PaintElementType type) {
             (void)type;  // Unused parameter
+
+            // Thread safety: Check if window is still valid
+            if (closed_) {
+              return;
+            }
+
             std::lock_guard<std::mutex> lock(tabs_mutex_);
             auto it = std::find_if(
                 tabs_.begin(), tabs_.end(), [bid](const QtTab& t) { return t.browser_id == bid; });
             if (it != tabs_.end() && it->browser_widget) {
+              // Use QPointer for safe widget access across threads
+              QPointer<BrowserWidget> widget_ptr = it->browser_widget;
+
               // Schedule a repaint of the widget on the Qt main thread
               QMetaObject::invokeMethod(
-                  it->browser_widget,
-                  [widget = it->browser_widget]() {
-                    if (widget) {
-                      widget->update();
+                  qApp,
+                  [widget_ptr]() {
+                    // Validate widget pointer before using (thread-safe weak pointer pattern)
+                    if (widget_ptr) {
+                      widget_ptr->update();
                     }
                   },
                   Qt::QueuedConnection);

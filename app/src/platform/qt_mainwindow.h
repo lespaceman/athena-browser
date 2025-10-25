@@ -223,6 +223,12 @@ class QtMainWindow : public QMainWindow, public Window {
   void StopLoad();
 
   /**
+   * Show DevTools for the current tab.
+   * Opens Chrome DevTools in a new window for debugging the active tab.
+   */
+  void ShowDevTools();
+
+  /**
    * Get the current URL.
    */
   QString GetCurrentUrl() const;

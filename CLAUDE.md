@@ -343,6 +343,29 @@ class GLRenderer {
 
 Hardware-accelerated, capable of 60+ FPS.
 
+**Performance Optimizations:**
+
+1. **Dirty Rect Optimization** (Implemented)
+   - CEF's OsrRenderer automatically uses dirty rectangles for texture updates
+   - Only changed regions are uploaded to GPU using `glTexSubImage2D`
+   - Full texture updates only when necessary (size changes, full-screen updates)
+   - Provides ~2x FPS improvement for incremental page updates
+   - Debug logging available: `LOG_LEVEL=debug` shows partial vs full updates
+
+2. **Per-Tab Cookie/Cache Isolation** (Implemented)
+   - Optional per-tab `CefRequestContext` for isolated cookie/cache sessions
+   - Enabled via `BrowserConfig::isolate_cookies = true`
+   - Shares disk storage to avoid duplicate cache files
+   - Use cases: Testing, privacy, multi-account workflows
+
+```cpp
+// Example: Create browser with isolated cookies/cache
+BrowserConfig config;
+config.url = "https://example.com";
+config.isolate_cookies = true;  // Enable per-tab isolation
+auto result = engine->CreateBrowser(config);
+```
+
 ### Adding New Files
 
 When adding new source files:

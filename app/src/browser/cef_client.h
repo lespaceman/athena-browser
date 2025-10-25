@@ -1,16 +1,19 @@
 #ifndef ATHENA_BROWSER_CEF_CLIENT_H_
 #define ATHENA_BROWSER_CEF_CLIENT_H_
 
+#include "browser/message_router_handler.h"
 #include "include/cef_client.h"
 #include "include/cef_display_handler.h"
 #include "include/cef_life_span_handler.h"
 #include "include/cef_load_handler.h"
 #include "include/cef_process_message.h"
 #include "include/cef_render_handler.h"
+#include "include/wrapper/cef_message_router.h"
 #include "rendering/gl_renderer.h"
 
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -48,6 +51,12 @@ class CefClient : public ::CefClient,
    * @param gl_renderer Non-owning pointer to GL renderer
    */
   CefClient(void* native_window, rendering::GLRenderer* gl_renderer);
+
+  /**
+   * Initialize the message router for JS↔C++ communication.
+   * This should be called after construction but before browser creation.
+   */
+  void InitializeMessageRouter();
 
   ~CefClient() override;
 
@@ -111,6 +120,9 @@ class CefClient : public ::CefClient,
                const void* buffer,
                int width,
                int height) override;
+  void OnImeCompositionRangeChanged(CefRefPtr<::CefBrowser> browser,
+                                    const CefRange& selected_range,
+                                    const RectList& character_bounds) override;
 
   // ============================================================================
   // Public API
@@ -121,6 +133,18 @@ class CefClient : public ::CefClient,
    * @return Browser reference, or nullptr if not created yet
    */
   CefRefPtr<::CefBrowser> GetBrowser() const { return browser_; }
+
+  /**
+   * Get the message router for registering custom query handlers.
+   * @return Message router instance, or nullptr if not initialized
+   */
+  CefRefPtr<CefMessageRouterBrowserSide> GetMessageRouter() const { return message_router_; }
+
+  /**
+   * Get the message router handler for registering query handlers.
+   * @return Message router handler instance, or nullptr if not initialized
+   */
+  MessageRouterHandler* GetMessageRouterHandler() const { return message_router_handler_.get(); }
 
   /**
    * Set the logical view size.
@@ -148,6 +172,24 @@ class CefClient : public ::CefClient,
    * Get current device scale factor.
    */
   float GetDeviceScaleFactor() const { return device_scale_factor_; }
+
+  /**
+   * Set focus state.
+   * This tracks whether the browser has focus, used for the CEF #3870 workaround.
+   */
+  void SetFocus(bool focus);
+
+  /**
+   * Get current focus state.
+   */
+  bool HasFocus() const { return has_focus_; }
+
+  /**
+   * Show DevTools in a new window.
+   * Opens Chrome DevTools for inspecting the browser content.
+   * @param inspect_element_at Optional point to inspect specific element
+   */
+  void ShowDevTools(const core::Point* inspect_element_at = nullptr);
 
   /**
    * Request JavaScript execution that returns a result.
@@ -206,6 +248,11 @@ class CefClient : public ::CefClient,
   int width_;                           // Logical view width
   int height_;                          // Logical view height
   float device_scale_factor_;           // HiDPI scale factor (1.0, 2.0, etc.)
+  bool has_focus_;                      // Focus state tracking (CEF #3870 workaround)
+
+  // Message router for JS↔C++ bridge (promise-based API)
+  CefRefPtr<CefMessageRouterBrowserSide> message_router_;
+  std::unique_ptr<MessageRouterHandler> message_router_handler_;
 
   // Callbacks for UI updates
   std::function<void(const std::string&)> on_address_change_;      // URL changed

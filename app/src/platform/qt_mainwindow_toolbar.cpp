@@ -197,6 +197,26 @@ void QtMainWindow::Reload(bool ignore_cache) {
   }
 }
 
+void QtMainWindow::ShowDevTools() {
+  CefClient* client = nullptr;
+
+  {
+    std::lock_guard<std::mutex> lock(tabs_mutex_);
+    QtTab* tab = GetActiveTab();
+    if (tab && tab->cef_client) {
+      client = tab->cef_client;
+    }
+  }
+
+  // Call CEF outside the lock
+  if (client) {
+    client->ShowDevTools();
+    logger.Info("DevTools opened for active tab");
+  } else {
+    logger.Warn("ShowDevTools: No active tab with CEF client");
+  }
+}
+
 void QtMainWindow::StopLoad() {
   CefClient* client = nullptr;
 

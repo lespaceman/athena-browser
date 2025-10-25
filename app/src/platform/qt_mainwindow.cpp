@@ -178,6 +178,10 @@ void QtMainWindow::connectSignals() {
   // Keyboard shortcut: Ctrl+Shift+C (or Cmd+Shift+C on macOS)
   QShortcut* agentShortcut = new QShortcut(QKeySequence("Ctrl+Shift+C"), this);
   connect(agentShortcut, &QShortcut::activated, this, &QtMainWindow::onAgentButtonClicked);
+
+  // Keyboard shortcut: F12 to open DevTools (same as Chrome/Firefox)
+  QShortcut* devToolsShortcut = new QShortcut(QKeySequence(Qt::Key_F12), this);
+  connect(devToolsShortcut, &QShortcut::activated, this, &QtMainWindow::ShowDevTools);
 }
 
 void QtMainWindow::InitializeBrowser() {

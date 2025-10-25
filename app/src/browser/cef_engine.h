@@ -73,6 +73,13 @@ class CefEngine : public BrowserEngine {
 
   void DoMessageLoopWork() override;
 
+  /**
+   * Show DevTools for a specific browser.
+   * Opens Chrome DevTools in a new window for debugging.
+   * @param id Browser ID
+   */
+  void ShowDevTools(BrowserId id);
+
   // ============================================================================
   // CEF-specific API (for internal use)
   // ============================================================================
@@ -97,6 +104,7 @@ class CefEngine : public BrowserEngine {
     BrowserId id;
     CefRefPtr<CefClient> client;
     CefRefPtr<::CefBrowser> browser;
+    CefRefPtr<::CefRequestContext> request_context;  // Per-tab context (optional)
   };
 
   /**

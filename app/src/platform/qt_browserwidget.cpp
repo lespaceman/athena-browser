@@ -303,7 +303,10 @@ void BrowserWidget::focusInEvent(QFocusEvent* event) {
 
   auto* client = GetCefClientForThisTab();
   if (client && client->GetBrowser()) {
+    // Update CEF browser focus
     client->GetBrowser()->GetHost()->SetFocus(true);
+    // CRITICAL: Also update has_focus_ tracking for cursor visibility workaround
+    client->SetFocus(true);
   }
 }
 
@@ -313,7 +316,10 @@ void BrowserWidget::focusOutEvent(QFocusEvent* event) {
 
   auto* client = GetCefClientForThisTab();
   if (client && client->GetBrowser()) {
+    // Update CEF browser focus
     client->GetBrowser()->GetHost()->SetFocus(false);
+    // CRITICAL: Also update has_focus_ tracking for cursor visibility workaround
+    client->SetFocus(false);
   }
 }
 

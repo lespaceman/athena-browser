@@ -61,6 +61,7 @@ class Logger {
 
   LogLevel GetLevel() const { return level_; }
   const std::string& GetName() const { return name_; }
+  bool IsDebugEnabled() const { return level_ <= LogLevel::kDebug; }
 
  private:
   void Log(LogLevel level, const std::string& message);

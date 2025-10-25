@@ -225,3 +225,38 @@ TEST_F(CefClientTest, SetSizeAndScaleFactorTogether) {
   EXPECT_EQ(athena_client.GetHeight(), 1080);
   EXPECT_FLOAT_EQ(athena_client.GetDeviceScaleFactor(), 2.0f);
 }
+
+// ============================================================================
+// Focus State Tests (CEF #3870 workaround)
+// ============================================================================
+
+TEST_F(CefClientTest, FocusStateDefaultsToFalse) {
+  athena::rendering::GLRenderer gl_renderer;
+  athena::browser::CefClient athena_client(window_handle_, &gl_renderer);
+
+  EXPECT_FALSE(athena_client.HasFocus());
+}
+
+TEST_F(CefClientTest, SetFocusUpdatesState) {
+  athena::rendering::GLRenderer gl_renderer;
+  athena::browser::CefClient athena_client(window_handle_, &gl_renderer);
+
+  athena_client.SetFocus(true);
+  EXPECT_TRUE(athena_client.HasFocus());
+
+  athena_client.SetFocus(false);
+  EXPECT_FALSE(athena_client.HasFocus());
+}
+
+TEST_F(CefClientTest, SetFocusMultipleTimes) {
+  athena::rendering::GLRenderer gl_renderer;
+  athena::browser::CefClient athena_client(window_handle_, &gl_renderer);
+
+  athena_client.SetFocus(true);
+  athena_client.SetFocus(true);
+  EXPECT_TRUE(athena_client.HasFocus());
+
+  athena_client.SetFocus(false);
+  athena_client.SetFocus(false);
+  EXPECT_FALSE(athena_client.HasFocus());
+}
