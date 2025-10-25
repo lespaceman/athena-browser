@@ -22,17 +22,17 @@
 #include <chrono>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QColor>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QEventLoop>
 #include <QHBoxLayout>
 #include <QKeySequence>
 #include <QMetaObject>
+#include <QPalette>
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QSplitter>
-#include <QPalette>
-#include <QColor>
 #include <QStyle>
 #include <QTabBar>
 #include <QTimer>
@@ -222,9 +222,10 @@ void QtMainWindow::createCentralWidget() {
   splitter->setHandleWidth(0);
 
   const QColor splitterColor = QApplication::palette().color(QPalette::Window);
-  splitter->setStyleSheet(QStringLiteral(
-      "QSplitter::handle { background-color: %1; border: none; margin: 0; padding: 0; }")
-                              .arg(splitterColor.name(QColor::HexRgb)));
+  splitter->setStyleSheet(
+      QStringLiteral(
+          "QSplitter::handle { background-color: %1; border: none; margin: 0; padding: 0; }")
+          .arg(splitterColor.name(QColor::HexRgb)));
 
   setCentralWidget(splitter);
 

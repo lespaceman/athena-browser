@@ -3,87 +3,16 @@
 #include "qt_mainwindow.h"
 #include "runtime/node_runtime.h"
 
-#include <chrono>
 #include <QApplication>
-#include <QClipboard>
 #include <QDebug>
 #include <QEvent>
-#include <QFontMetrics>
 #include <QGraphicsDropShadowEffect>
 #include <QGraphicsOpacityEffect>
-#include <QKeyEvent>
-#include <QPainter>
-#include <QPainterPath>
-#include <QObject>
-#include <QRegularExpression>
+#include <QPropertyAnimation>
 #include <QScrollBar>
-#include <QThread>
-#include <thread>
 
 namespace athena {
 namespace platform {
-
-namespace {
-
-QString colorToCss(const QColor& color) {
-  return color.alpha() == 255 ? color.name(QColor::HexRgb) : color.name(QColor::HexArgb);
-}
-
-QColor lighten(const QColor& color, int percentage) {
-  QColor c = color;
-  return c.lighter(percentage);
-}
-
-QColor darken(const QColor& color, int percentage) {
-  QColor c = color;
-  return c.darker(percentage);
-}
-
-QIcon createSendIcon(const QColor& color, qreal devicePixelRatio = 1.0) {
-  const int baseSize = 24;
-  QPixmap pixmap(static_cast<int>(baseSize * devicePixelRatio),
-                 static_cast<int>(baseSize * devicePixelRatio));
-  pixmap.fill(Qt::transparent);
-  pixmap.setDevicePixelRatio(devicePixelRatio);
-
-  QPainter painter(&pixmap);
-  painter.setRenderHint(QPainter::Antialiasing, true);
-  painter.setBrush(color);
-  painter.setPen(Qt::NoPen);
-
-  QPainterPath plane;
-  plane.moveTo(5, 12);
-  plane.lineTo(5, 5);
-  plane.lineTo(21, 12);
-  plane.lineTo(5, 19);
-  plane.lineTo(5, 14.5);
-  plane.lineTo(13, 12);
-  plane.lineTo(5, 9.5);
-  plane.closeSubpath();
-  painter.drawPath(plane);
-
-  return QIcon(pixmap);
-}
-
-QIcon createStopIcon(const QColor& color, qreal devicePixelRatio = 1.0) {
-  const int baseSize = 24;
-  QPixmap pixmap(static_cast<int>(baseSize * devicePixelRatio),
-                 static_cast<int>(baseSize * devicePixelRatio));
-  pixmap.fill(Qt::transparent);
-  pixmap.setDevicePixelRatio(devicePixelRatio);
-
-  QPainter painter(&pixmap);
-  painter.setRenderHint(QPainter::Antialiasing, true);
-  painter.setBrush(color);
-  painter.setPen(Qt::NoPen);
-
-  QRectF square(7, 7, 10, 10);
-  painter.drawRoundedRect(square, 3, 3);
-
-  return QIcon(pixmap);
-}
-
-}  // namespace
 
 // ============================================================================
 // AgentPanel Implementation
@@ -224,21 +153,21 @@ AgentPanelPalette AgentPanel::buildPalette(bool darkMode) const {
     highlightedText = darkMode ? QColor("#0F172A") : QColor("#FFFFFF");
   }
   if (!placeholder.isValid() || placeholder == text) {
-    placeholder = darkMode ? lighten(text, 180) : darken(text, 130);
+    placeholder = darkMode ? Lighten(text, 180) : Darken(text, 130);
   }
 
   palette.panelBackground = window;
-  palette.panelBorder = darkMode ? lighten(window, 130) : darken(window, 110);
+  palette.panelBorder = darkMode ? Lighten(window, 130) : Darken(window, 110);
   palette.messageAreaBackground = window;
   palette.keyboardHintText = placeholder;
-  palette.thinkingBackground = darkMode ? darken(window, 120) : lighten(window, 108);
-  palette.thinkingText = darkMode ? lighten(text, 140) : darken(text, 120);
+  palette.thinkingBackground = darkMode ? Darken(window, 120) : Lighten(window, 108);
+  palette.thinkingText = darkMode ? Lighten(text, 140) : Darken(text, 120);
   palette.secondaryText = palette.keyboardHintText;
   palette.accent = highlight;
 
-  palette.scrollbar.track = darkMode ? darken(window, 130) : lighten(window, 115);
-  palette.scrollbar.thumb = darkMode ? darken(highlight, 130) : darken(highlight, 110);
-  palette.scrollbar.thumbHover = darkMode ? darken(highlight, 110) : darken(highlight, 130);
+  palette.scrollbar.track = darkMode ? Darken(window, 130) : Lighten(window, 115);
+  palette.scrollbar.thumb = darkMode ? Darken(highlight, 130) : Darken(highlight, 110);
+  palette.scrollbar.thumbHover = darkMode ? Darken(highlight, 110) : Darken(highlight, 130);
 
   BubblePalette userBubble;
   userBubble.background = highlight;
@@ -251,45 +180,46 @@ AgentPanelPalette AgentPanel::buildPalette(bool darkMode) const {
   palette.userBubble = userBubble;
 
   BubblePalette assistantBubble;
-  assistantBubble.background = darkMode ? darken(window, 130) : lighten(window, 112);
-  assistantBubble.text = darkMode ? lighten(text, 150) : text;
-  assistantBubble.label = darkMode ? lighten(text, 130) : darken(text, 120);
-  QColor assistantCodeBg = darkMode ? darken(window, 120) : lighten(window, 120);
+  assistantBubble.background = darkMode ? Darken(window, 130) : Lighten(window, 112);
+  assistantBubble.text = darkMode ? Lighten(text, 150) : text;
+  assistantBubble.label = darkMode ? Lighten(text, 130) : Darken(text, 120);
+  QColor assistantCodeBg = darkMode ? Darken(window, 120) : Lighten(window, 120);
   assistantBubble.codeBackground = assistantCodeBg;
   assistantBubble.codeText = assistantBubble.text;
   palette.assistantBubble = assistantBubble;
 
-  QColor inputBackground = darkMode ? darken(window, 140) : lighten(base, 108);
+  QColor inputBackground = darkMode ? Darken(window, 140) : Lighten(base, 108);
   palette.input = {inputBackground,
-                   darkMode ? darken(window, 110) : darken(inputBackground, 110),
+                   darkMode ? Darken(window, 110) : Darken(inputBackground, 110),
                    highlight,
-                   darkMode ? lighten(text, 150) : text,
+                   darkMode ? Lighten(text, 150) : text,
                    placeholder,
                    highlight};
 
   // Composer (input card) background should be slightly darker than input field
-  palette.composerBackground = darkMode ? darken(inputBackground, 105) : darken(inputBackground, 103);
-  palette.composerBorder = darkMode ? darken(window, 110) : lighten(window, 110);
+  palette.composerBackground =
+      darkMode ? Darken(inputBackground, 105) : Darken(inputBackground, 103);
+  palette.composerBorder = darkMode ? Darken(window, 110) : Lighten(window, 110);
   palette.composerShadow = QColor(0, 0, 0, darkMode ? 32 : 40);
 
   palette.sendButton = {highlight,
-                        darken(highlight, 110),
-                        darken(highlight, 130),
-                        darkMode ? darken(window, 120) : lighten(window, 120),
+                        Darken(highlight, 110),
+                        Darken(highlight, 130),
+                        darkMode ? Darken(window, 120) : Lighten(window, 120),
                         highlightedText,
-                        darkMode ? lighten(window, 170) : darken(window, 150)};
+                        darkMode ? Lighten(window, 170) : Darken(window, 150)};
 
-  QColor stopBackground = darkMode ? darken(window, 120) : lighten(window, 114);
+  QColor stopBackground = darkMode ? Darken(window, 120) : Lighten(window, 114);
   palette.stopButton = {stopBackground,
-                        darken(stopBackground, 110),
-                        darken(stopBackground, 125),
-                        darkMode ? darken(window, 110) : lighten(window, 125),
-                        darkMode ? lighten(text, 160) : darken(text, 110),
-                        darkMode ? lighten(window, 180) : darken(window, 140)};
+                        Darken(stopBackground, 110),
+                        Darken(stopBackground, 125),
+                        darkMode ? Darken(window, 110) : Lighten(window, 125),
+                        darkMode ? Lighten(text, 160) : Darken(text, 110),
+                        darkMode ? Lighten(window, 180) : Darken(window, 140)};
 
-  palette.chip = {darkMode ? darken(window, 130) : lighten(window, 120),
-                  darkMode ? lighten(text, 160) : darken(text, 110),
-                  darkMode ? darken(window, 110) : lighten(window, 130)};
+  palette.chip = {darkMode ? Darken(window, 130) : Lighten(window, 120),
+                  darkMode ? Lighten(text, 160) : Darken(text, 110),
+                  darkMode ? Darken(window, 110) : Lighten(window, 130)};
 
   return palette;
 }
@@ -304,7 +234,7 @@ bool AgentPanel::detectDarkMode() const {
 void AgentPanel::applyPalette() {
   setAutoFillBackground(true);
   setStyleSheet(QStringLiteral("AgentPanel { background-color: %1; border-left: 1px solid %2; }")
-                    .arg(colorToCss(palette_.panelBackground), colorToCss(palette_.panelBorder)));
+                    .arg(ColorToCss(palette_.panelBackground), ColorToCss(palette_.panelBorder)));
 
   applyPaletteToScrollArea();
   applyPaletteToInput();
@@ -315,9 +245,8 @@ void AgentPanel::applyPalette() {
 }
 
 void AgentPanel::applyPaletteToScrollArea() {
-  messagesContainer_->setStyleSheet(
-      QStringLiteral("QWidget { background-color: %1; }")
-          .arg(colorToCss(palette_.messageAreaBackground)));
+  messagesContainer_->setStyleSheet(QStringLiteral("QWidget { background-color: %1; }")
+                                        .arg(ColorToCss(palette_.messageAreaBackground)));
 
   scrollArea_->setStyleSheet(QStringLiteral(R"(
     QScrollArea {
@@ -347,19 +276,18 @@ void AgentPanel::applyPaletteToScrollArea() {
       background: none;
     }
   )")
-                             .arg(colorToCss(palette_.messageAreaBackground),
-                                  colorToCss(palette_.scrollbar.track),
-                                  colorToCss(palette_.scrollbar.thumb),
-                                  colorToCss(palette_.scrollbar.thumbHover)));
+                                 .arg(ColorToCss(palette_.messageAreaBackground),
+                                      ColorToCss(palette_.scrollbar.track),
+                                      ColorToCss(palette_.scrollbar.thumb),
+                                      ColorToCss(palette_.scrollbar.thumbHover)));
 }
 
 void AgentPanel::applyPaletteToInput() {
-  inputFrame_->setStyleSheet(
-      QStringLiteral("QFrame { background-color: %1; border: none; }")
-          .arg(colorToCss(palette_.panelBackground)));
+  inputFrame_->setStyleSheet(QStringLiteral("QFrame { background-color: %1; border: none; }")
+                                 .arg(ColorToCss(palette_.panelBackground)));
   inputCard_->setStyleSheet(
       QStringLiteral("QFrame { background-color: %1; border-radius: 0px; border: none; }")
-          .arg(colorToCss(palette_.composerBackground)));
+          .arg(ColorToCss(palette_.composerBackground)));
 
   if (inputShadow_) {
     inputShadow_->setColor(palette_.composerShadow);
@@ -389,10 +317,10 @@ void AgentPanel::applyPaletteToButtons() {
         background-color: %4;
       }
     )")
-        .arg(colorToCss(colors.background),
-             colorToCss(colors.backgroundHover),
-             colorToCss(colors.backgroundPressed),
-             colorToCss(colors.backgroundDisabled));
+        .arg(ColorToCss(colors.background),
+             ColorToCss(colors.backgroundHover),
+             ColorToCss(colors.backgroundPressed),
+             ColorToCss(colors.backgroundDisabled));
   };
 
   sendButton_->setStyleSheet(iconButtonStyle(palette_.sendButton));
@@ -416,11 +344,11 @@ void AgentPanel::refreshSendStopIcons() {
 
   const QColor sendColor =
       sendButton_->isEnabled() ? palette_.sendButton.icon : palette_.sendButton.iconDisabled;
-  sendButton_->setIcon(createSendIcon(sendColor, devicePixelRatio));
+  sendButton_->setIcon(CreateSendIcon(sendColor, devicePixelRatio));
 
   const QColor stopColor =
       stopButton_->isEnabled() ? palette_.stopButton.icon : palette_.stopButton.iconDisabled;
-  stopButton_->setIcon(createStopIcon(stopColor, devicePixelRatio));
+  stopButton_->setIcon(CreateStopIcon(stopColor, devicePixelRatio));
 }
 
 void AgentPanel::updateActionButtons() {
@@ -926,372 +854,6 @@ void AgentPanel::parseSSEChunks(const QString& data) {
       qDebug() << "[AgentPanel] Stream complete";
     }
   }
-}
-
-// ============================================================================
-// ChatInputWidget Implementation
-// ============================================================================
-
-ChatInputWidget::ChatInputWidget(QWidget* parent) : QTextEdit(parent) {
-  setupUI();
-  // Use contentsChanged for better responsiveness with wrapped lines
-  connect(document(), &QTextDocument::contentsChanged, this, &ChatInputWidget::adjustHeight);
-}
-
-void ChatInputWidget::setupUI() {
-  setAcceptRichText(false);
-  setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-
-  // Set document margin to prevent text from touching edges
-  document()->setDocumentMargin(2);
-
-  setMinimumHeight(MIN_HEIGHT);
-  setMaximumHeight(MAX_HEIGHT);
-  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-
-  adjustHeight();
-}
-
-void ChatInputWidget::ApplyTheme(const AgentPanelPalette& palette) {
-  currentPalette_ = palette;
-  applyPalette(palette);
-}
-
-void ChatInputWidget::applyPalette(const AgentPanelPalette& palette) {
-  QColor focusBackground = palette.dark ? darken(palette.input.background, 90) : QColor("#FFFFFF");
-
-  QString style = QStringLiteral(R"(
-    QTextEdit {
-      background-color: %1;
-      border: 1px solid %2;
-      border-radius: 6px;
-      padding: 10px 14px;
-      font-size: 14px;
-      color: %3;
-      caret-color: %6;
-    }
-    QTextEdit:focus {
-      border: 1px solid %4;
-      background-color: %5;
-      caret-color: %6;
-    }
-  )");
-  style = style.arg(colorToCss(palette.input.background),
-                    colorToCss(palette.input.border),
-                    colorToCss(palette.input.text),
-                    colorToCss(palette.input.borderFocused),
-                    colorToCss(focusBackground),
-                    colorToCss(palette.input.caret));
-  setStyleSheet(style);
-
-  QPalette widgetPalette = this->palette();
-  widgetPalette.setColor(QPalette::Base, palette.input.background);
-  widgetPalette.setColor(QPalette::Text, palette.input.text);
-  widgetPalette.setColor(QPalette::Highlight, palette.accent);
-  widgetPalette.setColor(QPalette::HighlightedText,
-                         palette.dark ? QColor("#0F172A") : QColor("#FFFFFF"));
-  widgetPalette.setColor(QPalette::PlaceholderText, palette.input.placeholder);
-  setPalette(widgetPalette);
-
-  QPalette viewportPalette = viewport()->palette();
-  viewportPalette.setColor(QPalette::Base, palette.input.background);
-  viewportPalette.setColor(QPalette::Text, palette.input.text);
-  viewport()->setPalette(viewportPalette);
-
-  document()->setDefaultStyleSheet(
-      QStringLiteral("body { color: %1; }").arg(colorToCss(palette.input.text)));
-
-  setCursorWidth(2);
-}
-
-void ChatInputWidget::keyPressEvent(QKeyEvent* event) {
-  if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-    if (event->modifiers() & Qt::ShiftModifier) {
-      // Shift+Enter: Insert newline
-      QTextEdit::keyPressEvent(event);
-    } else {
-      // Enter: Send message
-      emit sendRequested();
-      event->accept();
-      return;
-    }
-  } else {
-    QTextEdit::keyPressEvent(event);
-  }
-}
-
-void ChatInputWidget::focusInEvent(QFocusEvent* event) {
-  QTextEdit::focusInEvent(event);
-  emit focusChanged(true);
-}
-
-void ChatInputWidget::focusOutEvent(QFocusEvent* event) {
-  QTextEdit::focusOutEvent(event);
-  emit focusChanged(false);
-}
-
-void ChatInputWidget::adjustHeight() {
-  int idealHeight = calculateIdealHeight();
-  setFixedHeight(idealHeight);
-}
-
-int ChatInputWidget::calculateIdealHeight() {
-  // Fixed: Use document size instead of line count to handle wrapped lines
-  // Set text width to account for padding and borders
-  int availableWidth = viewport()->width() - 4;  // Account for margins
-  document()->setTextWidth(availableWidth);
-
-  // Get actual document height (handles word wrapping)
-  QSizeF docSize = document()->size();
-  int contentHeight = static_cast<int>(docSize.height());
-
-  // Add padding (10px top + 10px bottom) + borders (2px top + 2px bottom) + margin
-  int padding = 28;
-  int totalHeight = contentHeight + padding;
-
-  // Clamp between min and max
-  return qBound(MIN_HEIGHT, totalHeight, MAX_HEIGHT);
-}
-
-QString ChatInputWidget::GetText() const {
-  return toPlainText();
-}
-
-void ChatInputWidget::Clear() {
-  clear();
-}
-
-// ============================================================================
-// ChatBubble Implementation
-// ============================================================================
-
-ChatBubble::ChatBubble(Role role,
-                       const QString& message,
-                       const AgentPanelPalette& palette,
-                       QWidget* parent)
-    : QFrame(parent), role_(role), message_(message) {
-  setupUI();
-  ApplyTheme(palette);
-
-  // Setup fade-in animation
-  opacityEffect_ = new QGraphicsOpacityEffect(this);
-  opacityEffect_->setOpacity(0.0);
-  setGraphicsEffect(opacityEffect_);
-
-  fadeInAnimation_ = new QPropertyAnimation(opacityEffect_, "opacity", this);
-  fadeInAnimation_->setDuration(200);
-  fadeInAnimation_->setStartValue(0.0);
-  fadeInAnimation_->setEndValue(1.0);
-  fadeInAnimation_->setEasingCurve(QEasingCurve::OutCubic);
-}
-
-void ChatBubble::setupUI() {
-  layout_ = new QVBoxLayout(this);
-  layout_->setContentsMargins(14, 6, 14, 6);
-  layout_->setSpacing(1);
-
-  roleLabel_ = new QLabel(this);
-  QFont labelFont = roleLabel_->font();
-  labelFont.setPixelSize(12);
-  labelFont.setBold(true);
-  roleLabel_->setFont(labelFont);
-  roleLabel_->setText(role_ == Role::User ? QObject::tr("You") : QObject::tr("Agent"));
-  layout_->addWidget(roleLabel_);
-
-  contentWidget_ = new QTextEdit(this);
-  contentWidget_->setReadOnly(true);
-  contentWidget_->setFrameShape(QFrame::NoFrame);
-  contentWidget_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  contentWidget_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  contentWidget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-  contentWidget_->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
-  contentWidget_->setLineWrapMode(QTextEdit::WidgetWidth);
-  contentWidget_->setAutoFillBackground(false);
-
-  QFont contentFont = contentWidget_->font();
-  contentFont.setPixelSize(14);
-  contentWidget_->setFont(contentFont);
-
-  layout_->addWidget(contentWidget_);
-
-  setFrameShape(QFrame::NoFrame);
-  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
-}
-
-void ChatBubble::ApplyTheme(const AgentPanelPalette& palette) {
-  bubblePalette_ = (role_ == Role::User) ? palette.userBubble : palette.assistantBubble;
-  applyPalette(palette);
-  renderMarkdown(message_);
-}
-
-void ChatBubble::applyPalette(const AgentPanelPalette& palette) {
-  setAutoFillBackground(true);
-
-  QPalette framePalette = this->palette();
-  framePalette.setColor(QPalette::Window, bubblePalette_.background);
-  setPalette(framePalette);
-
-  setStyleSheet(QStringLiteral(R"(
-    QFrame {
-      background-color: %1;
-      border: none;
-      border-radius: 6px;
-    }
-    QLabel {
-      color: %2;
-      background-color: transparent;
-      font-weight: 600;
-    }
-  )")
-                    .arg(colorToCss(bubblePalette_.background),
-                         colorToCss(bubblePalette_.label)));
-
-  QPalette textPalette = contentWidget_->palette();
-  textPalette.setColor(QPalette::Base, bubblePalette_.background);
-  textPalette.setColor(QPalette::Text, bubblePalette_.text);
-  textPalette.setColor(QPalette::Highlight, palette.accent);
-  textPalette.setColor(QPalette::HighlightedText,
-                       palette.dark ? QColor("#0F172A") : QColor("#FFFFFF"));
-  contentWidget_->setPalette(textPalette);
-
-  QString defaultCSS = QStringLiteral(
-      "body { color: %1; background-color: %2; font-size: 14px; } "
-      "code { background-color: %3; color: %4; padding: 2px 4px; border-radius: 4px; "
-      "font-family: 'Fira Code', 'JetBrains Mono', monospace; } "
-      "a { color: %5; text-decoration: none; font-weight: 600; } "
-      "a:hover { text-decoration: underline; } "
-      "strong { font-weight: 600; } "
-      "em { font-style: italic; } "
-      "ul { padding-left: 20px; margin: 12px 0; } "
-      "li { margin-bottom: 6px; }")
-                             .arg(colorToCss(bubblePalette_.text),
-                                  colorToCss(bubblePalette_.background),
-                                  colorToCss(bubblePalette_.codeBackground),
-                                  colorToCss(bubblePalette_.codeText),
-                                  colorToCss(palette.accent));
-
-  contentWidget_->document()->setDefaultStyleSheet(defaultCSS);
-}
-
-void ChatBubble::renderMarkdown(const QString& markdown) {
-  QString html = markdown;
-
-  html.replace("&", "&amp;");
-  html.replace("<", "&lt;");
-  html.replace(">", "&gt;");
-
-  html.replace(QRegularExpression("\\*\\*([^*]+)\\*\\*"), "<b>\\1</b>");
-  html.replace(QRegularExpression("(?<!\\*)\\*([^*]+)\\*(?!\\*)"), "<i>\\1</i>");
-  html.replace(QRegularExpression("`([^`]+)`"), "<code>\\1</code>");
-
-  html.replace("\n", "<br>");
-
-  QString wrappedHtml = QStringLiteral(
-      "<div style='line-height:1.4; word-wrap:break-word; white-space:pre-wrap;'>%1</div>")
-                               .arg(html);
-  contentWidget_->setHtml(wrappedHtml);
-
-  int availableWidth = contentWidget_->viewport()->width();
-  if (availableWidth <= 0) {
-    availableWidth = qMax(220, width() - 36);
-  }
-  contentWidget_->document()->setTextWidth(availableWidth);
-
-  QSizeF docSize = contentWidget_->document()->size();
-  int idealHeight = static_cast<int>(docSize.height());
-  idealHeight = qMin(idealHeight, 600);  // Only enforce maximum, no minimum
-
-  contentWidget_->setMinimumHeight(idealHeight);
-  contentWidget_->setMaximumHeight(idealHeight);
-
-  contentWidget_->updateGeometry();
-  updateGeometry();
-}
-
-void ChatBubble::SetMessage(const QString& message) {
-  message_ = message;
-  renderMarkdown(message_);
-}
-
-QString ChatBubble::GetMessage() const {
-  return message_;
-}
-
-void ChatBubble::AnimateIn() {
-  fadeInAnimation_->start();
-}
-
-// ============================================================================
-// ThinkingIndicator Implementation
-// ============================================================================
-
-ThinkingIndicator::ThinkingIndicator(QWidget* parent)
-    : QWidget(parent),
-      animationFrame_(0),
-      text_("Agent is thinking"),
-      textColor_(QColor("#5F6368")),
-      backgroundColor_(QColor("#F8F9FA")) {
-  animationTimer_ = new QTimer(this);
-  connect(animationTimer_, &QTimer::timeout, this, &ThinkingIndicator::updateAnimation);
-
-  setFixedHeight(36);  // Compact height to match bubble sizing
-  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  setAttribute(Qt::WA_TranslucentBackground, true);
-}
-
-void ThinkingIndicator::Start() {
-  animationFrame_ = 0;
-  animationTimer_->start(500);  // Update every 500ms
-  update();
-}
-
-void ThinkingIndicator::Stop() {
-  animationTimer_->stop();
-}
-
-void ThinkingIndicator::ApplyTheme(const AgentPanelPalette& palette) {
-  backgroundColor_ = palette.thinkingBackground;
-  textColor_ = palette.thinkingText;
-  update();
-}
-
-void ThinkingIndicator::updateAnimation() {
-  animationFrame_ = (animationFrame_ + 1) % ANIMATION_FRAMES;
-  update();
-}
-
-void ThinkingIndicator::paintEvent(QPaintEvent* event) {
-  // Don't call QWidget::paintEvent - we're doing all painting ourselves
-  Q_UNUSED(event);
-
-  QPainter painter(this);
-  painter.setRenderHint(QPainter::Antialiasing);
-  painter.setRenderHint(QPainter::TextAntialiasing);
-
-  QRectF bubbleRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
-  painter.setBrush(backgroundColor_);
-  painter.setPen(Qt::NoPen);
-  painter.drawRoundedRect(bubbleRect, 6, 6);
-
-  // Draw text with animated dots
-  QString dots;
-  for (int i = 0; i <= animationFrame_; ++i) {
-    dots += ".";
-  }
-
-  QString fullText = text_ + dots;
-
-  QFont font = painter.font();
-  font.setItalic(true);
-  font.setPixelSize(14);  // Use pixels, not points
-  font.setWeight(QFont::Medium);
-  painter.setFont(font);
-  painter.setPen(textColor_);
-
-  // Left-align with padding matching bubble style
-  QRect textRect = rect().adjusted(10, 0, -10, 0);
-  painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, fullText);
 }
 
 }  // namespace platform

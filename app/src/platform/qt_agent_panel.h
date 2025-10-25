@@ -1,24 +1,21 @@
 #ifndef ATHENA_PLATFORM_QT_AGENT_PANEL_H_
 #define ATHENA_PLATFORM_QT_AGENT_PANEL_H_
 
+#include "qt_agent_panel_theme.h"
+#include "qt_chat_bubble.h"
+#include "qt_chat_input_widget.h"
+#include "qt_thinking_indicator.h"
+
 #include <deque>
-#include <memory>
-#include <QColor>
 #include <QFrame>
-#include <QGraphicsOpacityEffect>
-#include <QGraphicsDropShadowEffect>
-#include <QLabel>
-#include <QLineEdit>
 #include <QLocalSocket>
-#include <QPropertyAnimation>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QTextEdit>
-#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 
 class QEvent;
+class QGraphicsDropShadowEffect;
 
 namespace athena {
 namespace runtime {
@@ -27,72 +24,8 @@ class NodeRuntime;
 
 namespace platform {
 
-struct ScrollbarPalette {
-  QColor track;
-  QColor thumb;
-  QColor thumbHover;
-};
-
-struct BubblePalette {
-  QColor background;
-  QColor text;
-  QColor label;
-  QColor codeBackground;
-  QColor codeText;
-};
-
-struct InputPalette {
-  QColor background;
-  QColor border;
-  QColor borderFocused;
-  QColor text;
-  QColor placeholder;
-  QColor caret;
-};
-
-struct IconButtonPalette {
-  QColor background;
-  QColor backgroundHover;
-  QColor backgroundPressed;
-  QColor backgroundDisabled;
-  QColor icon;
-  QColor iconDisabled;
-};
-
-struct ChipPalette {
-  QColor background;
-  QColor text;
-  QColor border;
-};
-
-struct AgentPanelPalette {
-  bool dark = false;
-  QColor panelBackground;
-  QColor panelBorder;
-  QColor messageAreaBackground;
-  QColor composerBackground;
-  QColor composerBorder;
-  QColor composerShadow;
-  QColor keyboardHintText;
-  QColor thinkingBackground;
-  QColor thinkingText;
-  QColor secondaryText;
-  QColor accent;
-
-  ScrollbarPalette scrollbar;
-  BubblePalette userBubble;
-  BubblePalette assistantBubble;
-  InputPalette input;
-  IconButtonPalette sendButton;
-  IconButtonPalette stopButton;
-  ChipPalette chip;
-};
-
 // Forward declarations
 class QtMainWindow;
-class ChatBubble;
-class ChatInputWidget;
-class ThinkingIndicator;
 
 /**
  * Modern Agent chat panel with beautiful UI.
@@ -157,7 +90,7 @@ class AgentPanel : public QWidget {
   /**
    * Emitted when panel visibility changes.
    */
- void visibilityChanged(bool visible);
+  void visibilityChanged(bool visible);
 
  private slots:
   void onSendClicked();
@@ -276,172 +209,6 @@ class AgentPanel : public QWidget {
 
   // Theming
   AgentPanelPalette palette_;
-};
-
-/**
- * Custom chat input widget with multiline support.
- *
- * Features:
- * - Auto-expanding height (1-5 lines)
- * - Enter to send, Shift+Enter for newline
- * - Placeholder text
- * - Focus styling
- */
-class ChatInputWidget : public QTextEdit {
-  Q_OBJECT
-
- public:
-  explicit ChatInputWidget(QWidget* parent = nullptr);
-
-  /**
-   * Get the input text.
-   */
-  QString GetText() const;
-
-  /**
-   * Clear the input text.
-   */
-  void Clear();
-
-  /**
-   * Apply themed styling.
-   */
-  void ApplyTheme(const AgentPanelPalette& palette);
-
- signals:
-  /**
-   * Emitted when user presses Enter (without Shift).
-   */
-  void sendRequested();
-
-  /**
-   * Emitted when focus state changes.
-   */
-  void focusChanged(bool focused);
-
- protected:
-  void keyPressEvent(QKeyEvent* event) override;
-  void focusInEvent(QFocusEvent* event) override;
-  void focusOutEvent(QFocusEvent* event) override;
-
- private slots:
-  void adjustHeight();
-
- private:
-  void setupUI();
-  int calculateIdealHeight();
-  void applyPalette(const AgentPanelPalette& palette);
-
-  static constexpr int MIN_HEIGHT = 40;
-  static constexpr int MAX_HEIGHT = 120;
-  AgentPanelPalette currentPalette_;
-};
-
-/**
- * Chat message bubble with role-specific styling.
- *
- * Features:
- * - Different colors for user vs assistant
- * - Markdown rendering
- * - Code syntax highlighting
- * - Copy button
- * - Smooth fade-in animation
- */
-class ChatBubble : public QFrame {
-  Q_OBJECT
-
- public:
-  enum class Role { User, Assistant };
-
-  explicit ChatBubble(Role role,
-                      const QString& message,
-                      const AgentPanelPalette& palette,
-                      QWidget* parent = nullptr);
-
-  /**
-   * Update the message content.
-   * Used for replacing thinking indicator with actual response.
-   */
-  void SetMessage(const QString& message);
-
-  /**
-   * Get the message content.
-   */
-  QString GetMessage() const;
-
-  /**
-   * Get the role.
-   */
-  Role GetRole() const { return role_; }
-
-  /**
-   * Animate the bubble appearing.
-   */
-  void AnimateIn();
-
-  /**
-   * Apply theme colors to the bubble.
-   */
- void ApplyTheme(const AgentPanelPalette& palette);
-
- private:
-  void setupUI();
-  void renderMarkdown(const QString& markdown);
-  void applyPalette(const AgentPanelPalette& palette);
-
-  Role role_;
-  QString message_;
-  BubblePalette bubblePalette_;
-
-  // UI Components
-  QVBoxLayout* layout_;
-  QLabel* roleLabel_;         // "You" or "Agent"
-  QTextEdit* contentWidget_;  // Message content (read-only)
-
-  // Animation
-  QGraphicsOpacityEffect* opacityEffect_;
-  QPropertyAnimation* fadeInAnimation_;
-};
-
-/**
- * Animated thinking indicator ("Agent is thinking...").
- *
- * Shows animated dots while waiting for Agent's response.
- */
-class ThinkingIndicator : public QWidget {
-  Q_OBJECT
-
- public:
-  explicit ThinkingIndicator(QWidget* parent = nullptr);
-
-  /**
-   * Start the animation.
-   */
-  void Start();
-
-  /**
-   * Stop the animation.
-   */
-  void Stop();
-
-  /**
-   * Apply theme styling.
-   */
-  void ApplyTheme(const AgentPanelPalette& palette);
-
- protected:
-  void paintEvent(QPaintEvent* event) override;
-
- private slots:
-  void updateAnimation();
-
- private:
-  QTimer* animationTimer_;
-  int animationFrame_;
-  QString text_;
-  static constexpr int ANIMATION_FRAMES = 4;  // ".", "..", "...", "...."
-  QColor textColor_;
-  QColor backgroundColor_;
 };
 
 }  // namespace platform

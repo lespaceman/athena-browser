@@ -80,6 +80,14 @@ Thumbs.db
 .vscode/
 .vs/
 
+# Qt Creator
+CMakeLists.txt.user
+CMakeLists.txt.user.*
+*.autosave
+*.user
+.qmake.stash
+.qtc_clangd/
+
 ############################
 # Environment files
 ############################

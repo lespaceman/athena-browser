@@ -22,6 +22,10 @@ set(PLATFORM_SOURCES
   src/platform/qt_mainwindow.cpp
   src/platform/qt_browserwidget.cpp
   src/platform/qt_agent_panel.cpp
+  src/platform/qt_agent_panel_theme.cpp
+  src/platform/qt_chat_input_widget.cpp
+  src/platform/qt_chat_bubble.cpp
+  src/platform/qt_thinking_indicator.cpp
 )
 
 add_compile_definitions(ATHENA_USE_QT)
@@ -44,24 +48,17 @@ set(RUNTIME_SOURCES
 
 add_executable(athena-browser
   src/main.cpp
-  # Phase 1: Utilities
   src/utils/logging.cpp
-  # Phase 2: Rendering Layer
   src/rendering/buffer_manager.cpp
   src/rendering/scaling_manager.cpp
   src/rendering/gl_renderer.cpp
-  # Phase 3: Browser Engine Layer
   src/browser/cef_client.cpp
   src/browser/cef_engine.cpp
   src/browser/app_handler.cpp
-  # Phase 4: Platform Layer (Qt)
   ${PLATFORM_SOURCES}
-  # Phase 5: Application Layer
   src/core/browser_window.cpp
   src/core/application.cpp
-  # Phase 6: Runtime Layer
   ${RUNTIME_SOURCES}
-  # Resources
   src/resources/scheme_handler.cpp
   # CEF's official OpenGL renderer
   ${CEF_ROOT}/tests/cefclient/browser/osr_renderer.cc
