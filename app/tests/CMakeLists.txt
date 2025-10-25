@@ -87,6 +87,7 @@ add_athena_test(cef_engine_test
   ../src/browser/cef_client.cpp
   ../src/browser/message_router_handler.cpp
   ../src/browser/app_handler.cpp
+  ../src/browser/platform_flags.cpp
   ../src/resources/scheme_handler.cpp
   ../src/rendering/gl_renderer.cpp
   ../src/utils/logging.cpp

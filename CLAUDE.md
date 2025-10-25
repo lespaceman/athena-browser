@@ -328,6 +328,42 @@ if (exit_code >= 0) {
 - No global state for CEF clients or renderers
 - Clean separation between Qt UI layer and CEF rendering
 
+**Platform Flag Presets:**
+
+Athena uses a centralized platform flags system (`app/src/browser/platform_flags.{h,cpp}`) that applies battle-tested CEF command-line flags based on:
+- Platform (Linux, Windows, macOS)
+- Build type (Debug, Release)
+- Use case (Performance, Compatibility)
+
+Available presets:
+- `DEBUG` - Verbose logging, GPU validation, easier debugging
+- `RELEASE` - Optimized flags, minimal logging (default for production)
+- `PERFORMANCE` - Maximum performance, zero-copy, minimal overhead
+- `COMPATIBILITY` - Software rendering fallback for GPU issues
+
+Control via environment variable:
+
+```bash
+# Default: RELEASE preset in release builds, DEBUG in debug builds
+./scripts/build.sh && ./build/release/app/athena-browser
+
+# Force debug flags (verbose CEF logging)
+ATHENA_FLAG_PRESET=debug ./build/release/app/athena-browser
+
+# Performance mode (benchmarking)
+ATHENA_FLAG_PRESET=performance ./build/release/app/athena-browser
+
+# Compatibility mode (troubleshooting GPU issues)
+ATHENA_FLAG_PRESET=compatibility ./build/release/app/athena-browser
+```
+
+Platform-specific flags applied automatically:
+- **Linux**: `--use-angle=gl-egl`, `--ozone-platform=x11` (required for OSR)
+- **Windows**: `--use-angle=d3d11`, DPI awareness
+- **macOS**: `--use-angle=metal`, Retina display support
+
+See `docs/KNOWN_ISSUES.md` for detailed explanations of each flag and known CEF issues.
+
 ### OpenGL Rendering
 
 The browser uses CEF's official OpenGL renderer (`osr_renderer.cc`):

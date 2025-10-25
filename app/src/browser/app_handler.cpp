@@ -1,5 +1,6 @@
 #include "browser/app_handler.h"
 
+#include "browser/platform_flags.h"
 #include "cef_command_line.h"
 #include "cef_scheme.h"
 #include "resources/scheme_handler.h"
@@ -8,6 +9,7 @@
 #include "wrapper/cef_message_router.h"
 
 #include <cstdio>
+#include <cstdlib>
 
 AppHandler::AppHandler() {}
 
@@ -15,36 +17,32 @@ void AppHandler::OnBeforeCommandLineProcessing(const CefString& process_type,
                                                CefRefPtr<CefCommandLine> command_line) {
   // Empty process_type means browser process
   if (process_type.empty()) {
-#if defined(OS_LINUX)
-    // Platform-specific flags for Linux
+    // Determine flag preset from environment variable or build type
+    athena::browser::FlagPreset preset = athena::browser::FlagPreset::RELEASE;
 
-    // Force X11 platform for proper child window embedding
-    command_line->AppendSwitchWithValue("ozone-platform", "x11");
-
-    // Use ANGLE with OpenGL ES/EGL for better OSR compatibility
-    // Reference: https://github.com/chromiumembedded/cef/issues/3953
-    // QCefView finding: Recent CEF versions on Linux need this for OSR
-    command_line->AppendSwitchWithValue("use-angle", "gl-egl");
-
-    // Use in-process GPU to avoid window handle issues
-    command_line->AppendSwitch("in-process-gpu");
-
-    // Disable GPU sandbox (often causes issues on Linux)
-    command_line->AppendSwitch("disable-gpu-sandbox");
-
-    // Use software rendering as fallback
-    command_line->AppendSwitch("disable-gpu-compositing");
-
-    // Logging for debugging
-    command_line->AppendSwitch("enable-logging");
-    command_line->AppendSwitchWithValue("v", "1");
-#elif defined(OS_WIN)
-    // Platform-specific flags for Windows
-    // TODO: Add Windows-specific flags if needed
-#elif defined(OS_MAC)
-    // Platform-specific flags for macOS
-    // TODO: Add macOS-specific flags if needed
+    // Allow override via environment variable for testing/debugging
+    const char* preset_env = std::getenv("ATHENA_FLAG_PRESET");
+    if (preset_env) {
+      std::string preset_str(preset_env);
+      if (preset_str == "debug" || preset_str == "DEBUG") {
+        preset = athena::browser::FlagPreset::DEBUG;
+      } else if (preset_str == "performance" || preset_str == "PERFORMANCE") {
+        preset = athena::browser::FlagPreset::PERFORMANCE;
+      } else if (preset_str == "compatibility" || preset_str == "COMPATIBILITY") {
+        preset = athena::browser::FlagPreset::COMPATIBILITY;
+      }
+    }
+#ifdef NDEBUG
+    // Release build: default to RELEASE preset (unless overridden above)
+#else
+    // Debug build: default to DEBUG preset (unless overridden above)
+    if (!preset_env) {
+      preset = athena::browser::FlagPreset::DEBUG;
+    }
 #endif
+
+    // Apply platform-specific flags using centralized system
+    athena::browser::ApplyPlatformFlags(command_line, preset);
   }
 }
 

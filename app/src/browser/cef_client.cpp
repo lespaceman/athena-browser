@@ -68,6 +68,7 @@ void CefClient::OnAfterCreated(CefRefPtr<::CefBrowser> browser) {
 }
 
 bool CefClient::DoClose(CefRefPtr<::CefBrowser> browser) {
+  (void)browser;  // Unused parameter
   CEF_REQUIRE_UI_THREAD();
   return false;  // Allow the close
 }
@@ -102,6 +103,7 @@ void CefClient::OnTitleChange(CefRefPtr<::CefBrowser> browser, const CefString& 
 void CefClient::OnAddressChange(CefRefPtr<::CefBrowser> browser,
                                 CefRefPtr<::CefFrame> frame,
                                 const CefString& url) {
+  (void)browser;  // Unused parameter
   CEF_REQUIRE_UI_THREAD();
 
   // Only update for the main frame
@@ -162,6 +164,7 @@ void CefClient::OnPopupSize(CefRefPtr<::CefBrowser> browser, const CefRect& rect
 // ============================================================================
 
 void CefClient::GetViewRect(CefRefPtr<::CefBrowser> browser, CefRect& rect) {
+  (void)browser;  // Unused parameter
   CEF_REQUIRE_UI_THREAD();
   if (width_ > 0 && height_ > 0) {
     // Return LOGICAL size - CEF will apply device_scale_factor internally
@@ -173,6 +176,7 @@ void CefClient::GetViewRect(CefRefPtr<::CefBrowser> browser, CefRect& rect) {
 }
 
 bool CefClient::GetScreenInfo(CefRefPtr<::CefBrowser> browser, CefScreenInfo& screen_info) {
+  (void)browser;  // Unused parameter
   CEF_REQUIRE_UI_THREAD();
   screen_info.device_scale_factor = device_scale_factor_;
   return true;
@@ -201,6 +205,7 @@ void CefClient::OnPaint(CefRefPtr<::CefBrowser> browser,
 void CefClient::OnImeCompositionRangeChanged(CefRefPtr<::CefBrowser> browser,
                                              const CefRange& selected_range,
                                              const RectList& character_bounds) {
+  (void)browser;  // Unused parameter
   CEF_REQUIRE_UI_THREAD();
 
   // NOTE: This method is ONLY called during IME composition (Chinese/Japanese/Korean input).
