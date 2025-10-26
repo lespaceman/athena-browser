@@ -5,8 +5,8 @@
  */
 
 import type { Request, Response } from 'express';
-import { Logger } from '../logger';
-import type { SessionManager } from '../session-manager';
+import { Logger } from '../../server/logger';
+import type { SessionManager } from '../../session/manager';
 
 const logger = new Logger('SessionsRouter');
 

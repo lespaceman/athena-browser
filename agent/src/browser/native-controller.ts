@@ -5,16 +5,16 @@
  * internal control server over Unix socket.
  */
 
-import type { BrowserController, OpenUrlResult } from './routes/browser';
+import type { BrowserController, OpenUrlResult } from './controller';
 import type {
   BrowserApiResponse,
   PageSummary,
   InteractiveElement,
   AccessibilityNode,
   AnnotatedScreenshotElement
-} from './types';
-import { Logger } from './logger';
-import { config } from './config';
+} from '../server/types';
+import { Logger } from '../server/logger';
+import { config } from '../server/config';
 import * as http from 'http';
 
 const logger = new Logger('NativeController');

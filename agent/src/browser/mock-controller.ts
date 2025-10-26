@@ -12,14 +12,14 @@
  * 4. The implementation uses NodeRuntime::Call() to send HTTP requests back to C++
  */
 
-import type { BrowserController } from './routes/browser';
+import type { BrowserController } from './controller';
 import type {
   PageSummary,
   InteractiveElement,
   AccessibilityNode,
   AnnotatedScreenshotElement
-} from './types';
-import { Logger } from './logger';
+} from '../server/types';
+import { Logger } from '../server/logger';
 
 const logger = new Logger('BrowserControllerImpl');
 
@@ -243,7 +243,7 @@ export class MockBrowserController implements BrowserController {
    * POC: Open URL and wait for load complete.
    * Simulates navigation with realistic timing.
    */
-  async openUrl(url: string, timeoutMs: number = 10000): Promise<import('./routes/browser').OpenUrlResult> {
+  async openUrl(url: string, timeoutMs: number = 10000): Promise<import('./controller').OpenUrlResult> {
     const startTime = Date.now();
 
     logger.info('POC: Opening URL', { url, timeoutMs });

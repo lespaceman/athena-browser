@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { PermissionHandler } from '../../claude-config/permissions';
+import { PermissionHandler } from '../../claude/config/permissions';
 
 describe('PermissionHandler', () => {
   describe('canUseTool', () => {

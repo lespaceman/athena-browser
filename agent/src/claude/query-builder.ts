@@ -6,11 +6,11 @@
  */
 
 import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
-import type { AthenaAgentConfig } from './types';
-import { BrowserPrompts } from './claude-config/browser-prompts';
-import { SubAgentConfig } from './claude-config/sub-agents';
-import { ToolSelector } from './claude-config/tool-selector';
-import { PermissionHandler } from './claude-config/permissions';
+import type { AthenaAgentConfig } from '../server/types';
+import { BrowserPrompts } from './config/prompts';
+import { SubAgentConfig } from './config/sub-agents';
+import { ToolSelector } from './config/tool-selector';
+import { PermissionHandler } from './config/permissions';
 
 export interface QueryConfig {
   cwd: string;

@@ -6,7 +6,7 @@
  * Static tool permissions are handled by the allowedTools array.
  */
 
-import { Logger } from '../logger';
+import { Logger } from '../../server/logger';
 
 const logger = new Logger('PermissionHandler');
 

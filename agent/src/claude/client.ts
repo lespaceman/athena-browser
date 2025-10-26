@@ -10,12 +10,12 @@ import type {
   ChatResponse,
   AthenaAgentConfig,
   StreamChunk
-} from './types';
-import { Logger } from './logger';
+} from '../server/types';
+import { Logger } from '../server/logger';
 import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
-import { SessionManager } from './session-manager';
-import type { Message } from './session-types';
-import { ClaudeQueryBuilder } from './claude-query-builder';
+import { SessionManager } from '../session/manager';
+import type { Message } from '../session/types';
+import { ClaudeQueryBuilder } from './query-builder';
 
 const logger = new Logger('ClaudeClient');
 
@@ -38,7 +38,7 @@ export class ClaudeClient {
       permissionMode: config.permissionMode,
       maxThinkingTokens: config.maxThinkingTokens,
       maxTurns: config.maxTurns,
-      sessionStorageEnabled: true
+      sessionStorageEnabled: true,
     });
   }
 

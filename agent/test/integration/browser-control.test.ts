@@ -70,7 +70,7 @@ describe('Browser Control Integration', () => {
 
     // Start the server
     const { spawn } = await import('child_process');
-    serverProcess = spawn('node', ['dist/server.js'], {
+    serverProcess = spawn('node', ['dist/server/server.js'], {
       env: {
         ...process.env,
         ATHENA_SOCKET_PATH: TEST_SOCKET

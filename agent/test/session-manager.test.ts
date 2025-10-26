@@ -5,9 +5,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SessionManager } from '../src/session-manager.js';
+import { SessionManager } from '../src/session/manager.js';
 import { existsSync, rmSync } from 'fs';
-import type { Message } from '../src/session-types.js';
+import type { Message } from '../src/session/types.js';
 
 const TEST_DATA_DIR = '.test-athena-sessions';
 

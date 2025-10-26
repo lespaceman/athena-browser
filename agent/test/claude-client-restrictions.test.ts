@@ -6,8 +6,8 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ClaudeClient } from '../src/claude-client.js';
-import type { AthenaAgentConfig } from '../src/types.js';
+import { ClaudeClient } from '../src/claude/client.js';
+import type { AthenaAgentConfig } from '../src/server/types.js';
 
 describe('ClaudeClient Tool Restrictions', () => {
   let client: ClaudeClient;

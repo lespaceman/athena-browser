@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { SubAgentConfig } from '../../claude-config/sub-agents';
+import { SubAgentConfig } from '../../claude/config/sub-agents';
 
 describe('SubAgentConfig', () => {
   describe('getAgents', () => {

@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ClaudeQueryBuilder } from '../claude-query-builder';
-import type { AthenaAgentConfig } from '../types';
+import { ClaudeQueryBuilder } from '../claude/query-builder';
+import type { AthenaAgentConfig } from '../server/types';
 
 // Mock MCP server instance
 const mockMcpServer: any = {

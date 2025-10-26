@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ToolSelector } from '../../claude-config/tool-selector';
+import { ToolSelector } from '../../claude/config/tool-selector';
 
 // Mock MCP server instance (minimal structure needed for tests)
 const mockMcpServer: any = {

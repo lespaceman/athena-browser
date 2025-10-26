@@ -3,9 +3,9 @@
  */
 
 import type { Request, Response } from 'express';
-import type { CapabilitiesResponse } from '../types';
-import type { ClaudeClient } from '../claude-client';
-import { Logger } from '../logger';
+import type { CapabilitiesResponse } from '../../server/types';
+import type { ClaudeClient } from '../../claude/client';
+import { Logger } from '../../server/logger';
 import { z } from 'zod';
 
 const logger = new Logger('ChatRoutes');

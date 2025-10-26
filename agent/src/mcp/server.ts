@@ -13,8 +13,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import http from 'http';
 import { URLSearchParams } from 'url';
-import { Logger } from './logger';
-import { config } from './config';
+import { Logger } from '../server/logger';
+import { config } from '../server/config';
 
 const logger = new Logger('MCPServer');
 

@@ -9,7 +9,7 @@
 
 import http from 'http';
 import { URLSearchParams } from 'url';
-import { Logger } from './logger';
+import { Logger } from '../server/logger';
 
 const logger = new Logger('BrowserApiClient');
 

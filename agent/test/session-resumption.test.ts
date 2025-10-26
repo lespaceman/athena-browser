@@ -8,8 +8,8 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SessionManager } from '../src/session-manager.js';
-import type { Session, SessionMetadata } from '../src/session-types.js';
+import { SessionManager } from '../src/session/manager.js';
+import type { Session, SessionMetadata } from '../src/session/types.js';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 
 const TEST_DATA_DIR = '.test-sessions-resumption';

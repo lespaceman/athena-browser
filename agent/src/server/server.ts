@@ -11,16 +11,16 @@ import { unlinkSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { Logger } from './logger';
 import { config, validateConfig } from './config';
-import { ClaudeClient } from './claude-client';
-import { SessionManager } from './session-manager';
-import { healthHandler } from './routes/health';
+import { ClaudeClient } from '../claude/client';
+import { SessionManager } from '../session/manager';
+import { healthHandler } from '../api/routes/health';
 import {
   createSendHandler,
   createContinueHandler,
   createClearHandler,
   createStreamHandler,
   capabilitiesHandler
-} from './routes/chat';
+} from '../api/routes/chat';
 import {
   createListHandler,
   createGetHandler,
@@ -30,13 +30,13 @@ import {
   createSearchHandler,
   createPruneHandler,
   createStatsHandler
-} from './routes/sessions';
-import { setBrowserController } from './routes/browser';
-import { createMockBrowserController } from './browser-controller-impl';
-import { createNativeBrowserController } from './native-controller';
-import { openUrlHandler } from './routes/poc';
-import { createV1Router } from './api/v1';
-import { createAgentMcpServer } from './mcp-agent-adapter';
+} from '../api/routes/sessions';
+import { setBrowserController } from '../browser/controller';
+import { createMockBrowserController } from '../browser/mock-controller';
+import { createNativeBrowserController } from '../browser/native-controller';
+import { openUrlHandler } from '../api/routes/poc';
+import { createV1Router } from '../api/v1';
+import { createAgentMcpServer } from '../mcp/agent-adapter';
 
 const logger = new Logger('Server');
 

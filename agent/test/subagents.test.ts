@@ -10,9 +10,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { ClaudeClient } from '../src/claude-client.js';
-import { SessionManager } from '../src/session-manager.js';
-import type { AthenaAgentConfig } from '../src/types.js';
+import { ClaudeClient } from '../src/claude/client.js';
+import { SessionManager } from '../src/session/manager.js';
+import type { AthenaAgentConfig } from '../src/server/types.js';
 import { existsSync, rmSync } from 'fs';
 
 describe('Subagent Configuration', () => {

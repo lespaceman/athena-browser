@@ -2,7 +2,7 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   // Entry points - main server files
-  entry: ['src/server.ts', 'src/mcp-stdio-server.ts'],
+  entry: ['src/server/server.ts', 'src/mcp/stdio-server.ts'],
 
   // Output pure ESM (Node.js native modules)
   format: ['esm'],

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { summarizeToolResult, summarizeToolError } from '../tool-logging';
+import { summarizeToolResult, summarizeToolError } from '../utils/tool-logging';
 
 describe('tool logging helpers', () => {
   it('summarizes successful HTML response without leaking contents', () => {

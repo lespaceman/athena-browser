@@ -8,9 +8,9 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ClaudeClient } from '../src/claude-client.js';
-import type { AthenaAgentConfig } from '../src/types.js';
-import { SessionManager } from '../src/session-manager.js';
+import { ClaudeClient } from '../src/claude/client.js';
+import type { AthenaAgentConfig } from '../src/server/types.js';
+import { SessionManager } from '../src/session/manager.js';
 
 describe('Tool Permissions', () => {
   let client: ClaudeClient;

@@ -11,8 +11,8 @@
 
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { BrowserApiClient } from './browser-api-client';
-import { Logger } from './logger';
+import { BrowserApiClient } from '../browser/api-client';
+import { Logger } from '../server/logger';
 
 const logger = new Logger('MCPAgentAdapter');
 

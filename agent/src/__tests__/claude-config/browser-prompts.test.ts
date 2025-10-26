@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { BrowserPrompts } from '../../claude-config/browser-prompts';
+import { BrowserPrompts } from '../../claude/config/prompts';
 
 describe('BrowserPrompts', () => {
   describe('getSystemPrompt', () => {

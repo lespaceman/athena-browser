@@ -6,7 +6,7 @@
  */
 
 import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
-import { Logger } from '../logger';
+import { Logger } from '../../server/logger';
 
 const logger = new Logger('ToolSelector');
 
