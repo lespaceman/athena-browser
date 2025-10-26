@@ -1,13 +1,12 @@
 #include "browser/thread_safety.h"
 
+#include <atomic>
+#include <chrono>
 #include <gtest/gtest.h>
-
 #include <QCoreApplication>
 #include <QObject>
 #include <QPointer>
 #include <QTimer>
-#include <atomic>
-#include <chrono>
 #include <thread>
 
 using namespace athena::browser;
@@ -140,7 +139,9 @@ TEST_F(ThreadSafetyTest, CallbackForwardsMultipleArguments) {
   SafeInvokeQtCallback(
       test_obj_,
       [](TestObject* obj, int a, const std::string& b, double c) { obj->SetValues(a, b, c); },
-      123, std::string("test"), 3.14);
+      123,
+      std::string("test"),
+      3.14);
 
   ProcessEvents();
 
@@ -182,9 +183,8 @@ TEST_F(ThreadSafetyTest, MultipleCallbacksProcessedInOrder) {
 // not from Qt main thread, so these limitations don't apply.
 
 TEST_F(ThreadSafetyTest, BlockingCallbackWithNullObjectReturnsFalse) {
-  bool result = SafeInvokeQtCallbackBlocking<TestObject>(nullptr, [](TestObject* obj) {
-    obj->IncrementCounter();
-  });
+  bool result = SafeInvokeQtCallbackBlocking<TestObject>(
+      nullptr, [](TestObject* obj) { obj->IncrementCounter(); });
 
   EXPECT_FALSE(result);
 }

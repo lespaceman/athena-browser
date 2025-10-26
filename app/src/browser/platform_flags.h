@@ -2,6 +2,7 @@
 #define ATHENA_BROWSER_PLATFORM_FLAGS_H_
 
 #include "include/cef_command_line.h"
+
 #include <string>
 
 namespace athena {

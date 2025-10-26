@@ -15,6 +15,7 @@
 #include <GL/gl.h>
 
 #include <QDebug>
+#include <QTimer>
 
 namespace athena {
 namespace platform {
@@ -116,9 +117,29 @@ void BrowserWidget::resizeGL(int w, int h) {
 
   glViewport(0, 0, w, h);
 
-  // Notify QtMainWindow → which updates CEF and renderer for THIS tab
+  // Defer resize notification until after Qt layout completes
+  // This prevents race conditions during window maximize/resize where the widget's
+  // dimensions might be stale (before the QSplitter redistributes space).
+  // QTimer::singleShot(0, ...) defers execution to the next event loop iteration.
   if (window_) {
-    window_->OnBrowserSizeChanged(tab_index_, w, h);
+    // Capture by value to ensure thread safety and handle widget deletion
+    QTimer::singleShot(0, this, [this, w, h]() {
+      // Check if window_ is still valid (widget might have been deleted)
+      if (window_) {
+        // Get current dimensions (layout might have updated since resizeGL was called)
+        int current_width = width();
+        int current_height = height();
+
+        // Use current dimensions if they differ significantly from the resize event values
+        // This ensures we always use the post-layout dimensions
+        if (current_width > 0 && current_height > 0) {
+          window_->OnBrowserSizeChanged(tab_index_, current_width, current_height);
+        } else {
+          // Fallback to original dimensions if current dimensions are invalid
+          window_->OnBrowserSizeChanged(tab_index_, w, h);
+        }
+      }
+    });
   }
 }
 

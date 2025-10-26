@@ -102,7 +102,12 @@ add_athena_test(thread_safety_test
 set_target_properties(thread_safety_test PROPERTIES AUTOMOC ON)
 
 # Platform tests (Phase 4)
-# TODO: Add Qt-specific platform tests
+add_athena_test(qt_resize_test
+  platform/qt_resize_test.cpp
+)
+
+# Enable Qt MOC for qt_resize_test (required for Qt widgets)
+set_target_properties(qt_resize_test PROPERTIES AUTOMOC ON)
 
 # Application layer tests (Phase 5)
 # TODO: Re-enable these tests for Qt once platform layer is fully migrated

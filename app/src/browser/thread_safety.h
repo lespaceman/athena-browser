@@ -1,12 +1,11 @@
 #ifndef ATHENA_BROWSER_THREAD_SAFETY_H_
 #define ATHENA_BROWSER_THREAD_SAFETY_H_
 
+#include <functional>
 #include <QMetaObject>
 #include <QObject>
 #include <QPointer>
 #include <Qt>
-
-#include <functional>
 #include <utility>
 
 /**
@@ -72,9 +71,11 @@ void SafeInvokeQtCallback(QObjectType* obj, Func&& func, Args&&... args) {
         if (weak_ptr) {
           // Safe to dereference - object is alive
           // Unpack tuple and call function
-          std::apply([&func, &weak_ptr](auto&&... unpacked_args) {
-            func(weak_ptr.data(), std::forward<decltype(unpacked_args)>(unpacked_args)...);
-          }, std::move(args_tuple));
+          std::apply(
+              [&func, &weak_ptr](auto&&... unpacked_args) {
+                func(weak_ptr.data(), std::forward<decltype(unpacked_args)>(unpacked_args)...);
+              },
+              std::move(args_tuple));
         }
         // If weak_ptr is null, object was destroyed - silently drop callback
       },
@@ -112,12 +113,17 @@ bool SafeInvokeQtCallbackBlocking(QObjectType* obj,
   // Use BlockingQueuedConnection to wait for Qt main thread
   QMetaObject::invokeMethod(
       obj,
-      [weak_ptr, func = std::forward<Func>(func), &invoked, args_tuple = std::move(args_tuple)]() mutable {
+      [weak_ptr,
+       func = std::forward<Func>(func),
+       &invoked,
+       args_tuple = std::move(args_tuple)]() mutable {
         if (weak_ptr) {
           // Unpack tuple and call function
-          std::apply([&func, &weak_ptr](auto&&... unpacked_args) {
-            func(weak_ptr.data(), std::forward<decltype(unpacked_args)>(unpacked_args)...);
-          }, std::move(args_tuple));
+          std::apply(
+              [&func, &weak_ptr](auto&&... unpacked_args) {
+                func(weak_ptr.data(), std::forward<decltype(unpacked_args)>(unpacked_args)...);
+              },
+              std::move(args_tuple));
           invoked = true;
         }
       },
@@ -134,8 +140,7 @@ bool SafeInvokeQtCallbackBlocking(QObjectType* obj,
  *     w->updateTitle("New Title");
  *   });
  */
-#define SAFE_QT_CALLBACK(obj, callback) \
-  ::athena::browser::SafeInvokeQtCallback((obj), (callback))
+#define SAFE_QT_CALLBACK(obj, callback) ::athena::browser::SafeInvokeQtCallback((obj), (callback))
 
 /**
  * Blocking variant macro (use sparingly).
