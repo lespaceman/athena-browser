@@ -225,9 +225,7 @@ void BrowserControlServer::AcceptConnection() {
   // Set up Qt socket notifier for client data
   client_ptr->notifier = new QSocketNotifier(client_fd, QSocketNotifier::Read);
   QObject::connect(
-      client_ptr->notifier,
-      &QSocketNotifier::activated,
-      [this, client_ptr](QSocketDescriptor) {
+      client_ptr->notifier, &QSocketNotifier::activated, [this, client_ptr](QSocketDescriptor) {
         if (!HandleClientData(client_ptr)) {
           // Error or request complete - close connection
           CloseClient(client_ptr);

@@ -14,13 +14,12 @@
 
 #include <GL/gl.h>
 
+#include <cmath>
+#include <cstdlib>
 #include <QColor>
 #include <QDebug>
 #include <QPalette>
 #include <QTimer>
-
-#include <cstdlib>
-#include <cmath>
 
 namespace athena {
 namespace platform {
@@ -114,14 +113,15 @@ void BrowserWidget::OnCefPaint(CefRenderHandler::PaintElementType type, int widt
                    expected_height);
       update();
     } else {
-      logger.Debug("CEF paint size mismatch: got {}x{}, waiting for {}x{} (scale {} expected {}x{})",
-                   width,
-                   height,
-                   pending_width_,
-                   pending_height_,
-                   device_scale,
-                   expected_width,
-                   expected_height);
+      logger.Debug(
+          "CEF paint size mismatch: got {}x{}, waiting for {}x{} (scale {} expected {}x{})",
+          width,
+          height,
+          pending_width_,
+          pending_height_,
+          device_scale,
+          expected_width,
+          expected_height);
     }
   } else {
     last_painted_width_ = static_cast<int>(std::lround(width / device_scale));
@@ -204,7 +204,11 @@ void BrowserWidget::resizeGL(int w, int h) {
 
     if (size_changed) {
       logger.Debug("Browser widget resized: {}x{} (scale {}, buffer {}x{})",
-                   w, h, device_scale, expected_width, expected_height);
+                   w,
+                   h,
+                   device_scale,
+                   expected_width,
+                   expected_height);
       window_->OnBrowserSizeChanged(tab_index_, w, h);
     }
   }

@@ -1,13 +1,13 @@
 #ifndef ATHENA_PLATFORM_QT_BROWSERWIDGET_H_
 #define ATHENA_PLATFORM_QT_BROWSERWIDGET_H_
 
+#include "include/cef_render_handler.h"
+
 #include <QFocusEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QOpenGLWidget>
 #include <QWheelEvent>
-
-#include "include/cef_render_handler.h"
 
 namespace athena {
 namespace browser {
@@ -199,10 +199,10 @@ class BrowserWidget : public QOpenGLWidget {
   bool gl_initialized_;              // Track GL initialization state
 
   // Pending resize tracking for event-driven sync with CEF OnPaint
-  int pending_width_;   // Pending logical width in device-independent pixels
-  int pending_height_;  // Pending logical height in device-independent pixels
-  int last_painted_width_;   // Last successfully presented logical width
-  int last_painted_height_;  // Last successfully presented logical height
+  int pending_width_;             // Pending logical width in device-independent pixels
+  int pending_height_;            // Pending logical height in device-independent pixels
+  int last_painted_width_;        // Last successfully presented logical width
+  int last_painted_height_;       // Last successfully presented logical height
   bool awaiting_paint_for_size_;  // True if we're waiting for CEF to paint at pending size
 };
 

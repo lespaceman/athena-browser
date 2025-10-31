@@ -85,6 +85,59 @@ void CefClient::OnBeforeClose(CefRefPtr<::CefBrowser> browser) {
   CefQuitMessageLoop();
 }
 
+void CefClient::OnRenderProcessTerminated(CefRefPtr<::CefBrowser> browser,
+                                          TerminationStatus status,
+                                          int error_code,
+                                          const CefString& error_string) {
+  (void)browser;  // Unused parameter
+  CEF_REQUIRE_UI_THREAD();
+
+  std::string reason;
+  bool should_reload = false;
+
+  // Map termination status to user-friendly message and determine if reload is safe
+  //
+  // Reload recommendations:
+  // - TS_ABNORMAL_TERMINATION: Don't reload - page may be malicious/causing intentional crashes
+  // - TS_PROCESS_WAS_KILLED: Safe to reload - external signal (user/system killed process)
+  // - TS_PROCESS_CRASHED: Safe to reload - standard crash, likely transient bug
+  // - TS_PROCESS_OOM: Don't reload - page likely too memory-intensive, will crash again
+  switch (status) {
+    case TS_ABNORMAL_TERMINATION:
+      reason = "abnormal termination";
+      should_reload = false;
+      break;
+    case TS_PROCESS_WAS_KILLED:
+      reason = "process was killed";
+      should_reload = true;
+      break;
+    case TS_PROCESS_CRASHED:
+      reason = "process crashed";
+      should_reload = true;
+      break;
+    case TS_PROCESS_OOM:
+      reason = "out of memory";
+      should_reload = false;
+      break;
+    default:
+      reason = "unknown reason (status " + std::to_string(static_cast<int>(status)) + ")";
+      should_reload = false;
+      logger.Warn("Unhandled termination status: {}", static_cast<int>(status));
+      break;
+  }
+
+  // Log crash details (error_code and error_string may provide additional context)
+  logger.Error("Renderer process terminated: {}, code={}, details={}",
+               reason,
+               error_code,
+               error_string.ToString());
+
+  // Notify Qt layer via callback if registered
+  if (on_renderer_crashed_) {
+    on_renderer_crashed_(reason, should_reload);
+  }
+}
+
 bool CefClient::OnBeforePopup(CefRefPtr<::CefBrowser> browser,
                               CefRefPtr<::CefFrame> frame,
                               int popup_id,

@@ -1,23 +1,23 @@
 #include "qt_chat_bubble.h"
 
+#include <cmath>
 #include <QAbstractTextDocumentLayout>
 #include <QGraphicsOpacityEffect>
 #include <QLabel>
+#include <QMargins>
 #include <QPropertyAnimation>
 #include <QRegularExpression>
+#include <QResizeEvent>
 #include <QScrollArea>
+#include <QShowEvent>
+#include <QSize>
 #include <QTextBlockFormat>
 #include <QTextCursor>
-#include <QTextEdit>
-#include <QResizeEvent>
-#include <QShowEvent>
-#include <QTextOption>
-#include <QVBoxLayout>
-#include <QMargins>
 #include <QTextDocument>
+#include <QTextEdit>
+#include <QTextOption>
 #include <QTimer>
-#include <QSize>
-#include <cmath>
+#include <QVBoxLayout>
 
 namespace athena {
 namespace platform {
@@ -259,7 +259,7 @@ QSize ChatBubble::sizeHint() const {
   }
 
   // Calculate preferred width based on parent container
-  int preferredWidth = 400; // Default preference
+  int preferredWidth = 400;  // Default preference
   if (parentWidget()) {
     // Prefer to use parent's width
     preferredWidth = parentWidget()->width();
@@ -268,7 +268,7 @@ QSize ChatBubble::sizeHint() const {
   // Calculate height based on current content
   int totalHeight = minimumHeight();
   if (totalHeight <= 0) {
-    totalHeight = 100; // Reasonable default
+    totalHeight = 100;  // Reasonable default
   }
 
   return QSize(preferredWidth, totalHeight);
@@ -286,7 +286,7 @@ QSize ChatBubble::minimumSizeHint() const {
   // Minimum height based on content
   int minHeight = minimumHeight();
   if (minHeight <= 0) {
-    minHeight = 50; // Reasonable default
+    minHeight = 50;  // Reasonable default
   }
 
   return QSize(minWidth, minHeight);

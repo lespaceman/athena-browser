@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <QApplication>
+#include <QMessageBox>
 #include <QMetaObject>
 #include <QPointer>
 #include <QSignalBlocker>
@@ -267,6 +268,66 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
           // Switch to the new tab if it should be in foreground
           if (foreground && tab_index >= 0) {
             window->SwitchToTab(static_cast<size_t>(tab_index));
+          }
+        });
+      });
+
+      // Renderer crash callback: handles renderer process crashes gracefully
+      tab.cef_client->SetRendererCrashedCallback([this, bid](const std::string& reason,
+                                                             bool should_reload) {
+        // Use thread-safe callback wrapper to marshal from CEF → Qt main thread
+        SafeInvokeQtCallback(this, [bid, reason, should_reload](QtMainWindow* window) {
+          // This runs on Qt main thread with validated window pointer
+          if (window->closed_) {
+            return;
+          }
+
+          logger.Error("Renderer crashed for browser_id {}: {}", bid, reason);
+
+          // Find the tab that crashed to get its title
+          QString tab_title = "Unknown Tab";
+          {
+            std::lock_guard<std::mutex> lock(window->tabs_mutex_);
+            auto it = std::find_if(window->tabs_.begin(),
+                                   window->tabs_.end(),
+                                   [bid](const QtTab& t) { return t.browser_id == bid; });
+            if (it != window->tabs_.end()) {
+              tab_title = it->title;
+            }
+          }
+
+          // Show error dialog to user
+          QMessageBox msgBox(window);
+          msgBox.setIcon(QMessageBox::Warning);
+          msgBox.setWindowTitle("Page Crashed");
+          msgBox.setText(QString("The page \"%1\" has crashed (%2).")
+                             .arg(tab_title)
+                             .arg(QString::fromStdString(reason)));
+
+          if (should_reload) {
+            // Safe to reload - offer reload option
+            msgBox.setInformativeText("Do you want to reload the page?");
+            msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+            msgBox.setDefaultButton(QMessageBox::Yes);
+
+            if (msgBox.exec() == QMessageBox::Yes) {
+              // Verify tab still exists before reloading (user may have closed tab during dialog)
+              std::lock_guard<std::mutex> lock(window->tabs_mutex_);
+              auto it = std::find_if(window->tabs_.begin(),
+                                     window->tabs_.end(),
+                                     [bid](const QtTab& t) { return t.browser_id == bid; });
+              if (it != window->tabs_.end()) {
+                logger.Info("Reloading crashed page for browser_id {}", bid);
+                window->engine_->Reload(bid, false);
+              } else {
+                logger.Debug("Tab {} already closed, skipping reload", bid);
+              }
+            }
+          } else {
+            // Not safe to reload - show warning only
+            msgBox.setInformativeText("Reload not recommended. The page may be causing the crash.");
+            msgBox.setStandardButtons(QMessageBox::Ok);
+            msgBox.exec();
           }
         });
       });

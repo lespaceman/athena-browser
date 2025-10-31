@@ -1,20 +1,20 @@
 #include "platform/qt_chat_bubble.h"
 
+#include <algorithm>
 #include <gtest/gtest.h>
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>
-#include <QCoreApplication>
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QEventLoop>
 #include <QMargins>
 #include <QScrollBar>
+#include <QTextBlock>
 #include <QTextDocument>
 #include <QTextEdit>
-#include <QWidget>
-#include <QVBoxLayout>
-#include <QTextBlock>
 #include <QTextLayout>
-#include <algorithm>
+#include <QVBoxLayout>
+#include <QWidget>
 
 using namespace athena::platform;
 
@@ -159,9 +159,9 @@ TEST_F(QtChatBubbleTest, LineCountIncreasesAsBubbleNarrows) {
   const int narrowLines = maxLineCount();
   const int narrowBubbleWidth = bubble->width();
 
-  SCOPED_TRACE(testing::Message()
-               << "initialWidth=" << initialBubbleWidth << " narrowWidth=" << narrowBubbleWidth
-               << " initialLines=" << initialLines << " narrowLines=" << narrowLines);
+  SCOPED_TRACE(testing::Message() << "initialWidth=" << initialBubbleWidth << " narrowWidth="
+                                  << narrowBubbleWidth << " initialLines=" << initialLines
+                                  << " narrowLines=" << narrowLines);
 
   EXPECT_GE(narrowLines, initialLines)
       << "Line count should not decrease when the bubble gets narrower";

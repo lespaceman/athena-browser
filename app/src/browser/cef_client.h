@@ -8,6 +8,7 @@
 #include "include/cef_load_handler.h"
 #include "include/cef_process_message.h"
 #include "include/cef_render_handler.h"
+#include "include/cef_request_handler.h"
 #include "include/wrapper/cef_message_router.h"
 #include "rendering/gl_renderer.h"
 
@@ -42,7 +43,8 @@ class CefClient : public ::CefClient,
                   public ::CefLifeSpanHandler,
                   public ::CefDisplayHandler,
                   public ::CefLoadHandler,
-                  public ::CefRenderHandler {
+                  public ::CefRenderHandler,
+                  public ::CefRequestHandler {
  public:
   /**
    * Construct a CEF client.
@@ -74,6 +76,7 @@ class CefClient : public ::CefClient,
   CefRefPtr<::CefDisplayHandler> GetDisplayHandler() override { return this; }
   CefRefPtr<::CefLoadHandler> GetLoadHandler() override { return this; }
   CefRefPtr<::CefRenderHandler> GetRenderHandler() override { return this; }
+  CefRefPtr<::CefRequestHandler> GetRequestHandler() override { return this; }
   bool OnProcessMessageReceived(CefRefPtr<::CefBrowser> browser,
                                 CefRefPtr<::CefFrame> frame,
                                 CefProcessId source_process,
@@ -120,6 +123,15 @@ class CefClient : public ::CefClient,
 
   void OnPopupShow(CefRefPtr<::CefBrowser> browser, bool show) override;
   void OnPopupSize(CefRefPtr<::CefBrowser> browser, const CefRect& rect) override;
+
+  // ============================================================================
+  // CefRequestHandler methods
+  // ============================================================================
+
+  void OnRenderProcessTerminated(CefRefPtr<::CefBrowser> browser,
+                                 TerminationStatus status,
+                                 int error_code,
+                                 const CefString& error_string) override;
 
   // ============================================================================
   // CefRenderHandler methods (for OSR)
@@ -264,6 +276,15 @@ class CefClient : public ::CefClient,
     on_create_tab_ = std::move(callback);
   }
 
+  /**
+   * Set callback for renderer process crashes.
+   * Called when the renderer process terminates unexpectedly.
+   * Callback receives: (reason, should_reload) where reason is human-readable crash description.
+   */
+  void SetRendererCrashedCallback(std::function<void(const std::string&, bool)> callback) {
+    on_renderer_crashed_ = std::move(callback);
+  }
+
  private:
   void* native_window_;                 // Platform-specific window handle (non-owning)
   CefRefPtr<::CefBrowser> browser_;     // CEF browser instance
@@ -285,6 +306,8 @@ class CefClient : public ::CefClient,
       on_render_invalidated_;  // (type, width, height)
   std::function<void(const std::string&, bool)>
       on_create_tab_;  // (url, foreground) - Popup/new tab creation
+  std::function<void(const std::string&, bool)>
+      on_renderer_crashed_;  // (reason, should_reload) - Renderer crash
 
   struct JavaScriptRequest {
     bool completed{false};

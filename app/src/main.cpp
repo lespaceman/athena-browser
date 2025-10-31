@@ -125,7 +125,8 @@ int main(int argc, char* argv[]) {
     // Location 2: Bundle mode (Linux/Windows)
     // Binary at: dist/linux/athena-browser/bin/athena-browser
     // Agent at:  dist/linux/athena-browser/lib/agent/server/server.js
-    std::filesystem::path bundle_script = exe_dir.parent_path() / "lib" / "agent" / "server" / "server.js";
+    std::filesystem::path bundle_script =
+        exe_dir.parent_path() / "lib" / "agent" / "server" / "server.js";
 
     // Location 3: Bundle mode (macOS)
     // Binary at: Athena Browser.app/Contents/MacOS/athena-browser

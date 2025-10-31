@@ -186,7 +186,9 @@ void QtMainWindow::connectSignals() {
   connect(agentButton_, &QPushButton::clicked, this, &QtMainWindow::onAgentButtonClicked);
 
   // Agent panel visibility changes
-  connect(agentPanel_, &AgentPanel::visibilityChanged, this,
+  connect(agentPanel_,
+          &AgentPanel::visibilityChanged,
+          this,
           &QtMainWindow::onAgentPanelVisibilityChanged);
 
   // Splitter signals - handle manual resize events
@@ -259,8 +261,10 @@ void QtMainWindow::resizeEvent(QResizeEvent* event) {
   QMainWindow::resizeEvent(event);
 
   logger.Debug("Window resized: {}x{} -> {}x{}, maximized={}",
-               event->oldSize().width(), event->oldSize().height(),
-               event->size().width(), event->size().height(),
+               event->oldSize().width(),
+               event->oldSize().height(),
+               event->size().width(),
+               event->size().height(),
                isMaximized());
 
   // IMPORTANT: Do NOT call OnBrowserSizeChanged() here!
@@ -366,8 +370,7 @@ void QtMainWindow::onAgentPanelVisibilityChanged(bool visible) {
       sidebar_width = max_sidebar_width;
       browser_width = std::max(total_width - sidebar_width, min_browser_width);
     } else {
-      sidebar_width =
-          std::clamp(agent_panel_last_width_, min_sidebar_width, max_sidebar_width);
+      sidebar_width = std::clamp(agent_panel_last_width_, min_sidebar_width, max_sidebar_width);
       browser_width = std::max(total_width - sidebar_width, min_browser_width);
       if (browser_width + sidebar_width != total_width) {
         sidebar_width = std::max(0, total_width - browser_width);

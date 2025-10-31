@@ -393,11 +393,11 @@ class QtMainWindow : public QMainWindow, public Window {
   QPushButton* forwardButton_;
   QPushButton* reloadButton_;
   QPushButton* stopButton_;
-  QPushButton* newTabButton_;  // "+" button to create new tabs
-  QPushButton* agentButton_;   // Toggle Agent sidebar
-  QTabWidget* tabWidget_;      // Tab container (replaces single browserWidget_)
-  AgentPanel* agentPanel_;     // Agent chat sidebar
-  QSplitter* splitter_;        // Horizontal splitter between browser and sidebar
+  QPushButton* newTabButton_;   // "+" button to create new tabs
+  QPushButton* agentButton_;    // Toggle Agent sidebar
+  QTabWidget* tabWidget_;       // Tab container (replaces single browserWidget_)
+  AgentPanel* agentPanel_;      // Agent chat sidebar
+  QSplitter* splitter_;         // Horizontal splitter between browser and sidebar
   int agent_panel_last_width_;  // Remember last visible width for restore
 
   // Tab management (Phase 2: full multi-tab support)

@@ -3,8 +3,8 @@
 #include "qt_mainwindow.h"
 #include "runtime/node_runtime.h"
 
-#include <QApplication>
 #include <QAbstractSlider>
+#include <QApplication>
 #include <QDebug>
 #include <QEvent>
 #include <QGraphicsDropShadowEffect>
@@ -420,10 +420,8 @@ void AgentPanel::connectSignals() {
   if (scrollArea_) {
     QScrollBar* scrollBar = scrollArea_->verticalScrollBar();
     connect(scrollBar, &QScrollBar::valueChanged, this, &AgentPanel::onScrollValueChanged);
-    connect(scrollBar,
-            &QAbstractSlider::actionTriggered,
-            this,
-            &AgentPanel::onScrollActionTriggered);
+    connect(
+        scrollBar, &QAbstractSlider::actionTriggered, this, &AgentPanel::onScrollActionTriggered);
     connect(scrollBar, &QAbstractSlider::sliderPressed, this, &AgentPanel::onScrollSliderPressed);
     connect(scrollBar, &QAbstractSlider::sliderReleased, this, &AgentPanel::onScrollSliderReleased);
   }
