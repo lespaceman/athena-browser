@@ -117,7 +117,7 @@ export function createV1Router(controller: BrowserController | null) {
     }
   });
 
-  router.get('/browser/get_url', async (req, res) => {
+  router.get('/browser/url', async (req, res) => {
     try {
       ensureController(controller);
       const tabIndex = typeof req.query.tabIndex === 'string' ? Number(req.query.tabIndex) : undefined;
@@ -129,7 +129,7 @@ export function createV1Router(controller: BrowserController | null) {
     }
   });
 
-  router.get('/browser/get_html', async (req, res) => {
+  router.get('/browser/html', async (req, res) => {
     try {
       ensureController(controller);
       const tabIndex = typeof req.query.tabIndex === 'string' ? Number(req.query.tabIndex) : undefined;
@@ -141,7 +141,7 @@ export function createV1Router(controller: BrowserController | null) {
     }
   });
 
-  router.post('/browser/execute_js', async (req, res) => {
+  router.post('/browser/execute-js', async (req, res) => {
     try {
       ensureController(controller);
       const { code, tabIndex } = req.body ?? {};
@@ -180,7 +180,7 @@ export function createV1Router(controller: BrowserController | null) {
     }
   });
 
-  router.post('/window/create_tab', async (req, res) => {
+  router.post('/window/create', async (req, res) => {
     try {
       ensureController(controller);
       const { url } = req.body ?? {};
@@ -197,7 +197,7 @@ export function createV1Router(controller: BrowserController | null) {
     }
   });
 
-  router.post('/window/close_tab', async (req, res) => {
+  router.post('/window/close', async (req, res) => {
     try {
       ensureController(controller);
       const { tabIndex } = req.body ?? {};
@@ -214,7 +214,7 @@ export function createV1Router(controller: BrowserController | null) {
     }
   });
 
-  router.post('/window/switch_tab', async (req, res) => {
+  router.post('/window/switch', async (req, res) => {
     try {
       ensureController(controller);
       const { tabIndex } = req.body ?? {};
@@ -231,7 +231,7 @@ export function createV1Router(controller: BrowserController | null) {
     }
   });
 
-  router.get('/window/tab_info', async (_req, res) => {
+  router.get('/window/info', async (_req, res) => {
     try {
       ensureController(controller);
       const tabCount = await controller.getTabCount();
