@@ -258,28 +258,22 @@ void QtMainWindow::closeEvent(QCloseEvent* event) {
 void QtMainWindow::resizeEvent(QResizeEvent* event) {
   QMainWindow::resizeEvent(event);
 
-  // Notify browser of size change (resize active tab's browser widget)
-  // Extract data first, then call OnBrowserSizeChanged outside the lock to avoid recursive locking
-  size_t tab_index_to_resize = 0;
-  int widget_width = 0;
-  int widget_height = 0;
-  bool should_resize = false;
+  logger.Debug("Window resized: {}x{} -> {}x{}, maximized={}",
+               event->oldSize().width(), event->oldSize().height(),
+               event->size().width(), event->size().height(),
+               isMaximized());
 
-  {
-    std::lock_guard<std::mutex> lock(tabs_mutex_);
-    if (active_tab_index_ < tabs_.size() && tabs_[active_tab_index_].browser_widget) {
-      BrowserWidget* widget = tabs_[active_tab_index_].browser_widget;
-      tab_index_to_resize = active_tab_index_;
-      widget_width = widget->width();
-      widget_height = widget->height();
-      should_resize = true;
-    }
-  }
-
-  // Call OnBrowserSizeChanged outside the lock
-  if (should_resize) {
-    OnBrowserSizeChanged(tab_index_to_resize, widget_width, widget_height);
-  }
+  // IMPORTANT: Do NOT call OnBrowserSizeChanged() here!
+  // Qt's layout system will automatically call resizeGL() on the BrowserWidget
+  // when it resizes, and resizeGL() already handles the CEF notification with
+  // the correct browser widget dimensions.
+  //
+  // Calling OnBrowserSizeChanged() here would:
+  // 1. Use the wrong dimensions (window size instead of widget size)
+  // 2. Create a double-resize (resizeGL already notified CEF)
+  // 3. Cause rendering artifacts during maximize/restore
+  //
+  // See: qt_browserwidget.cpp:184-225 for the correct resize handling
 
   // Call user callback
   if (callbacks_.on_resize) {

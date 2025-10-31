@@ -203,19 +203,9 @@ void BrowserWidget::resizeGL(int w, int h) {
     const int expected_height = static_cast<int>(std::lround(h * device_scale));
 
     if (size_changed) {
+      logger.Debug("Browser widget resized: {}x{} (scale {}, buffer {}x{})",
+                   w, h, device_scale, expected_width, expected_height);
       window_->OnBrowserSizeChanged(tab_index_, w, h);
-      logger.Debug("Resize requested: {}x{} (scale {} pending buffer {}x{})",
-                   w,
-                   h,
-                   device_scale,
-                   expected_width,
-                   expected_height);
-    } else {
-      logger.Debug("resizeGL invoked with unchanged size {}x{} (pending buffer {}x{})",
-                   w,
-                   h,
-                   expected_width,
-                   expected_height);
     }
   }
 }

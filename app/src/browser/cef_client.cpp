@@ -232,6 +232,11 @@ void CefClient::OnImeCompositionRangeChanged(CefRefPtr<::CefBrowser> browser,
 // ============================================================================
 
 void CefClient::SetSize(int width, int height) {
+  if (width != width_ || height != height_) {
+    logger.Debug("CEF browser resized: {}x{} -> {}x{} (scale {})",
+                 width_, height_, width, height, device_scale_factor_);
+  }
+
   width_ = width;
   height_ = height;
 

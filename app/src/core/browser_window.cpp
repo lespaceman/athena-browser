@@ -307,11 +307,22 @@ utils::Result<void> BrowserWindow::Initialize() {
 
   // Assign callbacks
   window_callbacks.on_resize = [this](int width, int height) {
-    // Notify browser of size change (get active browser from window)
-    auto browser_id = GetBrowserId();
-    if (browser_id != browser::kInvalidBrowserId && browser_engine_) {
-      browser_engine_->SetSize(browser_id, width, height);
-    }
+    // IMPORTANT: Do NOT call browser_engine_->SetSize() here!
+    //
+    // The window resize event provides the WINDOW dimensions (including toolbar,
+    // splitter, sidebar), but CEF needs the BROWSER WIDGET dimensions.
+    //
+    // Qt's layout system automatically calls resizeGL() on the BrowserWidget when
+    // it resizes, and resizeGL() handles the CEF notification with the correct
+    // widget dimensions. See qt_browserwidget.cpp:184-225.
+    //
+    // Calling SetSize() here with window dimensions causes:
+    // 1. CEF to render at the wrong size (too large)
+    // 2. Rendering artifacts during maximize/restore
+    // 3. Browser content extending under the sidebar
+    //
+    // The correct resize flow is:
+    //   Window resize → Qt layout → BrowserWidget::resizeGL() → CefClient::SetSize()
 
     // Forward to user callback
     if (callbacks_.on_resize) {
