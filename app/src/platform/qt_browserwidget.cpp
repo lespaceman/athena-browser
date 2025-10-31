@@ -14,8 +14,13 @@
 
 #include <GL/gl.h>
 
+#include <QColor>
 #include <QDebug>
+#include <QPalette>
 #include <QTimer>
+
+#include <cstdlib>
+#include <cmath>
 
 namespace athena {
 namespace platform {
@@ -26,6 +31,16 @@ using namespace utils;
 
 static Logger logger("BrowserWidget");
 
+namespace {
+
+void ClearToWidgetBackground(const QOpenGLWidget* widget) {
+  const QColor bg = widget->palette().color(QPalette::Window);
+  glClearColor(bg.redF(), bg.greenF(), bg.blueF(), 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT);
+}
+
+}  // namespace
+
 // ============================================================================
 // Constructor / Destructor
 // ============================================================================
@@ -35,7 +50,12 @@ BrowserWidget::BrowserWidget(QtMainWindow* window, size_t tab_index, QWidget* pa
       window_(window),
       tab_index_(tab_index),
       renderer_(nullptr),
-      gl_initialized_(false) {
+      gl_initialized_(false),
+      pending_width_(0),
+      pending_height_(0),
+      last_painted_width_(0),
+      last_painted_height_(0),
+      awaiting_paint_for_size_(false) {
   setFocusPolicy(Qt::StrongFocus);
   setMouseTracking(true);
 
@@ -66,6 +86,50 @@ CefClient* BrowserWidget::GetCefClientForThisTab() const {
   return window_->GetCefClientForTab(tab_index_);
 }
 
+void BrowserWidget::OnCefPaint(CefRenderHandler::PaintElementType type, int width, int height) {
+  const float device_scale = devicePixelRatioF();
+
+  if (type != CefRenderHandler::PaintElementType::PET_VIEW) {
+    // Popups and other auxiliary paints should render immediately.
+    update();
+    return;
+  }
+
+  if (awaiting_paint_for_size_) {
+    const int expected_width = static_cast<int>(std::lround(pending_width_ * device_scale));
+    const int expected_height = static_cast<int>(std::lround(pending_height_ * device_scale));
+    const int width_delta = std::abs(width - expected_width);
+    const int height_delta = std::abs(height - expected_height);
+    constexpr int kPixelTolerance = 2;  // Allow small rounding differences
+
+    if (width_delta <= kPixelTolerance && height_delta <= kPixelTolerance) {
+      awaiting_paint_for_size_ = false;
+      last_painted_width_ = pending_width_;
+      last_painted_height_ = pending_height_;
+      logger.Debug("CEF paint matches pending size: {}x{} (scale {} expected {}x{})",
+                   width,
+                   height,
+                   device_scale,
+                   expected_width,
+                   expected_height);
+      update();
+    } else {
+      logger.Debug("CEF paint size mismatch: got {}x{}, waiting for {}x{} (scale {} expected {}x{})",
+                   width,
+                   height,
+                   pending_width_,
+                   pending_height_,
+                   device_scale,
+                   expected_width,
+                   expected_height);
+    }
+  } else {
+    last_painted_width_ = static_cast<int>(std::lround(width / device_scale));
+    last_painted_height_ = static_cast<int>(std::lround(height / device_scale));
+    update();
+  }
+}
+
 // ============================================================================
 // OpenGL Overrides (Qt OpenGL widget callbacks)
 // ============================================================================
@@ -78,9 +142,8 @@ void BrowserWidget::initializeGL() {
 
   gl_initialized_ = true;
 
-  // Clear to white
-  glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-  glClear(GL_COLOR_BUFFER_BIT);
+  // Clear to the widget background color for consistency with the Qt theme
+  ClearToWidgetBackground(this);
 
   // Initialize GLRenderer now that GL context is ready
   if (renderer_) {
@@ -99,9 +162,15 @@ void BrowserWidget::paintGL() {
   // Called to render the current frame
 
   if (!renderer_) {
-    // No renderer yet, draw white background
-    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+    // No renderer yet, draw widget background
+    ClearToWidgetBackground(this);
+    return;
+  }
+
+  if (awaiting_paint_for_size_) {
+    // Waiting for CEF to deliver a buffer that matches current widget size;
+    // keep the area cleared so we don't stretch the previous frame.
+    ClearToWidgetBackground(this);
     return;
   }
 
@@ -113,33 +182,41 @@ void BrowserWidget::paintGL() {
 }
 
 void BrowserWidget::resizeGL(int w, int h) {
-  // Called when widget is resized
+  // Event-driven resize sync (no timers):
+  // 1. Update GL viewport immediately
+  // 2. Notify CEF via WasResized()
+  // 3. Record pending size and wait for matching OnPaint
+  // 4. Only present frame when CEF buffer matches current size
 
+  // Update GL viewport to match new widget size
   glViewport(0, 0, w, h);
 
-  // Defer resize notification until after Qt layout completes
-  // This prevents race conditions during window maximize/resize where the widget's
-  // dimensions might be stale (before the QSplitter redistributes space).
-  // QTimer::singleShot(0, ...) defers execution to the next event loop iteration.
-  if (window_) {
-    // Capture by value to ensure thread safety and handle widget deletion
-    QTimer::singleShot(0, this, [this, w, h]() {
-      // Check if window_ is still valid (widget might have been deleted)
-      if (window_) {
-        // Get current dimensions (layout might have updated since resizeGL was called)
-        int current_width = width();
-        int current_height = height();
+  const bool size_changed = (w != pending_width_) || (h != pending_height_);
 
-        // Use current dimensions if they differ significantly from the resize event values
-        // This ensures we always use the post-layout dimensions
-        if (current_width > 0 && current_height > 0) {
-          window_->OnBrowserSizeChanged(tab_index_, current_width, current_height);
-        } else {
-          // Fallback to original dimensions if current dimensions are invalid
-          window_->OnBrowserSizeChanged(tab_index_, w, h);
-        }
-      }
-    });
+  pending_width_ = w;
+  pending_height_ = h;
+  awaiting_paint_for_size_ = size_changed && (w > 0 && h > 0);
+
+  if (window_ && w > 0 && h > 0) {
+    const float device_scale = devicePixelRatioF();
+    const int expected_width = static_cast<int>(std::lround(w * device_scale));
+    const int expected_height = static_cast<int>(std::lround(h * device_scale));
+
+    if (size_changed) {
+      window_->OnBrowserSizeChanged(tab_index_, w, h);
+      logger.Debug("Resize requested: {}x{} (scale {} pending buffer {}x{})",
+                   w,
+                   h,
+                   device_scale,
+                   expected_width,
+                   expected_height);
+    } else {
+      logger.Debug("resizeGL invoked with unchanged size {}x{} (pending buffer {}x{})",
+                   w,
+                   h,
+                   expected_width,
+                   expected_height);
+    }
   }
 }
 

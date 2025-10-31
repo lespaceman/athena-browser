@@ -40,6 +40,8 @@ class QtMainWindow;
 namespace athena {
 namespace runtime {
 
+struct ClientConnection;
+
 /**
  * Configuration for the browser control server.
  */
@@ -144,16 +146,16 @@ class BrowserControlServer {
   // Qt socket notifier for accepting connections
   QSocketNotifier* server_watch_id_;
 
-  // Active client connections (opaque pointer - implementation detail)
-  std::vector<void*> active_clients_;
+  // Active client connections (owned by the server)
+  std::vector<std::unique_ptr<ClientConnection>> active_clients_;
 
   // State
   bool running_;
 
   // Internal methods
   void AcceptConnection();
-  bool HandleClientData(void* client);
-  void CloseClient(void* client);
+  bool HandleClientData(ClientConnection* client);
+  void CloseClient(ClientConnection* client);
   std::string ProcessRequest(const std::string& request);
 
   // Request handlers (run synchronously on UI main thread)

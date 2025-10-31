@@ -9,6 +9,7 @@
 #include <deque>
 #include <QFrame>
 #include <QLocalSocket>
+#include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QVBoxLayout>
@@ -16,6 +17,7 @@
 
 class QEvent;
 class QGraphicsDropShadowEffect;
+class QPropertyAnimation;
 
 namespace athena {
 namespace runtime {
@@ -105,6 +107,7 @@ class AgentPanel : public QWidget {
 
  protected:
   void changeEvent(QEvent* event) override;
+  void resizeEvent(QResizeEvent* event) override;
 
  private:
   // ============================================================================
@@ -153,6 +156,15 @@ class AgentPanel : public QWidget {
    * @param animated Whether to animate the scroll
    */
   void scrollToBottom(bool animated = true);
+  void scheduleScrollToBottom(bool animated);
+  void flushPendingScroll();
+  void performScrollToBottom(bool animated);
+  void onScrollValueChanged(int value);
+  void onScrollActionTriggered(int action);
+  void onScrollSliderPressed();
+  void onScrollSliderReleased();
+  void updateAutoScrollStateFromPosition();
+  bool isNearBottom() const;
 
   /**
    * Trim old messages if history exceeds max size.
@@ -209,6 +221,15 @@ class AgentPanel : public QWidget {
 
   // Theming
   AgentPanelPalette palette_;
+
+  // Scroll management state
+  bool autoScrollEnabled_;
+  bool suppressScrollEvents_;
+  bool pendingScrollToBottom_;
+  bool pendingScrollAnimated_;
+  QPointer<QPropertyAnimation> scrollAnimation_;
+
+  static constexpr int kAutoScrollLockThresholdPx = 72;
 };
 
 }  // namespace platform

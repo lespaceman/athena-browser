@@ -235,9 +235,10 @@ class CefClient : public ::CefClient,
 
   /**
    * Set callback invoked after the renderer invalidates its backing surface.
+   * Callback receives: (paint_type, width, height) where width/height are buffer dimensions.
    */
   void SetRenderInvalidatedCallback(
-      std::function<void(CefRenderHandler::PaintElementType)> callback) {
+      std::function<void(CefRenderHandler::PaintElementType, int, int)> callback) {
     on_render_invalidated_ = std::move(callback);
   }
 
@@ -258,7 +259,7 @@ class CefClient : public ::CefClient,
   std::function<void(const std::string&)> on_address_change_;      // URL changed
   std::function<void(bool, bool, bool)> on_loading_state_change_;  // Loading state changed
   std::function<void(const std::string&)> on_title_change_;        // Title changed
-  std::function<void(CefRenderHandler::PaintElementType)> on_render_invalidated_;
+  std::function<void(CefRenderHandler::PaintElementType, int, int)> on_render_invalidated_;  // (type, width, height)
 
   struct JavaScriptRequest {
     bool completed{false};

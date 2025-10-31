@@ -226,28 +226,27 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
 
       // CRITICAL: Wire up render invalidation callback
       // This tells the widget to repaint when CEF has new content
-      tab.cef_client->SetRenderInvalidatedCallback([this,
-                                                    bid](CefRenderHandler::PaintElementType type) {
-        (void)type;  // Unused parameter
+      // Event-driven resize sync: pass width/height from CEF paint to BrowserWidget
+      tab.cef_client->SetRenderInvalidatedCallback(
+          [this, bid](CefRenderHandler::PaintElementType type, int width, int height) {
+            // Use thread-safe callback wrapper to marshal from CEF → Qt main thread
+            SafeInvokeQtCallback(this, [bid, type, width, height](QtMainWindow* window) {
+              // This runs on Qt main thread with validated window pointer
+              if (window->closed_) {
+                return;
+              }
 
-        // Use thread-safe callback wrapper to marshal from CEF → Qt main thread
-        SafeInvokeQtCallback(this, [bid](QtMainWindow* window) {
-          // This runs on Qt main thread with validated window pointer
-          if (window->closed_) {
-            return;
-          }
-
-          std::lock_guard<std::mutex> lock(window->tabs_mutex_);
-          auto it = std::find_if(window->tabs_.begin(), window->tabs_.end(), [bid](const QtTab& t) {
-            return t.browser_id == bid;
+              std::lock_guard<std::mutex> lock(window->tabs_mutex_);
+              auto it = std::find_if(window->tabs_.begin(), window->tabs_.end(),
+                                     [bid](const QtTab& t) { return t.browser_id == bid; });
+              if (it != window->tabs_.end() && it->browser_widget) {
+                // Widget is guaranteed to be valid here since we're on Qt thread
+                // and holding the tabs_mutex_
+                // Notify widget of CEF paint for event-driven resize sync
+                it->browser_widget->OnCefPaint(type, width, height);
+              }
+            });
           });
-          if (it != window->tabs_.end() && it->browser_widget) {
-            // Widget is guaranteed to be valid here since we're on Qt thread
-            // and holding the tabs_mutex_
-            it->browser_widget->update();
-          }
-        });
-      });
 
       logger.Info("Callbacks wired for browser_id: " + std::to_string(bid));
     }

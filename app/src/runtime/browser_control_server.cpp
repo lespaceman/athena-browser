@@ -14,9 +14,11 @@
 #include "runtime/browser_control_server_internal.h"
 #include "utils/logging.h"
 
+#include <algorithm>
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
+#include <memory>
 #include <QObject>
 #include <QSocketNotifier>
 #include <sys/socket.h>
@@ -33,7 +35,6 @@ static utils::Logger logger("BrowserControlServer");
 // ============================================================================
 
 struct ClientConnection {
-  BrowserControlServer* server;
   int fd;
   QSocketNotifier* notifier;
   std::string buffer;
@@ -41,9 +42,8 @@ struct ClientConnection {
   size_t content_length;
   size_t header_end_pos;  // Cache position where headers end
 
-  ClientConnection(BrowserControlServer* s, int client_fd)
-      : server(s),
-        fd(client_fd),
+  explicit ClientConnection(int client_fd)
+      : fd(client_fd),
         notifier(nullptr),
         headers_complete(false),
         content_length(0),
@@ -55,10 +55,13 @@ struct ClientConnection {
 
   ~ClientConnection() {
     if (notifier) {
+      notifier->setEnabled(false);
       delete notifier;
+      notifier = nullptr;
     }
     if (fd >= 0) {
       close(fd);
+      fd = -1;
     }
   }
 };
@@ -168,10 +171,6 @@ void BrowserControlServer::Shutdown() {
   }
 
   // Close all client connections
-  for (auto* client_ptr : active_clients_) {
-    auto* client = static_cast<ClientConnection*>(client_ptr);
-    delete client;
-  }
   active_clients_.clear();
 
   // Close socket
@@ -220,24 +219,26 @@ void BrowserControlServer::AcceptConnection() {
   logger.Debug("Client connected");
 
   // Create client connection context
-  auto* client = new ClientConnection(this, client_fd);
+  auto client = std::make_unique<ClientConnection>(client_fd);
+  auto* client_ptr = client.get();
 
   // Set up Qt socket notifier for client data
-  client->notifier = new QSocketNotifier(client_fd, QSocketNotifier::Read);
+  client_ptr->notifier = new QSocketNotifier(client_fd, QSocketNotifier::Read);
   QObject::connect(
-      client->notifier, &QSocketNotifier::activated, [this, client](QSocketDescriptor) {
-        if (!HandleClientData(client)) {
+      client_ptr->notifier,
+      &QSocketNotifier::activated,
+      [this, client_ptr](QSocketDescriptor) {
+        if (!HandleClientData(client_ptr)) {
           // Error or request complete - close connection
-          CloseClient(client);
+          CloseClient(client_ptr);
         }
       });
-  client->notifier->setEnabled(true);
+  client_ptr->notifier->setEnabled(true);
 
-  active_clients_.push_back(client);
+  active_clients_.push_back(std::move(client));
 }
 
-bool BrowserControlServer::HandleClientData(void* client_ptr) {
-  auto* client = static_cast<ClientConnection*>(client_ptr);
+bool BrowserControlServer::HandleClientData(ClientConnection* client) {
   char buffer[4096];
   ssize_t bytes_read = recv(client->fd, buffer, sizeof(buffer) - 1, 0);
 
@@ -316,14 +317,19 @@ bool BrowserControlServer::HandleClientData(void* client_ptr) {
   return false;  // Close connection after response
 }
 
-void BrowserControlServer::CloseClient(void* client_ptr) {
-  auto* client = static_cast<ClientConnection*>(client_ptr);
-  auto it = std::find(active_clients_.begin(), active_clients_.end(), client_ptr);
+void BrowserControlServer::CloseClient(ClientConnection* client) {
+  auto it = std::find_if(active_clients_.begin(),
+                         active_clients_.end(),
+                         [client](const std::unique_ptr<ClientConnection>& candidate) {
+                           return candidate.get() == client;
+                         });
   if (it != active_clients_.end()) {
     active_clients_.erase(it);
+    logger.Debug("Client connection closed");
+    return;
   }
-  delete client;
-  logger.Debug("Client connection closed");
+
+  logger.Warn("Client connection already closed");
 }
 
 }  // namespace runtime

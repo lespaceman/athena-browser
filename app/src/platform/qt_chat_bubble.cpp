@@ -1,21 +1,48 @@
 #include "qt_chat_bubble.h"
 
+#include <QAbstractTextDocumentLayout>
 #include <QGraphicsOpacityEffect>
 #include <QLabel>
 #include <QPropertyAnimation>
 #include <QRegularExpression>
+#include <QScrollArea>
+#include <QTextBlockFormat>
+#include <QTextCursor>
 #include <QTextEdit>
+#include <QResizeEvent>
+#include <QShowEvent>
 #include <QTextOption>
 #include <QVBoxLayout>
+#include <QMargins>
+#include <QTextDocument>
+#include <QTimer>
+#include <QSize>
+#include <cmath>
 
 namespace athena {
 namespace platform {
+
+namespace {
+// Helper function to normalize markdown spacing
+// Ensures headers and sections have proper line breaks
+QString normalizeMarkdownSpacing(const QString& markdown) {
+  QString result = markdown;
+
+  // Ensure headers (lines starting with #) have a blank line before them
+  // But only if they're not at the start and don't already have spacing
+  // Pattern: (non-newline characters)(no newlines or single newline)(## header)
+  // Replace with: (text)\n\n(## header)
+  result.replace(QRegularExpression("([^\n])(\n?)(#{1,6} )"), "\\1\n\n\\3");
+
+  return result;
+}
+}  // namespace
 
 ChatBubble::ChatBubble(Role role,
                        const QString& message,
                        const AgentPanelPalette& palette,
                        QWidget* parent)
-    : QFrame(parent), role_(role), message_(message) {
+    : QFrame(parent), role_(role), message_(message), geometryUpdateScheduled_(false) {
   setupUI();
   ApplyTheme(palette);
 
@@ -49,7 +76,7 @@ void ChatBubble::setupUI() {
   contentWidget_->setFrameShape(QFrame::NoFrame);
   contentWidget_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   contentWidget_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  contentWidget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+  contentWidget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
   contentWidget_->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
   contentWidget_->setLineWrapMode(QTextEdit::WidgetWidth);
   contentWidget_->setAutoFillBackground(false);
@@ -61,7 +88,7 @@ void ChatBubble::setupUI() {
   layout_->addWidget(contentWidget_);
 
   setFrameShape(QFrame::NoFrame);
-  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 }
 
 void ChatBubble::ApplyTheme(const AgentPanelPalette& palette) {
@@ -120,39 +147,32 @@ void ChatBubble::applyPalette(const AgentPanelPalette& palette) {
 }
 
 void ChatBubble::renderMarkdown(const QString& markdown) {
-  QString html = markdown;
+  // Normalize markdown spacing before rendering
+  // Fix: Ensure headers have proper line breaks before them
+  QString normalized = normalizeMarkdownSpacing(markdown);
 
-  html.replace("&", "&amp;");
-  html.replace("<", "&lt;");
-  html.replace(">", "&gt;");
+  // Use Qt's native markdown support (available since Qt 5.14, we're on Qt 6.6.2)
+  // This is much more robust than manual HTML conversion
+  contentWidget_->setMarkdown(normalized);
 
-  html.replace(QRegularExpression("\\*\\*([^*]+)\\*\\*"), "<b>\\1</b>");
-  html.replace(QRegularExpression("(?<!\\*)\\*([^*]+)\\*(?!\\*)"), "<i>\\1</i>");
-  html.replace(QRegularExpression("`([^`]+)`"), "<code>\\1</code>");
+  // Apply proper spacing for readability
+  // Add document margin for breathing room (default is 4, we increase to 8)
+  contentWidget_->document()->setDocumentMargin(8);
 
-  html.replace("\n", "<br>");
+  // Apply block formatting for all paragraphs
+  QTextCursor cursor(contentWidget_->document());
+  cursor.select(QTextCursor::Document);
 
-  QString wrappedHtml =
-      QStringLiteral(
-          "<div style='line-height:1.4; word-wrap:break-word; white-space:pre-wrap;'>%1</div>")
-          .arg(html);
-  contentWidget_->setHtml(wrappedHtml);
+  QTextBlockFormat blockFormat;
+  // Add spacing between paragraphs (12px bottom margin)
+  blockFormat.setBottomMargin(12);
+  // Add comfortable line height within paragraphs (140% = 1.4x normal height)
+  blockFormat.setLineHeight(140, QTextBlockFormat::ProportionalHeight);
 
-  int availableWidth = contentWidget_->viewport()->width();
-  if (availableWidth <= 0) {
-    availableWidth = qMax(220, width() - 36);
-  }
-  contentWidget_->document()->setTextWidth(availableWidth);
+  cursor.mergeBlockFormat(blockFormat);
 
-  QSizeF docSize = contentWidget_->document()->size();
-  int idealHeight = static_cast<int>(docSize.height());
-  idealHeight = qMin(idealHeight, 600);  // Only enforce maximum, no minimum
-
-  contentWidget_->setMinimumHeight(idealHeight);
-  contentWidget_->setMaximumHeight(idealHeight);
-
-  contentWidget_->updateGeometry();
-  updateGeometry();
+  // Update geometry - will set proper text width based on available space
+  updateContentGeometry();
 }
 
 void ChatBubble::SetMessage(const QString& message) {
@@ -166,6 +186,110 @@ QString ChatBubble::GetMessage() const {
 
 void ChatBubble::AnimateIn() {
   fadeInAnimation_->start();
+}
+
+void ChatBubble::resizeEvent(QResizeEvent* event) {
+  QFrame::resizeEvent(event);
+  updateContentGeometry();
+}
+
+void ChatBubble::showEvent(QShowEvent* event) {
+  QFrame::showEvent(event);
+  // When widget is first shown, ensure content geometry is updated with valid dimensions
+  updateContentGeometry();
+}
+
+void ChatBubble::updateContentGeometry() {
+  if (!contentWidget_) {
+    return;
+  }
+
+  QTextDocument* document = contentWidget_->document();
+  if (!document) {
+    return;
+  }
+
+  // Get the actual width available for content
+  // The parent (AgentPanel) sets our maximum width via resizeEvent,
+  // so we use our current width minus internal margins
+  const QMargins margins = layout_ ? layout_->contentsMargins() : QMargins();
+  int availableWidth = width() - margins.left() - margins.right();
+
+  // If width is not yet available (widget not fully laid out), defer update
+  if (availableWidth <= 0) {
+    if (!geometryUpdateScheduled_) {
+      geometryUpdateScheduled_ = true;
+      QTimer::singleShot(0, this, [this]() {
+        geometryUpdateScheduled_ = false;
+        updateContentGeometry();
+      });
+    }
+    return;
+  }
+
+  // Set the document's text width to match the available width
+  // This ensures text wraps properly within the visible area
+  document->setTextWidth(availableWidth);
+  document->adjustSize();
+
+  const qreal docHeight = document->documentLayout()->documentSize().height();
+  const int frameWidth = contentWidget_->frameWidth();
+  const int margin = static_cast<int>(std::ceil(document->documentMargin()));
+  const int totalHeight = static_cast<int>(std::ceil(docHeight)) + 2 * (margin + frameWidth);
+  const int adjustedHeight = qMax(totalHeight, 0);
+  contentWidget_->setFixedHeight(adjustedHeight);
+
+  const int layoutMarginsTB =
+      layout_ ? layout_->contentsMargins().top() + layout_->contentsMargins().bottom() : 0;
+  const int spacing = layout_ ? layout_->spacing() : 0;
+  const int roleHeight = roleLabel_ ? roleLabel_->sizeHint().height() : 0;
+
+  const int bubbleHeight = adjustedHeight + layoutMarginsTB + spacing + roleHeight;
+
+  setMinimumHeight(bubbleHeight);
+  setMaximumHeight(bubbleHeight);
+
+  contentWidget_->updateGeometry();
+  updateGeometry();
+}
+
+QSize ChatBubble::sizeHint() const {
+  if (!contentWidget_ || !layout_) {
+    return QFrame::sizeHint();
+  }
+
+  // Calculate preferred width based on parent container
+  int preferredWidth = 400; // Default preference
+  if (parentWidget()) {
+    // Prefer to use parent's width
+    preferredWidth = parentWidget()->width();
+  }
+
+  // Calculate height based on current content
+  int totalHeight = minimumHeight();
+  if (totalHeight <= 0) {
+    totalHeight = 100; // Reasonable default
+  }
+
+  return QSize(preferredWidth, totalHeight);
+}
+
+QSize ChatBubble::minimumSizeHint() const {
+  if (!contentWidget_ || !layout_) {
+    return QFrame::minimumSizeHint();
+  }
+
+  // Minimum width should be quite narrow to allow flexible layouts
+  // This ensures the bubble can shrink when the panel is narrow
+  const int minWidth = 200;
+
+  // Minimum height based on content
+  int minHeight = minimumHeight();
+  if (minHeight <= 0) {
+    minHeight = 50; // Reasonable default
+  }
+
+  return QSize(minWidth, minHeight);
 }
 
 }  // namespace platform

@@ -198,7 +198,7 @@ void CefClient::OnPaint(CefRefPtr<::CefBrowser> browser,
   gl_renderer_->OnPaint(browser, type, dirtyRects, buffer, width, height);
 
   if (on_render_invalidated_) {
-    on_render_invalidated_(type);
+    on_render_invalidated_(type, width, height);
   }
 }
 

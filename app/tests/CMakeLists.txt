@@ -109,6 +109,14 @@ add_athena_test(qt_resize_test
 # Enable Qt MOC for qt_resize_test (required for Qt widgets)
 set_target_properties(qt_resize_test PROPERTIES AUTOMOC ON)
 
+add_athena_test(qt_chat_bubble_test
+  platform/qt_chat_bubble_test.cpp
+  ../src/platform/qt_chat_bubble.cpp
+  ../src/platform/qt_agent_panel_theme.cpp
+)
+
+set_target_properties(qt_chat_bubble_test PROPERTIES AUTOMOC ON)
+
 # Application layer tests (Phase 5)
 # TODO: Re-enable these tests for Qt once platform layer is fully migrated
 # add_athena_test(browser_window_test

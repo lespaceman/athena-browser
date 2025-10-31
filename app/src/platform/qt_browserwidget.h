@@ -7,6 +7,8 @@
 #include <QOpenGLWidget>
 #include <QWheelEvent>
 
+#include "include/cef_render_handler.h"
+
 namespace athena {
 namespace browser {
 class CefClient;
@@ -72,6 +74,16 @@ class BrowserWidget : public QOpenGLWidget {
    * Returns nullptr if this tab doesn't have a browser yet.
    */
   browser::CefClient* GetCefClientForThisTab() const;
+
+  /**
+   * Notify BrowserWidget that CEF has painted a frame.
+   * Called from CefClient::OnPaint (via QtMainWindow) to implement event-driven resize sync.
+   *
+   * @param type CEF paint element type (view or popup)
+   * @param width Width of CEF's paint buffer in device pixels
+   * @param height Height of CEF's paint buffer in device pixels
+   */
+  void OnCefPaint(CefRenderHandler::PaintElementType type, int width, int height);
 
  signals:
   /**
@@ -185,6 +197,13 @@ class BrowserWidget : public QOpenGLWidget {
   size_t tab_index_;                 // Index of this tab in the window
   rendering::GLRenderer* renderer_;  // Non-owning (QtMainWindow owns it)
   bool gl_initialized_;              // Track GL initialization state
+
+  // Pending resize tracking for event-driven sync with CEF OnPaint
+  int pending_width_;   // Pending logical width in device-independent pixels
+  int pending_height_;  // Pending logical height in device-independent pixels
+  int last_painted_width_;   // Last successfully presented logical width
+  int last_painted_height_;  // Last successfully presented logical height
+  bool awaiting_paint_for_size_;  // True if we're waiting for CEF to paint at pending size
 };
 
 }  // namespace platform

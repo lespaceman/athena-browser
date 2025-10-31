@@ -8,6 +8,7 @@
 #include <QLineEdit>
 #include <QMainWindow>
 #include <QPushButton>
+#include <QSplitter>
 #include <QTabWidget>
 #include <QToolBar>
 #include <vector>
@@ -351,7 +352,9 @@ class QtMainWindow : public QMainWindow, public Window {
   void onTabCloseRequested(int index);
   void onCurrentTabChanged(int index);
   void onAgentButtonClicked();
+  void onAgentPanelVisibilityChanged(bool visible);
   void onTabMoved(int from, int to);
+  void onSplitterMoved(int pos, int index);
 
  private:
   // ============================================================================
@@ -394,6 +397,8 @@ class QtMainWindow : public QMainWindow, public Window {
   QPushButton* agentButton_;   // Toggle Agent sidebar
   QTabWidget* tabWidget_;      // Tab container (replaces single browserWidget_)
   AgentPanel* agentPanel_;     // Agent chat sidebar
+  QSplitter* splitter_;        // Horizontal splitter between browser and sidebar
+  int agent_panel_last_width_;  // Remember last visible width for restore
 
   // Tab management (Phase 2: full multi-tab support)
   std::vector<QtTab> tabs_;        // All open tabs

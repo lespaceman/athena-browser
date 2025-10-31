@@ -4,12 +4,15 @@
 #include "runtime/node_runtime.h"
 
 #include <QApplication>
+#include <QAbstractSlider>
 #include <QDebug>
 #include <QEvent>
 #include <QGraphicsDropShadowEffect>
 #include <QGraphicsOpacityEffect>
 #include <QPropertyAnimation>
+#include <QResizeEvent>
 #include <QScrollBar>
+#include <QTimer>
 
 namespace athena {
 namespace platform {
@@ -26,7 +29,13 @@ AgentPanel::AgentPanel(QtMainWindow* window, QWidget* parent)
       waiting_for_response_(false),
       userCanceledResponse_(false),
       streaming_socket_(nullptr),
-      headers_received_(false) {
+      headers_received_(false),
+      current_session_id_(),
+      palette_(),
+      autoScrollEnabled_(true),
+      suppressScrollEvents_(false),
+      pendingScrollToBottom_(false),
+      pendingScrollAnimated_(false) {
   setupUI();
   setupStyles();
   connectSignals();
@@ -50,6 +59,7 @@ void AgentPanel::setupUI() {
   scrollArea_->setFrameShape(QFrame::NoFrame);  // Remove frame border
 
   messagesContainer_ = new QWidget();
+  messagesContainer_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
   messagesLayout_ = new QVBoxLayout(messagesContainer_);
   messagesLayout_->setContentsMargins(12, 12, 12, 16);
   messagesLayout_->setSpacing(10);  // Spacing handled dynamically per message
@@ -373,6 +383,32 @@ void AgentPanel::changeEvent(QEvent* event) {
 
   QWidget::changeEvent(event);
 }
+
+void AgentPanel::resizeEvent(QResizeEvent* event) {
+  QWidget::resizeEvent(event);
+
+  // Update maximum width constraints for all chat bubbles when panel is resized
+  // This ensures text wraps properly at any panel width
+  if (scrollArea_ && scrollArea_->viewport()) {
+    // Calculate available width: viewport width minus container margins
+    int viewportWidth = scrollArea_->viewport()->width();
+    int containerMargins = 24;  // 12px left + 12px right from messagesLayout_
+    int maxBubbleWidth = viewportWidth - containerMargins;
+
+    // Update all existing chat bubbles
+    for (int i = 0; i < messagesLayout_->count(); ++i) {
+      QLayoutItem* item = messagesLayout_->itemAt(i);
+      if (item && item->widget()) {
+        ChatBubble* bubble = qobject_cast<ChatBubble*>(item->widget());
+        if (bubble) {
+          bubble->setMaximumWidth(maxBubbleWidth);
+          bubble->updateGeometry();
+        }
+      }
+    }
+  }
+}
+
 void AgentPanel::connectSignals() {
   connect(sendButton_, &QPushButton::clicked, this, &AgentPanel::onSendClicked);
   connect(stopButton_, &QPushButton::clicked, this, &AgentPanel::onStopClicked);
@@ -380,6 +416,17 @@ void AgentPanel::connectSignals() {
   connect(inputWidget_, &ChatInputWidget::sendRequested, this, &AgentPanel::onSendClicked);
 
   connect(inputWidget_, &QTextEdit::textChanged, this, &AgentPanel::onInputTextChanged);
+
+  if (scrollArea_) {
+    QScrollBar* scrollBar = scrollArea_->verticalScrollBar();
+    connect(scrollBar, &QScrollBar::valueChanged, this, &AgentPanel::onScrollValueChanged);
+    connect(scrollBar,
+            &QAbstractSlider::actionTriggered,
+            this,
+            &AgentPanel::onScrollActionTriggered);
+    connect(scrollBar, &QAbstractSlider::sliderPressed, this, &AgentPanel::onScrollSliderPressed);
+    connect(scrollBar, &QAbstractSlider::sliderReleased, this, &AgentPanel::onScrollSliderReleased);
+  }
 }
 
 void AgentPanel::SetNodeRuntime(runtime::NodeRuntime* runtime) {
@@ -485,6 +532,15 @@ void AgentPanel::addMessage(const QString& role, const QString& message, bool an
 
   auto* bubble = new ChatBubble(bubbleRole, message, palette_, messagesContainer_);
 
+  // Set maximum width constraint to prevent overflow
+  // This ensures text wraps properly within the panel
+  if (scrollArea_ && scrollArea_->viewport()) {
+    int viewportWidth = scrollArea_->viewport()->width();
+    int containerMargins = 24;  // 12px left + 12px right from messagesLayout_
+    int maxBubbleWidth = viewportWidth - containerMargins;
+    bubble->setMaximumWidth(maxBubbleWidth);
+  }
+
   // Insert before the stretch spacer
   int insertIndex = messagesLayout_->count() - 1;
 
@@ -547,36 +603,154 @@ void AgentPanel::showThinkingIndicator(bool show) {
 }
 
 void AgentPanel::scrollToBottom(bool animated) {
+  scheduleScrollToBottom(animated);
+}
+
+void AgentPanel::scheduleScrollToBottom(bool animated) {
+  pendingScrollAnimated_ = pendingScrollAnimated_ || animated;
+
+  if (pendingScrollToBottom_) {
+    return;
+  }
+
+  pendingScrollToBottom_ = true;
+  QTimer::singleShot(0, this, &AgentPanel::flushPendingScroll);
+}
+
+void AgentPanel::flushPendingScroll() {
+  if (!pendingScrollToBottom_) {
+    return;
+  }
+
+  pendingScrollToBottom_ = false;
+  bool animated = pendingScrollAnimated_;
+  pendingScrollAnimated_ = false;
+
+  performScrollToBottom(animated);
+}
+
+void AgentPanel::performScrollToBottom(bool animated) {
+  if (!scrollArea_) {
+    return;
+  }
+
   QScrollBar* scrollBar = scrollArea_->verticalScrollBar();
-
-  // Smart scroll: Only auto-scroll if user is already near the bottom
-  // This allows users to read history without being interrupted by new messages
-  int currentValue = scrollBar->value();
-  int maxValue = scrollBar->maximum();
-  int threshold = 50;  // Within 50px of bottom = "at bottom"
-
-  bool isNearBottom = (maxValue - currentValue) <= threshold;
-
-  // Only scroll if user is already at bottom (or force scroll for first message)
-  if (!isNearBottom && !messageBubbles_.empty()) {
-    return;  // User has scrolled up, don't interrupt them
+  if (!scrollBar) {
+    return;
   }
 
-  if (animated) {
-    // Smooth scroll animation
-    int targetValue = maxValue;
+  // Only auto-scroll when the user hasn't intentionally scrolled away
+  if (!autoScrollEnabled_ && !isNearBottom()) {
+    return;
+  }
 
-    if (targetValue != currentValue) {
-      auto* animation = new QPropertyAnimation(scrollBar, "value", this);
-      animation->setDuration(300);
-      animation->setStartValue(currentValue);
-      animation->setEndValue(targetValue);
-      animation->setEasingCurve(QEasingCurve::OutCubic);
-      animation->start(QPropertyAnimation::DeleteWhenStopped);
+  const int currentValue = scrollBar->value();
+  const int maxValue = scrollBar->maximum();
+
+  if (maxValue <= 0 || currentValue == maxValue) {
+    updateAutoScrollStateFromPosition();
+    return;
+  }
+
+  if (animated && (maxValue - currentValue) > 4) {
+    if (scrollAnimation_) {
+      scrollAnimation_->stop();
     }
+
+    auto* animation = new QPropertyAnimation(scrollBar, "value", this);
+    scrollAnimation_ = animation;
+    animation->setDuration(260);
+    animation->setStartValue(currentValue);
+    animation->setEndValue(maxValue);
+    animation->setEasingCurve(QEasingCurve::OutCubic);
+
+    suppressScrollEvents_ = true;
+    connect(animation, &QPropertyAnimation::finished, this, [this, animation]() {
+      suppressScrollEvents_ = false;
+      updateAutoScrollStateFromPosition();
+      if (scrollAnimation_ == animation) {
+        scrollAnimation_.clear();
+      }
+      animation->deleteLater();
+    });
+
+    animation->start();
   } else {
+    if (scrollAnimation_) {
+      scrollAnimation_->stop();
+    }
+
+    suppressScrollEvents_ = true;
     scrollBar->setValue(maxValue);
+    suppressScrollEvents_ = false;
+    updateAutoScrollStateFromPosition();
   }
+}
+
+void AgentPanel::onScrollValueChanged(int /*value*/) {
+  if (suppressScrollEvents_) {
+    return;
+  }
+
+  updateAutoScrollStateFromPosition();
+}
+
+void AgentPanel::onScrollActionTriggered(int action) {
+  if (suppressScrollEvents_) {
+    return;
+  }
+
+  if (action != QAbstractSlider::SliderToMaximum) {
+    autoScrollEnabled_ = false;
+  }
+
+  updateAutoScrollStateFromPosition();
+}
+
+void AgentPanel::onScrollSliderPressed() {
+  if (suppressScrollEvents_) {
+    return;
+  }
+
+  autoScrollEnabled_ = false;
+}
+
+void AgentPanel::onScrollSliderReleased() {
+  if (suppressScrollEvents_) {
+    return;
+  }
+
+  updateAutoScrollStateFromPosition();
+}
+
+void AgentPanel::updateAutoScrollStateFromPosition() {
+  if (!scrollArea_) {
+    autoScrollEnabled_ = true;
+    return;
+  }
+
+  QScrollBar* scrollBar = scrollArea_->verticalScrollBar();
+  if (!scrollBar) {
+    autoScrollEnabled_ = true;
+    return;
+  }
+
+  autoScrollEnabled_ = isNearBottom();
+}
+
+bool AgentPanel::isNearBottom() const {
+  if (!scrollArea_) {
+    return true;
+  }
+
+  QScrollBar* scrollBar = scrollArea_->verticalScrollBar();
+  if (!scrollBar) {
+    return true;
+  }
+
+  const int maxValue = scrollBar->maximum();
+  const int currentValue = scrollBar->value();
+  return (maxValue - currentValue) <= kAutoScrollLockThresholdPx;
 }
 
 void AgentPanel::trimHistory() {
@@ -812,10 +986,13 @@ void AgentPanel::parseSSEChunks(const QString& data) {
 
       QString chunk_content = json_str.mid(content_start, content_end - content_start);
 
-      // Unescape JSON sequences
+      // Unescape JSON sequences (order matters: backslashes must be first!)
+      chunk_content.replace("\\\\", "\x01");  // Temp placeholder for escaped backslash
       chunk_content.replace("\\n", "\n");
+      chunk_content.replace("\\r", "\r");
+      chunk_content.replace("\\t", "\t");
       chunk_content.replace("\\\"", "\"");
-      chunk_content.replace("\\\\", "\\");
+      chunk_content.replace("\x01", "\\");  // Restore escaped backslashes
 
       qDebug() << "[AgentPanel] Chunk content:" << chunk_content;
 

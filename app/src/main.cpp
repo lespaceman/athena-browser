@@ -118,20 +118,20 @@ int main(int argc, char* argv[]) {
 
     // Location 1: Development mode
     // Binary at: /path/to/project/build/release/app/athena-browser
-    // Agent at:  /path/to/project/agent/dist/server.js
+    // Agent at:  /path/to/project/agent/dist/server/server.js
     std::filesystem::path project_root = exe_dir.parent_path().parent_path().parent_path();
-    std::filesystem::path dev_script = project_root / "agent" / "dist" / "server.js";
+    std::filesystem::path dev_script = project_root / "agent" / "dist" / "server" / "server.js";
 
     // Location 2: Bundle mode (Linux/Windows)
     // Binary at: dist/linux/athena-browser/bin/athena-browser
-    // Agent at:  dist/linux/athena-browser/lib/agent/server.js
-    std::filesystem::path bundle_script = exe_dir.parent_path() / "lib" / "agent" / "server.js";
+    // Agent at:  dist/linux/athena-browser/lib/agent/server/server.js
+    std::filesystem::path bundle_script = exe_dir.parent_path() / "lib" / "agent" / "server" / "server.js";
 
     // Location 3: Bundle mode (macOS)
     // Binary at: Athena Browser.app/Contents/MacOS/athena-browser
-    // Agent at:  Athena Browser.app/Contents/Resources/agent/server.js
+    // Agent at:  Athena Browser.app/Contents/Resources/agent/server/server.js
     std::filesystem::path macos_script =
-        exe_dir.parent_path() / "Resources" / "agent" / "server.js";
+        exe_dir.parent_path() / "Resources" / "agent" / "server" / "server.js";
 
     // Try each location in order
     if (std::filesystem::exists(dev_script)) {

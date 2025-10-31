@@ -11,6 +11,7 @@ class QLabel;
 class QPropertyAnimation;
 class QTextEdit;
 class QVBoxLayout;
+class QResizeEvent;
 
 namespace athena {
 namespace platform {
@@ -62,14 +63,22 @@ class ChatBubble : public QFrame {
    */
   void ApplyTheme(const AgentPanelPalette& palette);
 
+ protected:
+  void resizeEvent(QResizeEvent* event) override;
+  void showEvent(QShowEvent* event) override;
+  QSize sizeHint() const override;
+  QSize minimumSizeHint() const override;
+
  private:
   void setupUI();
   void renderMarkdown(const QString& markdown);
   void applyPalette(const AgentPanelPalette& palette);
+  void updateContentGeometry();
 
   Role role_;
   QString message_;
   BubblePalette bubblePalette_;
+  bool geometryUpdateScheduled_;
 
   // UI Components
   QVBoxLayout* layout_;

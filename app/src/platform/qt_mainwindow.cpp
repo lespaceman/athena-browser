@@ -68,6 +68,8 @@ QtMainWindow::QtMainWindow(const WindowConfig& config,
       agentButton_(nullptr),
       tabWidget_(nullptr),
       agentPanel_(nullptr),
+      splitter_(nullptr),
+      agent_panel_last_width_(360),
       active_tab_index_(0),
       current_url_(QString::fromStdString(config.url)) {
   logger.Info("Creating Qt main window");
@@ -117,34 +119,42 @@ void QtMainWindow::createCentralWidget() {
   // Create Agent chat panel
   agentPanel_ = new AgentPanel(this, this);
   agentPanel_->SetNodeRuntime(node_runtime_);
-  agentPanel_->setMinimumWidth(300);
-  agentPanel_->setMaximumWidth(500);  // Prevent sidebar from taking too much space
+  agentPanel_->setMinimumWidth(300);  // Only while visible
 
   // Create horizontal splitter: browser tabs on left, Agent sidebar on right
-  QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
-  splitter->addWidget(tabWidget_);   // Browser tabs (left)
-  splitter->addWidget(agentPanel_);  // Agent sidebar (right)
+  splitter_ = new QSplitter(Qt::Horizontal, this);
+  splitter_->addWidget(tabWidget_);   // Browser tabs (left)
+  splitter_->addWidget(agentPanel_);  // Agent sidebar (right)
 
-  // Set stretch factors: 70% browser, 30% sidebar (more balanced)
-  splitter->setStretchFactor(0, 7);  // Browser gets 7x weight
-  splitter->setStretchFactor(1, 3);  // Sidebar gets 3x weight
+  // Set minimum constraints to prevent extreme positions
+  tabWidget_->setMinimumWidth(600);  // Browser needs reasonable space for usability
 
-  // Set initial sizes: For a 1920px window, sidebar should be ~400px
-  QList<int> sizes;
-  sizes << 1400 << 400;  // Browser: 1400px, Sidebar: 400px
-  splitter->setSizes(sizes);
+  // Set stretch factors: browser gets most space (expanding), panel gets some (preferred)
+  splitter_->setStretchFactor(0, 1);  // Browser expands to fill available space
+  splitter_->setStretchFactor(1, 0);  // Panel stays at preferred size
 
-  // Allow user to resize the splitter, but prevent collapse
-  splitter->setChildrenCollapsible(false);
-  splitter->setHandleWidth(0);
+  // Allow children to collapse so panel can hide completely
+  splitter_->setChildrenCollapsible(true);
 
-  const QColor splitterColor = QApplication::palette().color(QPalette::Window);
-  splitter->setStyleSheet(
-      QStringLiteral(
-          "QSplitter::handle { background-color: %1; border: none; margin: 0; padding: 0; }")
-          .arg(splitterColor.name(QColor::HexRgb)));
+  // Make handle visible and draggable (3px width)
+  splitter_->setHandleWidth(3);
+  // Enable opaque resize for continuous, smooth updates during drag
+  splitter_->setOpaqueResize(true);
 
-  setCentralWidget(splitter);
+  const QColor splitterColor = QApplication::palette().color(QPalette::Mid);
+  splitter_->setStyleSheet(QStringLiteral("QSplitter::handle {"
+                                          "  background-color: %1;"
+                                          "  border: none;"
+                                          "  margin: 0;"
+                                          "  padding: 0;"
+                                          "}"
+                                          "QSplitter::handle:hover {"
+                                          "  background-color: %2;"
+                                          "}")
+                               .arg(splitterColor.name(QColor::HexRgb),
+                                    splitterColor.lighter(120).name(QColor::HexRgb)));
+
+  setCentralWidget(splitter_);
 
   logger.Info("Central widget created with Agent sidebar");
 }
@@ -174,6 +184,13 @@ void QtMainWindow::connectSignals() {
 
   // Agent button
   connect(agentButton_, &QPushButton::clicked, this, &QtMainWindow::onAgentButtonClicked);
+
+  // Agent panel visibility changes
+  connect(agentPanel_, &AgentPanel::visibilityChanged, this,
+          &QtMainWindow::onAgentPanelVisibilityChanged);
+
+  // Splitter signals - handle manual resize events
+  connect(splitter_, &QSplitter::splitterMoved, this, &QtMainWindow::onSplitterMoved);
 
   // Keyboard shortcut: Ctrl+Shift+C (or Cmd+Shift+C on macOS)
   QShortcut* agentShortcut = new QShortcut(QKeySequence("Ctrl+Shift+C"), this);
@@ -314,6 +331,99 @@ void QtMainWindow::onAgentButtonClicked() {
 
     logger.Info(agentPanel_->IsVisible() ? "Agent sidebar shown" : "Agent sidebar hidden");
   }
+}
+
+void QtMainWindow::onAgentPanelVisibilityChanged(bool visible) {
+  // Simple, predictable splitter behavior: show/hide + explicit setSizes
+
+  if (!splitter_ || !tabWidget_ || !agentPanel_) {
+    return;
+  }
+
+  QList<int> sizes = splitter_->sizes();
+  int total_width = 0;
+  if (sizes.size() >= 2) {
+    total_width = sizes[0] + sizes[1];
+  }
+  if (total_width <= 0) {
+    total_width = splitter_->width();
+  }
+
+  if (visible) {
+    // Show panel: restore minimum width and use cached sidebar width when available
+    agentPanel_->setMinimumWidth(300);
+    agentPanel_->show();
+
+    const int min_browser_width = tabWidget_->minimumWidth();
+    const int min_sidebar_width = agentPanel_->minimumWidth();
+    const int max_sidebar_width = std::max(0, total_width - min_browser_width);
+
+    // Choose last remembered width or default to 30% if first time.
+    if (agent_panel_last_width_ <= 0) {
+      agent_panel_last_width_ = std::max(min_sidebar_width, total_width * 30 / 100);
+    }
+    int sidebar_width = 0;
+    int browser_width = 0;
+
+    if (max_sidebar_width <= 0) {
+      sidebar_width = 0;
+      browser_width = total_width;
+    } else if (max_sidebar_width < min_sidebar_width) {
+      sidebar_width = max_sidebar_width;
+      browser_width = std::max(total_width - sidebar_width, min_browser_width);
+    } else {
+      sidebar_width =
+          std::clamp(agent_panel_last_width_, min_sidebar_width, max_sidebar_width);
+      browser_width = std::max(total_width - sidebar_width, min_browser_width);
+      if (browser_width + sidebar_width != total_width) {
+        sidebar_width = std::max(0, total_width - browser_width);
+      }
+    }
+
+    splitter_->setSizes({browser_width, sidebar_width});
+    agent_panel_last_width_ = sidebar_width;
+
+    logger.Info("Agent panel shown - browser={}px, sidebar={}px", browser_width, sidebar_width);
+  } else {
+    // Hide panel: give all space to browser
+    if (sizes.size() >= 2 && sizes[1] > 0) {
+      agent_panel_last_width_ = sizes[1];
+    }
+
+    agentPanel_->hide();
+    agentPanel_->setMinimumWidth(0);
+
+    splitter_->setSizes({total_width, 0});
+
+    logger.Info("Agent panel hidden - browser gets all space: {}px", total_width);
+  }
+
+  // Event-driven resize sync handles the rest automatically:
+  // 1. Qt calls resizeGL() on the browser widget
+  // 2. resizeGL() updates viewport and calls CEF WasResized()
+  // 3. CEF eventually calls OnPaint with new dimensions
+  // 4. OnCefPaint() checks size match and triggers update()
+  // No timers needed!
+}
+
+void QtMainWindow::onSplitterMoved(int pos, int index) {
+  // Handle manual splitter resize
+  // With opaque resize enabled, Qt automatically calls resizeGL() during drag.
+  // Event-driven resize sync handles everything automatically:
+  // 1. Qt calls resizeGL() continuously during drag
+  // 2. resizeGL() updates viewport and calls CEF WasResized()
+  // 3. CEF eventually calls OnPaint with new dimensions
+  // 4. OnCefPaint() checks size match and triggers update()
+  // No manual intervention needed!
+
+  if (splitter_) {
+    QList<int> sizes = splitter_->sizes();
+    if (sizes.size() >= 2 && sizes[1] > 0) {
+      agent_panel_last_width_ = sizes[1];
+    }
+  }
+
+  logger.Debug("Splitter moved to position {} (index {})", pos, index);
 }
 
 // ============================================================================
