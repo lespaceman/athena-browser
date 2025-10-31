@@ -237,7 +237,8 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
               }
 
               std::lock_guard<std::mutex> lock(window->tabs_mutex_);
-              auto it = std::find_if(window->tabs_.begin(), window->tabs_.end(),
+              auto it = std::find_if(window->tabs_.begin(),
+                                     window->tabs_.end(),
                                      [bid](const QtTab& t) { return t.browser_id == bid; });
               if (it != window->tabs_.end() && it->browser_widget) {
                 // Widget is guaranteed to be valid here since we're on Qt thread
@@ -247,6 +248,28 @@ void QtMainWindow::createBrowserForTab(size_t tab_index) {
               }
             });
           });
+
+      // Popup/new tab creation callback: handles window.open() and target="_blank"
+      // This converts popup requests into new tabs for better UX
+      tab.cef_client->SetCreateTabCallback([this](const std::string& url, bool foreground) {
+        // Use thread-safe callback wrapper to marshal from CEF → Qt main thread
+        SafeInvokeQtCallback(this, [url, foreground](QtMainWindow* window) {
+          // This runs on Qt main thread with validated window pointer
+          if (window->closed_) {
+            return;
+          }
+
+          logger.Info("Creating new tab from popup: URL={}, foreground={}", url, foreground);
+
+          // Create new tab with the popup URL
+          int tab_index = window->CreateTab(QString::fromStdString(url));
+
+          // Switch to the new tab if it should be in foreground
+          if (foreground && tab_index >= 0) {
+            window->SwitchToTab(static_cast<size_t>(tab_index));
+          }
+        });
+      });
 
       logger.Info("Callbacks wired for browser_id: " + std::to_string(bid));
     }

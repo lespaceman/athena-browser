@@ -86,6 +86,19 @@ class CefClient : public ::CefClient,
   void OnAfterCreated(CefRefPtr<::CefBrowser> browser) override;
   bool DoClose(CefRefPtr<::CefBrowser> browser) override;
   void OnBeforeClose(CefRefPtr<::CefBrowser> browser) override;
+  bool OnBeforePopup(CefRefPtr<::CefBrowser> browser,
+                     CefRefPtr<::CefFrame> frame,
+                     int popup_id,
+                     const CefString& target_url,
+                     const CefString& target_frame_name,
+                     CefLifeSpanHandler::WindowOpenDisposition target_disposition,
+                     bool user_gesture,
+                     const CefPopupFeatures& popupFeatures,
+                     CefWindowInfo& windowInfo,
+                     CefRefPtr<::CefClient>& client,
+                     CefBrowserSettings& settings,
+                     CefRefPtr<::CefDictionaryValue>& extra_info,
+                     bool* no_javascript_access) override;
 
   // ============================================================================
   // CefDisplayHandler methods
@@ -242,6 +255,15 @@ class CefClient : public ::CefClient,
     on_render_invalidated_ = std::move(callback);
   }
 
+  /**
+   * Set callback for popup/new tab creation.
+   * Called when a popup is requested (window.open, target="_blank", etc.).
+   * Callback receives: (url, foreground) where foreground indicates if tab should be active.
+   */
+  void SetCreateTabCallback(std::function<void(const std::string&, bool)> callback) {
+    on_create_tab_ = std::move(callback);
+  }
+
  private:
   void* native_window_;                 // Platform-specific window handle (non-owning)
   CefRefPtr<::CefBrowser> browser_;     // CEF browser instance
@@ -259,7 +281,10 @@ class CefClient : public ::CefClient,
   std::function<void(const std::string&)> on_address_change_;      // URL changed
   std::function<void(bool, bool, bool)> on_loading_state_change_;  // Loading state changed
   std::function<void(const std::string&)> on_title_change_;        // Title changed
-  std::function<void(CefRenderHandler::PaintElementType, int, int)> on_render_invalidated_;  // (type, width, height)
+  std::function<void(CefRenderHandler::PaintElementType, int, int)>
+      on_render_invalidated_;  // (type, width, height)
+  std::function<void(const std::string&, bool)>
+      on_create_tab_;  // (url, foreground) - Popup/new tab creation
 
   struct JavaScriptRequest {
     bool completed{false};

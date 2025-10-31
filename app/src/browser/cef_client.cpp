@@ -85,6 +85,58 @@ void CefClient::OnBeforeClose(CefRefPtr<::CefBrowser> browser) {
   CefQuitMessageLoop();
 }
 
+bool CefClient::OnBeforePopup(CefRefPtr<::CefBrowser> browser,
+                              CefRefPtr<::CefFrame> frame,
+                              int popup_id,
+                              const CefString& target_url,
+                              const CefString& target_frame_name,
+                              CefLifeSpanHandler::WindowOpenDisposition target_disposition,
+                              bool user_gesture,
+                              const CefPopupFeatures& popupFeatures,
+                              CefWindowInfo& windowInfo,
+                              CefRefPtr<::CefClient>& client,
+                              CefBrowserSettings& settings,
+                              CefRefPtr<::CefDictionaryValue>& extra_info,
+                              bool* no_javascript_access) {
+  (void)browser;               // Unused parameter
+  (void)frame;                 // Unused parameter
+  (void)popup_id;              // Unused parameter
+  (void)target_frame_name;     // Unused parameter
+  (void)user_gesture;          // Unused parameter
+  (void)popupFeatures;         // Unused parameter
+  (void)windowInfo;            // Unused parameter
+  (void)client;                // Unused parameter
+  (void)settings;              // Unused parameter
+  (void)extra_info;            // Unused parameter
+  (void)no_javascript_access;  // Unused parameter
+
+  CEF_REQUIRE_UI_THREAD();
+
+  // If no callback is registered, block the popup
+  if (!on_create_tab_) {
+    logger.Warn("OnBeforePopup: no tab creation handler, blocking popup: {}",
+                target_url.ToString());
+    return true;  // Cancel popup
+  }
+
+  // Determine if popup should be foreground or background based on disposition
+  bool foreground =
+      (target_disposition == CEF_WOD_NEW_FOREGROUND_TAB ||
+       target_disposition == CEF_WOD_NEW_POPUP || target_disposition == CEF_WOD_NEW_WINDOW);
+
+  logger.Info("OnBeforePopup: URL={}, disposition={}, foreground={}",
+              target_url.ToString(),
+              static_cast<int>(target_disposition),
+              foreground);
+
+  // Invoke callback to create new tab
+  // Note: Callback is responsible for thread-safe marshaling to Qt thread
+  on_create_tab_(target_url.ToString(), foreground);
+
+  // Return true to cancel CEF's default popup behavior (we're handling it)
+  return true;
+}
+
 // ============================================================================
 // CefDisplayHandler methods
 // ============================================================================
@@ -234,7 +286,11 @@ void CefClient::OnImeCompositionRangeChanged(CefRefPtr<::CefBrowser> browser,
 void CefClient::SetSize(int width, int height) {
   if (width != width_ || height != height_) {
     logger.Debug("CEF browser resized: {}x{} -> {}x{} (scale {})",
-                 width_, height_, width, height, device_scale_factor_);
+                 width_,
+                 height_,
+                 width,
+                 height,
+                 device_scale_factor_);
   }
 
   width_ = width;
