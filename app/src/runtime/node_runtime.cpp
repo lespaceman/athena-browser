@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <signal.h>
 #include <sstream>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
@@ -530,6 +531,11 @@ utils::Result<void> NodeRuntime::SpawnProcess() {
 
   if (pid_ == 0) {
     // Child process
+
+    // Configure parent death signal to prevent orphaned processes
+    // If the parent process dies (crash, SIGKILL, etc.), this ensures the child
+    // receives SIGTERM and can clean up properly (e.g., release port 9223)
+    prctl(PR_SET_PDEATHSIG, SIGTERM);
 
     // Close read end
     close(stdout_pipe[0]);

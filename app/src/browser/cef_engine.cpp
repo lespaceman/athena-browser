@@ -51,9 +51,8 @@ utils::Result<void> CefEngine::Initialize(const EngineConfig& config) {
   settings.external_message_pump = false;
   settings.windowless_rendering_enabled = config.enable_windowless_rendering;
 
-  // Enable remote debugging on port 9222
   // This allows debugging with Chrome DevTools at chrome://inspect
-  settings.remote_debugging_port = 9222;
+  settings.remote_debugging_port = 9223;
 
   // Set cache path
   if (!config.cache_path.empty()) {
