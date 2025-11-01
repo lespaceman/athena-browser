@@ -85,6 +85,29 @@ class BrowserWidget : public QOpenGLWidget {
    */
   void OnCefPaint(CefRenderHandler::PaintElementType type, int width, int height);
 
+ public:
+  // ============================================================================
+  // Helper Methods (public for testing)
+  // ============================================================================
+
+  /**
+   * Convert Qt modifiers to CEF modifiers.
+   *
+   * @param qtMods Qt keyboard modifiers
+   * @param qtButtons Qt mouse buttons
+   * @return CEF modifier flags
+   */
+  uint32_t getCefModifiers(Qt::KeyboardModifiers qtMods, Qt::MouseButtons qtButtons) const;
+
+  /**
+   * Convert Qt key code to Windows virtual key code.
+   * CEF uses Windows virtual key codes for all platforms.
+   *
+   * @param qtKey Qt::Key_* value
+   * @return Windows virtual key code
+   */
+  int getWindowsKeyCode(int qtKey) const;
+
  signals:
   /**
    * Emitted when OpenGL context is initialized and ready for browser creation.
@@ -167,28 +190,6 @@ class BrowserWidget : public QOpenGLWidget {
   void focusOutEvent(QFocusEvent* event) override;
 
  private:
-  // ============================================================================
-  // Helper Methods
-  // ============================================================================
-
-  /**
-   * Convert Qt modifiers to CEF modifiers.
-   *
-   * @param qtMods Qt keyboard modifiers
-   * @param qtButtons Qt mouse buttons
-   * @return CEF modifier flags
-   */
-  uint32_t getCefModifiers(Qt::KeyboardModifiers qtMods, Qt::MouseButtons qtButtons) const;
-
-  /**
-   * Convert Qt key code to Windows virtual key code.
-   * CEF uses Windows virtual key codes for all platforms.
-   *
-   * @param qtKey Qt::Key_* value
-   * @return Windows virtual key code
-   */
-  int getWindowsKeyCode(int qtKey) const;
-
   // ============================================================================
   // Member Variables
   // ============================================================================

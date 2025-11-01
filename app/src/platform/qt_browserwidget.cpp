@@ -430,6 +430,8 @@ uint32_t BrowserWidget::getCefModifiers(Qt::KeyboardModifiers qtMods,
     cefMods |= EVENTFLAG_CONTROL_DOWN;
   if (qtMods & Qt::AltModifier)
     cefMods |= EVENTFLAG_ALT_DOWN;
+  if (qtMods & Qt::KeypadModifier)
+    cefMods |= EVENTFLAG_IS_KEY_PAD;
 
   // Mouse button modifiers
   if (qtButtons & Qt::LeftButton)
@@ -444,55 +446,169 @@ uint32_t BrowserWidget::getCefModifiers(Qt::KeyboardModifiers qtMods,
 
 int BrowserWidget::getWindowsKeyCode(int qtKey) const {
   // Map Qt keys to Windows virtual key codes
+  // Based on comprehensive mapping from QCefView KeyboardUtils
 
+  // Standard alphanumeric keys
   if (qtKey >= Qt::Key_0 && qtKey <= Qt::Key_9) {
-    return qtKey;  // '0'-'9' same in both
+    return qtKey;  // '0'-'9' (0x30-0x39)
   }
   if (qtKey >= Qt::Key_A && qtKey <= Qt::Key_Z) {
-    return qtKey;  // 'A'-'Z' same in both
+    return qtKey;  // 'A'-'Z' (0x41-0x5A)
   }
 
+  // Function keys (F1-F24)
   if (qtKey >= Qt::Key_F1 && qtKey <= Qt::Key_F24) {
-    return 0x70 + (qtKey - Qt::Key_F1);
+    return 0x70 + (qtKey - Qt::Key_F1);  // VK_F1 (0x70) through VK_F24 (0x87)
   }
 
+  // Comprehensive key mapping switch
   switch (qtKey) {
-    case Qt::Key_Return:
-      return 0x0D;
-    case Qt::Key_Escape:
-      return 0x1B;
+    // Control keys
     case Qt::Key_Backspace:
-      return 0x08;
+      return 0x08;  // VK_BACK
     case Qt::Key_Tab:
-      return 0x09;
-    case Qt::Key_Space:
-      return 0x20;
-    case Qt::Key_Delete:
-      return 0x2E;
-    case Qt::Key_Home:
-      return 0x24;
-    case Qt::Key_End:
-      return 0x23;
-    case Qt::Key_PageUp:
-      return 0x21;
-    case Qt::Key_PageDown:
-      return 0x22;
-    case Qt::Key_Left:
-      return 0x25;
-    case Qt::Key_Up:
-      return 0x26;
-    case Qt::Key_Right:
-      return 0x27;
-    case Qt::Key_Down:
-      return 0x28;
-    case Qt::Key_Insert:
-      return 0x2D;
+      return 0x09;  // VK_TAB
+    case Qt::Key_Backtab:
+      return 0x09;  // VK_TAB (Shift+Tab)
+    case Qt::Key_Clear:
+      return 0x0C;  // VK_CLEAR
+    case Qt::Key_Return:
+    case Qt::Key_Enter:
+      return 0x0D;  // VK_RETURN
+
+    // Modifier keys
     case Qt::Key_Shift:
-      return 0x10;
+      return 0x10;  // VK_SHIFT
     case Qt::Key_Control:
-      return 0x11;
+      return 0x11;  // VK_CONTROL
     case Qt::Key_Alt:
-      return 0x12;
+      return 0x12;  // VK_MENU
+    case Qt::Key_Pause:
+      return 0x13;  // VK_PAUSE
+    case Qt::Key_CapsLock:
+      return 0x14;  // VK_CAPITAL
+
+    // Navigation keys
+    case Qt::Key_Escape:
+      return 0x1B;  // VK_ESCAPE
+    case Qt::Key_Space:
+      return 0x20;  // VK_SPACE
+    case Qt::Key_PageUp:
+      return 0x21;  // VK_PRIOR
+    case Qt::Key_PageDown:
+      return 0x22;  // VK_NEXT
+    case Qt::Key_End:
+      return 0x23;  // VK_END
+    case Qt::Key_Home:
+      return 0x24;  // VK_HOME
+    case Qt::Key_Left:
+      return 0x25;  // VK_LEFT
+    case Qt::Key_Up:
+      return 0x26;  // VK_UP
+    case Qt::Key_Right:
+      return 0x27;  // VK_RIGHT
+    case Qt::Key_Down:
+      return 0x28;  // VK_DOWN
+
+    // Special keys
+    case Qt::Key_Select:
+      return 0x29;  // VK_SELECT
+    case Qt::Key_Print:
+      return 0x2A;  // VK_PRINT
+    case Qt::Key_Execute:
+      return 0x2B;  // VK_EXECUTE
+    case Qt::Key_Printer:
+      return 0x2C;  // VK_SNAPSHOT (PrintScreen)
+    case Qt::Key_Insert:
+      return 0x2D;  // VK_INSERT
+    case Qt::Key_Delete:
+      return 0x2E;  // VK_DELETE
+    case Qt::Key_Help:
+      return 0x2F;  // VK_HELP
+
+    // Numpad keys (0x60-0x69)
+    // Note: These need to be distinguished from regular number keys
+    // by checking KeypadModifier in the actual event handling
+
+    // Numpad operators
+    case Qt::Key_multiply:
+      return 0x6A;  // VK_MULTIPLY
+    case Qt::Key_Asterisk:
+      return 0x6A;  // VK_MULTIPLY (same key)
+
+    // Lock keys
+    case Qt::Key_NumLock:
+      return 0x90;  // VK_NUMLOCK
+    case Qt::Key_ScrollLock:
+      return 0x91;  // VK_SCROLL
+
+    // Media keys
+    case Qt::Key_VolumeMute:
+      return 0xAD;  // VK_VOLUME_MUTE
+    case Qt::Key_VolumeDown:
+      return 0xAE;  // VK_VOLUME_DOWN
+    case Qt::Key_VolumeUp:
+      return 0xAF;  // VK_VOLUME_UP
+    case Qt::Key_MediaStop:
+      return 0xB2;  // VK_MEDIA_STOP
+    case Qt::Key_MediaPlay:
+      return 0xB3;  // VK_MEDIA_PLAY_PAUSE
+
+    // Punctuation and symbols (OEM keys)
+    case Qt::Key_Semicolon:
+    case Qt::Key_Colon:
+      return 0xBA;  // VK_OEM_1 (';:' for US)
+    case Qt::Key_Plus:
+    case Qt::Key_Equal:
+      return 0xBB;  // VK_OEM_PLUS ('=+' for US)
+    case Qt::Key_Comma:
+    case Qt::Key_Less:
+      return 0xBC;  // VK_OEM_COMMA (',<' for US)
+    case Qt::Key_Minus:
+    case Qt::Key_Underscore:
+      return 0xBD;  // VK_OEM_MINUS ('-_' for US)
+    case Qt::Key_Period:
+    case Qt::Key_Greater:
+      return 0xBE;  // VK_OEM_PERIOD ('.>' for US)
+    case Qt::Key_Slash:
+    case Qt::Key_Question:
+      return 0xBF;  // VK_OEM_2 ('/?' for US)
+    case Qt::Key_QuoteLeft:
+    case Qt::Key_AsciiTilde:
+      return 0xC0;  // VK_OEM_3 ('`~' for US)
+    case Qt::Key_BracketLeft:
+    case Qt::Key_BraceLeft:
+      return 0xDB;  // VK_OEM_4 ('[{' for US)
+    case Qt::Key_Backslash:
+    case Qt::Key_Bar:
+      return 0xDC;  // VK_OEM_5 ('\|' for US)
+    case Qt::Key_BracketRight:
+    case Qt::Key_BraceRight:
+      return 0xDD;  // VK_OEM_6 (']}' for US)
+    case Qt::Key_Apostrophe:
+    case Qt::Key_QuoteDbl:
+      return 0xDE;  // VK_OEM_7 (''"' for US)
+
+    // Symbol keys (shifted number keys)
+    case Qt::Key_ParenRight:
+      return 0x30;  // '0'
+    case Qt::Key_Exclam:
+      return 0x31;  // '1'
+    case Qt::Key_At:
+      return 0x32;  // '2'
+    case Qt::Key_NumberSign:
+      return 0x33;  // '3'
+    case Qt::Key_Dollar:
+      return 0x34;  // '4'
+    case Qt::Key_Percent:
+      return 0x35;  // '5'
+    case Qt::Key_AsciiCircum:
+      return 0x36;  // '6'
+    case Qt::Key_Ampersand:
+      return 0x37;  // '7'
+    case Qt::Key_ParenLeft:
+      return 0x39;  // '9'
+
     default:
       return qtKey;
   }

@@ -126,6 +126,12 @@ add_athena_test(qt_chat_bubble_test
 
 set_target_properties(qt_chat_bubble_test PROPERTIES AUTOMOC ON)
 
+add_athena_test(qt_keyboard_test
+  platform/qt_keyboard_test.cpp
+)
+
+set_target_properties(qt_keyboard_test PROPERTIES AUTOMOC ON)
+
 # Application layer tests (Phase 5)
 # TODO: Re-enable these tests for Qt once platform layer is fully migrated
 # add_athena_test(browser_window_test
