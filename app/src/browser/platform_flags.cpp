@@ -35,7 +35,7 @@ void ApplyCommonFlags(CefRefPtr<CefCommandLine> cmd) {
   AddSwitch(cmd, "enable-logging");
 
   // Bind remote debugging server to localhost only (security)
-  // Works with settings.remote_debugging_port = 9222 in CefEngine::Initialize
+  // Works with settings.remote_debugging_port (default 9223, or dynamic when set to 0)
   AddSwitchWithValue(cmd, "remote-debugging-address", "127.0.0.1");
 }
 

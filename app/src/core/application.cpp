@@ -84,6 +84,9 @@ utils::Result<void> Application::Initialize(int& argc, char* argv[]) {
   engine_config.enable_sandbox = config_.enable_sandbox;
   engine_config.enable_windowless_rendering = config_.enable_windowless_rendering;
   engine_config.windowless_frame_rate = config_.windowless_frame_rate;
+  engine_config.remote_debugging_port = config_.remote_debugging_port;
+  engine_config.remote_debugging_port_wait_timeout_ms =
+      config_.remote_debugging_port_wait_timeout_ms;
 
   auto engine_result = browser_engine_->Initialize(engine_config);
   if (!engine_result) {

@@ -123,6 +123,8 @@ class CefEngine : public BrowserEngine {
   bool initialized_;                           // Initialization state
   BrowserId next_id_;                          // Next browser ID to assign
   std::map<BrowserId, BrowserInfo> browsers_;  // Active browsers
+  uint16_t remote_debugging_port_ = 0;         // Cached port for cleanup/logging
+  int remote_debugging_wait_timeout_ms_ = 3000;
 };
 
 }  // namespace browser

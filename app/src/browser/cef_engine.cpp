@@ -8,6 +8,15 @@
 #include <iostream>
 #include <limits.h>
 #include <unistd.h>
+#include <algorithm>
+#include <string>
+#include <arpa/inet.h>
+#include <cerrno>
+#include <chrono>
+#include <cstring>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <thread>
 
 namespace athena {
 namespace browser {
@@ -26,8 +35,79 @@ static std::string GetExecutablePath() {
   return "";
 }
 
+namespace {
+
+bool CanBindLocalPort(uint16_t port) {
+  if (port == 0) {
+    return true;
+  }
+
+  int sock = ::socket(AF_INET, SOCK_STREAM, 0);
+  if (sock < 0) {
+    logger.Warn("Failed to create socket to probe port {}: {}", port, std::strerror(errno));
+    return false;
+  }
+
+  sockaddr_in addr {};
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  addr.sin_port = htons(port);
+
+  int result = ::bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+  int saved_errno = errno;
+  ::close(sock);
+
+  if (result == 0) {
+    return true;
+  }
+
+  if (saved_errno != EADDRINUSE && saved_errno != EACCES) {
+    logger.Warn("Unexpected error probing port {}: {}", port, std::strerror(saved_errno));
+  }
+
+  return false;
+}
+
+bool WaitForPortAvailability(uint16_t port, int timeout_ms) {
+  if (port == 0) {
+    return true;
+  }
+
+  const int clamped_timeout = std::max(timeout_ms, 0);
+  if (CanBindLocalPort(port)) {
+    return true;
+  }
+
+  if (clamped_timeout == 0) {
+    return false;
+  }
+
+  logger.Info("Remote debugging port {} is busy; waiting up to {} ms for release", port,
+              clamped_timeout);
+
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(clamped_timeout);
+
+  while (std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (CanBindLocalPort(port)) {
+      logger.Info("Remote debugging port {} is now free", port);
+      return true;
+    }
+  }
+
+  return CanBindLocalPort(port);
+}
+
+}  // namespace
+
 CefEngine::CefEngine(CefRefPtr<::CefApp> app, const CefMainArgs* main_args)
-    : app_(app), main_args_(main_args), initialized_(false), next_id_(1) {}
+    : app_(app),
+      main_args_(main_args),
+      initialized_(false),
+      next_id_(1),
+      remote_debugging_port_(0),
+      remote_debugging_wait_timeout_ms_(3000) {}
 
 CefEngine::~CefEngine() {
   if (initialized_) {
@@ -44,6 +124,21 @@ utils::Result<void> CefEngine::Initialize(const EngineConfig& config) {
     return utils::Err<void>("CEF engine already initialized");
   }
 
+  remote_debugging_port_ = config.remote_debugging_port;
+  remote_debugging_wait_timeout_ms_ =
+      std::clamp(config.remote_debugging_port_wait_timeout_ms, 0, 60000);
+
+  if (remote_debugging_port_ > 0) {
+    if (!WaitForPortAvailability(remote_debugging_port_, remote_debugging_wait_timeout_ms_)) {
+      return utils::Err<void>("Remote debugging port " +
+                              std::to_string(remote_debugging_port_) + " is still in use after " +
+                              std::to_string(remote_debugging_wait_timeout_ms_) + " ms");
+    }
+    logger.Info("Remote debugging enabled on fixed port {}", remote_debugging_port_);
+  } else {
+    logger.Info("Remote debugging port set to dynamic allocation");
+  }
+
   // Configure CEF settings
   CefSettings settings;
   settings.no_sandbox = !config.enable_sandbox;
@@ -51,8 +146,9 @@ utils::Result<void> CefEngine::Initialize(const EngineConfig& config) {
   settings.external_message_pump = false;
   settings.windowless_rendering_enabled = config.enable_windowless_rendering;
 
-  // This allows debugging with Chrome DevTools at chrome://inspect
-  settings.remote_debugging_port = 9223;
+  // Enable remote debugging on localhost only for security
+  // When remote_debugging_port_ is 0, CEF will request a dynamic port.
+  settings.remote_debugging_port = static_cast<int>(remote_debugging_port_);
 
   // Set cache path
   if (!config.cache_path.empty()) {
@@ -102,6 +198,16 @@ void CefEngine::Shutdown() {
   // Shutdown CEF
   CefShutdown();
   initialized_ = false;
+
+  if (remote_debugging_port_ > 0) {
+    if (!WaitForPortAvailability(remote_debugging_port_, remote_debugging_wait_timeout_ms_)) {
+      logger.Warn("Remote debugging port {} did not become available within {} ms; "
+                  "a lingering process may still be holding it",
+                  remote_debugging_port_, remote_debugging_wait_timeout_ms_);
+    }
+  }
+  remote_debugging_port_ = 0;
+
   logger.Info("CEF shutdown complete");
 }
 

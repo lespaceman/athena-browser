@@ -26,6 +26,8 @@ struct EngineConfig {
   bool enable_sandbox = false;
   bool enable_windowless_rendering = true;
   int windowless_frame_rate = 60;
+  uint16_t remote_debugging_port = 0;
+  int remote_debugging_port_wait_timeout_ms = 3000;
 };
 
 /**

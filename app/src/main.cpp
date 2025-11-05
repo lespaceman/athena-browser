@@ -96,6 +96,31 @@ int main(int argc, char* argv[]) {
   config.enable_windowless_rendering = true;
   config.windowless_frame_rate = 60;
   config.enable_sandbox = false;
+  config.remote_debugging_port = 9223;
+
+  if (const char* env_port = std::getenv("ATHENA_REMOTE_DEBUG_PORT")) {
+    char* end = nullptr;
+    long port_val = std::strtol(env_port, &end, 10);
+    if (end != env_port && *end == '\0' && port_val >= 0 && port_val <= 65535) {
+      config.remote_debugging_port = static_cast<uint16_t>(port_val);
+      logger.Info("Using remote debugging port from ATHENA_REMOTE_DEBUG_PORT: {}", port_val);
+    } else {
+      logger.Warn("Invalid ATHENA_REMOTE_DEBUG_PORT '{}'; using default {}", env_port,
+                  config.remote_debugging_port);
+    }
+  }
+
+  if (const char* env_wait = std::getenv("ATHENA_REMOTE_DEBUG_WAIT_MS")) {
+    char* end = nullptr;
+    long wait_val = std::strtol(env_wait, &end, 10);
+    if (end != env_wait && *end == '\0' && wait_val >= 0 && wait_val <= 60000) {
+      config.remote_debugging_port_wait_timeout_ms = static_cast<int>(wait_val);
+      logger.Info("Remote debugging port wait timeout set to {} ms via env", wait_val);
+    } else {
+      logger.Warn("Invalid ATHENA_REMOTE_DEBUG_WAIT_MS '{}'; using default {}", env_wait,
+                  config.remote_debugging_port_wait_timeout_ms);
+    }
+  }
 
   // Get initial URL from environment or use default
   std::string initial_url = "https://www.google.com";

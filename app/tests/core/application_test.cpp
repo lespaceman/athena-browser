@@ -52,6 +52,8 @@ TEST_F(ApplicationTest, ConstructionWithCustomConfig) {
   config.cache_path = "/tmp/custom_cache";
   config.enable_sandbox = true;
   config.windowless_frame_rate = 30;
+  config.remote_debugging_port = 9223;
+  config.remote_debugging_port_wait_timeout_ms = 4500;
 
   auto window_system = std::make_unique<athena::platform::testing::MockWindowSystem>();
   auto browser_engine = std::make_unique<athena::browser::testing::MockBrowserEngine>();
@@ -61,6 +63,8 @@ TEST_F(ApplicationTest, ConstructionWithCustomConfig) {
   EXPECT_EQ(app.GetConfig().cache_path, "/tmp/custom_cache");
   EXPECT_EQ(app.GetConfig().enable_sandbox, true);
   EXPECT_EQ(app.GetConfig().windowless_frame_rate, 30);
+  EXPECT_EQ(app.GetConfig().remote_debugging_port, 9223);
+  EXPECT_EQ(app.GetConfig().remote_debugging_port_wait_timeout_ms, 4500);
 }
 
 // ============================================================================

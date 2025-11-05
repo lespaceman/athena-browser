@@ -284,6 +284,8 @@ TEST_F(CefEngineTest, EngineConfigDefaults) {
   EXPECT_FALSE(config.enable_sandbox);
   EXPECT_TRUE(config.enable_windowless_rendering);
   EXPECT_EQ(config.windowless_frame_rate, 60);
+  EXPECT_EQ(config.remote_debugging_port, 0);
+  EXPECT_EQ(config.remote_debugging_port_wait_timeout_ms, 3000);
 }
 
 TEST_F(CefEngineTest, BrowserConfigDefaults) {
@@ -306,12 +308,16 @@ TEST_F(CefEngineTest, EngineConfigCustomValues) {
   config.enable_sandbox = true;
   config.enable_windowless_rendering = false;
   config.windowless_frame_rate = 30;
+  config.remote_debugging_port = 9223;
+  config.remote_debugging_port_wait_timeout_ms = 5000;
 
   EXPECT_EQ(config.cache_path, "/tmp/custom_cache");
   EXPECT_EQ(config.subprocess_path, "/usr/bin/custom_subprocess");
   EXPECT_TRUE(config.enable_sandbox);
   EXPECT_FALSE(config.enable_windowless_rendering);
   EXPECT_EQ(config.windowless_frame_rate, 30);
+  EXPECT_EQ(config.remote_debugging_port, 9223);
+  EXPECT_EQ(config.remote_debugging_port_wait_timeout_ms, 5000);
 }
 
 TEST_F(CefEngineTest, BrowserConfigCustomValues) {

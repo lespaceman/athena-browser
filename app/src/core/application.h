@@ -26,6 +26,8 @@ struct ApplicationConfig {
   int windowless_frame_rate = 60;
   bool enable_node_runtime = true;
   std::string node_runtime_script_path;  // Path to agent/dist/server/server.js
+  uint16_t remote_debugging_port = 0;
+  int remote_debugging_port_wait_timeout_ms = 3000;
 };
 
 /**
