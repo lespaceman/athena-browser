@@ -84,9 +84,11 @@ async function main() {
     });
 
     // Create Claude client with session manager
-    // Note: MCP tools are now provided by the external athena-browser-mcp package
-    // which connects directly to CEF via Chrome DevTools Protocol (CDP) on port 9222
-    const claudeClient = new ClaudeClient(config, undefined, sessionManager);
+    // Note: MCP tools (40+ browser automation tools) are now provided by the
+    // external athena-browser-mcp package which connects directly to CEF via
+    // Chrome DevTools Protocol (CDP) on port 9222. The MCP server is configured
+    // in the query options when calling the Claude Agent SDK.
+    const claudeClient = new ClaudeClient(config, sessionManager);
     logger.info('Claude client created with session storage');
 
     // Create Express app
