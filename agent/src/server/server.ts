@@ -36,7 +36,6 @@ import { createMockBrowserController } from '../browser/mock-controller';
 import { createNativeBrowserController } from '../browser/native-controller';
 import { openUrlHandler } from '../api/routes/poc';
 import { createV1Router } from '../api/v1';
-import { createAgentMcpServer } from '../mcp/agent-adapter';
 
 const logger = new Logger('Server');
 
@@ -84,14 +83,11 @@ async function main() {
       sessionCount: sessionManager.getSessionCount()
     });
 
-    // Create MCP server for Claude Agent SDK integration
-    // This allows Claude to use browser control tools via the Agent SDK
-    const mcpServer = createAgentMcpServer(controlSocketPath);
-    logger.info('MCP server created for Agent SDK');
-
-    // Create Claude client with MCP server and session manager
-    const claudeClient = new ClaudeClient(config, mcpServer, sessionManager);
-    logger.info('Claude client created with MCP server and session storage');
+    // Create Claude client with session manager
+    // Note: MCP tools are now provided by the external athena-browser-mcp package
+    // which connects directly to CEF via Chrome DevTools Protocol (CDP) on port 9222
+    const claudeClient = new ClaudeClient(config, undefined, sessionManager);
+    logger.info('Claude client created with session storage');
 
     // Create Express app
     const app = express();
