@@ -12,7 +12,6 @@ import type {
   StreamChunk
 } from '../server/types';
 import { Logger } from '../server/logger';
-import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
 import { SessionManager } from '../session/manager';
 import type { Message } from '../session/types';
 import { ClaudeQueryBuilder } from './query-builder';
@@ -22,16 +21,13 @@ const logger = new Logger('ClaudeClient');
 export class ClaudeClient {
   private config: AthenaAgentConfig;
   private currentSessionId: string | null = null;
-  private mcpServer: McpSdkServerConfigWithInstance | null = null;
   private sessionManager: SessionManager;
 
   constructor(
     config: AthenaAgentConfig,
-    mcpServer?: McpSdkServerConfigWithInstance,
     sessionManager?: SessionManager
   ) {
     this.config = config;
-    this.mcpServer = mcpServer || null;
     this.sessionManager = sessionManager || new SessionManager();
     logger.info('Claude client initialized', {
       model: config.model,
@@ -150,7 +146,6 @@ export class ClaudeClient {
       // Build query configuration using ClaudeQueryBuilder
       const queryConfig = ClaudeQueryBuilder.buildQueryConfig(
         this.config,
-        this.mcpServer,
         prompt,
         claudeSessionId
       );
@@ -308,7 +303,6 @@ export class ClaudeClient {
       // Build query configuration using ClaudeQueryBuilder
       const queryConfig = ClaudeQueryBuilder.buildQueryConfig(
         this.config,
-        this.mcpServer,
         prompt,
         claudeSessionId,
         { includePartialMessages: true } // Enable streaming
@@ -486,7 +480,6 @@ export class ClaudeClient {
       // Build query configuration using ClaudeQueryBuilder
       const queryConfig = ClaudeQueryBuilder.buildQueryConfig(
         this.config,
-        this.mcpServer,
         prompt,
         originalSessionId,
         { forkSession: true } // Fork the session for exploratory path

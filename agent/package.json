@@ -9,15 +9,11 @@
     "build:tsc": "tsc",
     "dev": "tsx watch src/server/server.ts",
     "start": "node dist/server/server.js",
-    "start:mcp": "node dist/mcp/stdio-server.js",
-    "dev:mcp": "tsx watch src/mcp/stdio-server.ts",
-    "mcp:inspect": "npx @modelcontextprotocol/inspector node dist/mcp/stdio-server.js",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "vitest run test/integration",
-    "test:mcp": "vitest run test/mcp"
+    "test:integration": "vitest run test/integration"
   },
   "keywords": [
     "athena",

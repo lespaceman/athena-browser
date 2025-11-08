@@ -1,0 +1,21 @@
+{
+  "name": "athena-browser-mcp-config",
+  "description": "Configuration for athena-browser-mcp to connect to Athena Browser",
+  "connection": {
+    "host": "127.0.0.1",
+    "port": 9222,
+    "note": "Athena Browser exposes CDP on port 9222 (see app/src/browser/cef_engine.cpp:56)"
+  },
+  "security": {
+    "allowedFileDirs": [
+      "/home/user/downloads",
+      "/tmp"
+    ],
+    "defaultTimeoutMs": 30000
+  },
+  "usage": {
+    "standalone": "CEF_BRIDGE_PORT=9222 npx athena-browser-mcp",
+    "inspector": "CEF_BRIDGE_PORT=9222 npx @modelcontextprotocol/inspector npx athena-browser-mcp",
+    "claudeDesktop": "See docs/MCP_INTEGRATION.md for Claude Desktop configuration"
+  }
+}

@@ -64,6 +64,65 @@ To run the release build:
 build/release/app/athena-browser
 ```
 
+## MCP Integration (Browser Automation)
+
+Athena Browser supports **Model Context Protocol (MCP)** for AI-powered browser automation with 40+ tools.
+
+### Quick Start
+
+1. **Install athena-browser-mcp package:**
+```bash
+npm install athena-browser-mcp
+```
+
+2. **Start Athena Browser** (CDP enabled by default on port 9222):
+```bash
+./scripts/run.sh
+```
+
+3. **Test CDP connection:**
+```bash
+./scripts/test-cdp-connection.sh
+```
+
+4. **Use with MCP Inspector:**
+```bash
+CEF_BRIDGE_PORT=9222 npx @modelcontextprotocol/inspector npx athena-browser-mcp
+```
+
+### Claude Desktop Integration
+
+Configure Claude Desktop to control Athena Browser with 40+ automation tools:
+
+**Add to `~/.config/Claude/claude_desktop_config.json`:**
+```json
+{
+  "mcpServers": {
+    "athena-browser": {
+      "command": "npx",
+      "args": ["-y", "athena-browser-mcp"],
+      "env": {
+        "CEF_BRIDGE_HOST": "127.0.0.1",
+        "CEF_BRIDGE_PORT": "9222"
+      }
+    }
+  }
+}
+```
+
+**Available Tools (40+):**
+- **Perception:** DOM tree, accessibility tree, element discovery, OCR, network monitoring
+- **Interaction:** Click, type, scroll, form filling, file upload, navigation
+- **Session:** Save/restore sessions, learn selectors, safety policies, audit logging
+
+**Example Prompts:**
+- "Navigate to google.com and search for 'web scraping'"
+- "Find all forms on this page and fill them out"
+- "Extract the main content from this article"
+- "Monitor network requests and show me the API calls"
+
+See [docs/MCP_INTEGRATION.md](docs/MCP_INTEGRATION.md) for complete documentation.
+
 ## Distribution Packaging
 
 Create a distributable Linux bundle:
@@ -125,6 +184,7 @@ athena-browser/
 ## Documentation
 
 - [CLAUDE.md](CLAUDE.md) - Comprehensive development guide for Claude Code
+- [docs/MCP_INTEGRATION.md](docs/MCP_INTEGRATION.md) - MCP browser automation integration guide
 - [REORGANIZATION_PLAN.md](REORGANIZATION_PLAN.md) - Packaging and distribution implementation plan
 - [app/tests/README.md](app/tests/README.md) - Testing guide
 
