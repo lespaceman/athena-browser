@@ -294,11 +294,11 @@ function startServer(app: express.Application): Promise<void> {
           }
         }
 
-        logger.info('Graceful shutdown complete');
-        process.exit(0);
-      });
+      logger.info('Graceful shutdown complete');
+      process.exit(0);
+    });
 
-      // Force exit after grace period
+    // Force exit after grace period
       setTimeout(() => {
         logger.warn('Forced shutdown after timeout');
         process.exit(1);
@@ -307,6 +307,10 @@ function startServer(app: express.Application): Promise<void> {
 
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    // Note: 'exit' event fires when event loop is already unwinding, so async
+    // operations like server.close() won't complete. SIGTERM/SIGINT handlers
+    // above already handle cleanup, and the OS will tear down sockets on process
+    // exit anyway, so no additional exit handler is needed.
 
     process.on('uncaughtException', (err) => {
       logger.error('Uncaught exception', {

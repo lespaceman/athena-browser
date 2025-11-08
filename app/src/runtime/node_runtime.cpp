@@ -14,6 +14,10 @@
 #include <thread>
 #include <unistd.h>
 
+#if defined(__linux__)
+#include <sys/prctl.h>
+#endif
+
 // Platform-specific includes for timers
 #ifdef ATHENA_USE_QT
 #include <QTimer>
@@ -118,6 +122,9 @@ void NodeRuntime::Shutdown() {
 
   logger.Info("NodeRuntime::Shutdown - Shutting down runtime");
 
+  // Mark as stopping to prevent restart attempts
+  state_ = RuntimeState::STOPPED;
+
   // Stop health monitoring
   StopHealthMonitoring();
 
@@ -204,8 +211,9 @@ void NodeRuntime::StartHealthMonitoring() {
     if (!IsProcessAlive()) {
       logger.Error("NodeRuntime - Process died, triggering restart");
       timer->stop();
-      timer->deleteLater();
+      delete timer;
       health_check_timer_handle_ = nullptr;
+      health_monitoring_enabled_ = false;
       HandleCrash();
       return;
     }
@@ -245,7 +253,9 @@ void NodeRuntime::StopHealthMonitoring() {
   if (health_check_timer_handle_) {
     QTimer* timer = static_cast<QTimer*>(health_check_timer_handle_);
     timer->stop();
-    timer->deleteLater();
+    // Use delete instead of deleteLater to ensure timer is stopped immediately
+    // deleteLater() is asynchronous and the timer callback might still fire
+    delete timer;
     health_check_timer_handle_ = nullptr;
   }
 
@@ -532,11 +542,6 @@ utils::Result<void> NodeRuntime::SpawnProcess() {
   if (pid_ == 0) {
     // Child process
 
-    // Configure parent death signal to prevent orphaned processes
-    // If the parent process dies (crash, SIGKILL, etc.), this ensures the child
-    // receives SIGTERM and can clean up properly (e.g., release port 9223)
-    prctl(PR_SET_PDEATHSIG, SIGTERM);
-
     // Close read end
     close(stdout_pipe[0]);
 
@@ -552,6 +557,22 @@ utils::Result<void> NodeRuntime::SpawnProcess() {
     // Node.js will just get EPIPE error which it can handle gracefully
     signal(SIGPIPE, SIG_IGN);
 
+    bool parent_alive = true;
+#if defined(__linux__)
+    // Tie the Node sidecar's lifetime to the browser process so orphaned
+    // listeners can't linger on the remote debugging port when the parent dies.
+    pid_t parent_before_prctl = getppid();
+    if (prctl(PR_SET_PDEATHSIG, SIGTERM) != 0) {
+      std::cerr << "Failed to set parent death signal: " << strerror(errno) << std::endl;
+    }
+    // If the parent already exited between fork() and prctl(), exit immediately.
+    parent_alive = (getppid() == parent_before_prctl);
+#endif
+    if (!parent_alive) {
+      std::cerr << "Parent process exited before Node startup; terminating child" << std::endl;
+      _exit(1);
+    }
+
     // Set environment variable for Node.js Express server socket path
     // Note: This is DIFFERENT from the browser control socket path.
     // The Node server gets its own socket (without -control suffix)
@@ -563,6 +584,23 @@ utils::Result<void> NodeRuntime::SpawnProcess() {
     // The control socket has the -control suffix
     std::string control_socket_path = "/tmp/athena-" + std::to_string(getuid()) + "-control.sock";
     setenv("ATHENA_CONTROL_SOCKET_PATH", control_socket_path.c_str(), 1);
+
+    // Close all inherited file descriptors except stdin/stdout/stderr
+    // This prevents the Node process from inheriting CEF's TCP port 9223
+    // We use sysconf to get the maximum number of open files, with a fallback
+    long max_fds = sysconf(_SC_OPEN_MAX);
+    if (max_fds == -1) {
+      max_fds = 1024;  // POSIX minimum guarantee
+      std::cerr << "Warning: sysconf(_SC_OPEN_MAX) failed, using fallback limit "
+                << max_fds << std::endl;
+    }
+    // Limit iteration to avoid extremely large loops on systems with high ulimit
+    if (max_fds > 65536) {
+      max_fds = 65536;
+    }
+    for (long fd = 3; fd < max_fds; fd++) {
+      close(static_cast<int>(fd));  // Safe to call even if FD is not open
+    }
 
     // Execute Node
     execlp(config_.node_executable.c_str(),
@@ -618,18 +656,10 @@ utils::Result<void> NodeRuntime::SpawnProcess() {
   logger.Debug("NodeRuntime - Total output length: " + std::to_string(output.length()) +
                ", attempts: " + std::to_string(attempts));
 
-  // Don't close the pipe! The Node process will continue writing logs.
-  // If we close it, the process gets SIGPIPE and dies.
-  // Instead, we'll just stop reading from it.
-  // TODO: In production, redirect to a log file or implement async log reading
-
-  // Close our end of the pipe to avoid leaking file descriptors
-  // The child process will keep its stdout open
-  close(stdout_pipe[0]);
-
   // Parse READY line
   size_t ready_pos = output.find("READY ");
   if (ready_pos == std::string::npos) {
+    close(stdout_pipe[0]);
     TerminateProcess(true);
     return utils::Error("Failed to receive READY signal from Node process");
   }
@@ -646,6 +676,56 @@ utils::Result<void> NodeRuntime::SpawnProcess() {
   // Trim whitespace
   socket_path_.erase(0, socket_path_.find_first_not_of(" \t\r\n"));
   socket_path_.erase(socket_path_.find_last_not_of(" \t\r\n") + 1);
+
+  // Read a bit more to capture JSON logs that contain the PID
+  // The JSON log appears shortly after READY, give it 100ms
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  // Read any remaining output from stdout BEFORE closing the pipe
+  char extra_buf[4096];
+  ssize_t extra_bytes;
+  while ((extra_bytes = read(stdout_pipe[0], extra_buf, sizeof(extra_buf) - 1)) > 0) {
+    extra_buf[extra_bytes] = '\0';
+    output += extra_buf;
+    // Break if we found the PID or read less than buffer size (no more data)
+    if (output.find("\"pid\":") != std::string::npos || extra_bytes < static_cast<ssize_t>(sizeof(extra_buf) - 1)) {
+      break;
+    }
+  }
+
+  // Now close our end of the pipe to avoid leaking file descriptors
+  // The child process will keep its stdout open
+  close(stdout_pipe[0]);
+
+  // Extract actual Node process PID from JSON logs
+  // The Node agent logs its PID in JSON format: {"pid":12345,...}
+  // This ensures we track the correct PID even if there are intermediate processes
+  logger.Debug("NodeRuntime - Searching for PID in output buffer (" +
+               std::to_string(output.length()) + " bytes)");
+
+  size_t pid_pos = output.find("\"pid\":");
+  if (pid_pos != std::string::npos) {
+    size_t pid_start = pid_pos + 6;  // Length of "\"pid\":"
+    size_t pid_end = output.find_first_of(",}", pid_start);
+    if (pid_end != std::string::npos) {
+      std::string pid_str = output.substr(pid_start, pid_end - pid_start);
+      try {
+        int node_pid = std::stoi(pid_str);
+        logger.Info("NodeRuntime - Updating PID from fork() value " + std::to_string(pid_) +
+                    " to actual Node process PID " + std::to_string(node_pid));
+        pid_ = node_pid;
+      } catch (...) {
+        logger.Warn("NodeRuntime - Failed to parse PID from JSON (pid_str=\"" + pid_str +
+                    "\"), using fork() PID: " + std::to_string(pid_));
+      }
+    } else {
+      logger.Warn("NodeRuntime - Found \"pid\": but no end delimiter, using fork() PID: " +
+                  std::to_string(pid_));
+    }
+  } else {
+    logger.Warn("NodeRuntime - No \"pid\": found in output buffer (length=" +
+                std::to_string(output.length()) + "), using fork() PID: " + std::to_string(pid_));
+  }
 
   logger.Debug("NodeRuntime - Process spawned: pid=" + std::to_string(pid_) +
                ", socket=" + socket_path_);
@@ -708,11 +788,12 @@ utils::Result<void> NodeRuntime::WaitForReady() {
 
 void NodeRuntime::TerminateProcess(bool force) {
   if (pid_ <= 0) {
+    logger.Debug("NodeRuntime::TerminateProcess - Skipping, pid=" + std::to_string(pid_));
     return;
   }
 
-  logger.Debug("NodeRuntime::TerminateProcess - pid=" + std::to_string(pid_) +
-               ", force=" + (force ? "true" : "false"));
+  logger.Info("NodeRuntime::TerminateProcess - Terminating process pid=" + std::to_string(pid_) +
+              ", force=" + (force ? "true" : "false"));
 
   if (force) {
     // SIGKILL immediately
@@ -758,6 +839,12 @@ bool NodeRuntime::IsProcessAlive() const {
 }
 
 void NodeRuntime::HandleCrash() {
+  // Don't restart if we're in the middle of shutdown
+  if (state_ == RuntimeState::STOPPED) {
+    logger.Debug("NodeRuntime::HandleCrash - Ignoring crash during shutdown");
+    return;
+  }
+
   logger.Error("NodeRuntime::HandleCrash - Process crashed");
 
   state_ = RuntimeState::CRASHED;

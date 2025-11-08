@@ -5,18 +5,18 @@
 #include "include/wrapper/cef_helpers.h"
 #include "utils/logging.h"
 
-#include <iostream>
-#include <limits.h>
-#include <unistd.h>
 #include <algorithm>
-#include <string>
 #include <arpa/inet.h>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <iostream>
+#include <limits.h>
 #include <netinet/in.h>
+#include <string>
 #include <sys/socket.h>
 #include <thread>
+#include <unistd.h>
 
 namespace athena {
 namespace browser {
@@ -48,7 +48,14 @@ bool CanBindLocalPort(uint16_t port) {
     return false;
   }
 
-  sockaddr_in addr {};
+  // Set SO_REUSEADDR to allow binding even if there are TIME_WAIT sockets
+  // This matches CEF's own behavior for the DevTools server
+  int reuse = 1;
+  if (::setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+    logger.Warn("Failed to set SO_REUSEADDR on probe socket: {}", std::strerror(errno));
+  }
+
+  sockaddr_in addr{};
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   addr.sin_port = htons(port);
@@ -82,8 +89,8 @@ bool WaitForPortAvailability(uint16_t port, int timeout_ms) {
     return false;
   }
 
-  logger.Info("Remote debugging port {} is busy; waiting up to {} ms for release", port,
-              clamped_timeout);
+  logger.Info(
+      "Remote debugging port {} is busy; waiting up to {} ms for release", port, clamped_timeout);
 
   const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(clamped_timeout);
@@ -130,8 +137,8 @@ utils::Result<void> CefEngine::Initialize(const EngineConfig& config) {
 
   if (remote_debugging_port_ > 0) {
     if (!WaitForPortAvailability(remote_debugging_port_, remote_debugging_wait_timeout_ms_)) {
-      return utils::Err<void>("Remote debugging port " +
-                              std::to_string(remote_debugging_port_) + " is still in use after " +
+      return utils::Err<void>("Remote debugging port " + std::to_string(remote_debugging_port_) +
+                              " is still in use after " +
                               std::to_string(remote_debugging_wait_timeout_ms_) + " ms");
     }
     logger.Info("Remote debugging enabled on fixed port {}", remote_debugging_port_);
@@ -203,7 +210,8 @@ void CefEngine::Shutdown() {
     if (!WaitForPortAvailability(remote_debugging_port_, remote_debugging_wait_timeout_ms_)) {
       logger.Warn("Remote debugging port {} did not become available within {} ms; "
                   "a lingering process may still be holding it",
-                  remote_debugging_port_, remote_debugging_wait_timeout_ms_);
+                  remote_debugging_port_,
+                  remote_debugging_wait_timeout_ms_);
     }
   }
   remote_debugging_port_ = 0;

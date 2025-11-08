@@ -105,7 +105,8 @@ int main(int argc, char* argv[]) {
       config.remote_debugging_port = static_cast<uint16_t>(port_val);
       logger.Info("Using remote debugging port from ATHENA_REMOTE_DEBUG_PORT: {}", port_val);
     } else {
-      logger.Warn("Invalid ATHENA_REMOTE_DEBUG_PORT '{}'; using default {}", env_port,
+      logger.Warn("Invalid ATHENA_REMOTE_DEBUG_PORT '{}'; using default {}",
+                  env_port,
                   config.remote_debugging_port);
     }
   }
@@ -117,7 +118,8 @@ int main(int argc, char* argv[]) {
       config.remote_debugging_port_wait_timeout_ms = static_cast<int>(wait_val);
       logger.Info("Remote debugging port wait timeout set to {} ms via env", wait_val);
     } else {
-      logger.Warn("Invalid ATHENA_REMOTE_DEBUG_WAIT_MS '{}'; using default {}", env_wait,
+      logger.Warn("Invalid ATHENA_REMOTE_DEBUG_WAIT_MS '{}'; using default {}",
+                  env_wait,
                   config.remote_debugging_port_wait_timeout_ms);
     }
   }
