@@ -5,7 +5,6 @@
  * Only returns Athena browser MCP tools (no file system or CLI access).
  */
 
-import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
 import { Logger } from '../../server/logger';
 
 const logger = new Logger('ToolSelector');
@@ -24,9 +23,9 @@ export class ToolSelector {
    * Only returns Athena browser MCP tools (no file system or CLI access).
    * This method provides the allowedTools array for static permission control.
    */
-  static selectTools(prompt: string, mcpServer: McpSdkServerConfigWithInstance | null): string[] {
-    if (!mcpServer) {
-      logger.warn('No MCP server configured - agent will have no tools available');
+  static selectTools(prompt: string, enableMcp: boolean): string[] {
+    if (!enableMcp) {
+      logger.warn('MCP disabled - agent will have no browser automation tools available');
       return [];
     }
 

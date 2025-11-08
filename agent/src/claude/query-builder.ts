@@ -5,7 +5,6 @@
  * sendMessage, streamMessage, and forkSession methods.
  */
 
-import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
 import type { AthenaAgentConfig } from '../server/types';
 import { BrowserPrompts } from './config/prompts';
 import { SubAgentConfig } from './config/sub-agents';
@@ -18,11 +17,17 @@ export interface QueryConfig {
   permissionMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
   maxThinkingTokens?: number;
   maxTurns?: number;
-  mcpServer?: McpSdkServerConfigWithInstance | null;
   prompt: string;
   claudeSessionId?: string;
   forkSession?: boolean;
   includePartialMessages?: boolean;
+  enableMcp?: boolean;  // Whether to enable athena-browser-mcp
+}
+
+export interface McpServerConfig {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
 }
 
 export interface QueryOptions {
@@ -36,7 +41,7 @@ export interface QueryOptions {
   maxTurns?: number;
   resume?: string;
   forkSession?: boolean;
-  mcpServers?: Record<string, McpSdkServerConfigWithInstance>;
+  mcpServers?: Record<string, McpServerConfig>;
   agents?: any;
   canUseTool?: (toolName: string, input: any) => Promise<any>;
   includePartialMessages?: boolean;
@@ -50,15 +55,25 @@ export class ClaudeQueryBuilder {
    * Build query options from config
    */
   static buildQueryOptions(config: QueryConfig): QueryOptions {
-    const mcpServers = config.mcpServer ? {
-      'athena-browser': config.mcpServer
+    // Configure athena-browser-mcp server if enabled
+    const mcpServers = config.enableMcp ? {
+      'athena-browser': {
+        command: 'npx',
+        args: ['-y', 'athena-browser-mcp'],
+        env: {
+          CEF_BRIDGE_HOST: '127.0.0.1',
+          CEF_BRIDGE_PORT: '9222',
+          ALLOWED_FILE_DIRS: '/home/user/downloads,/tmp',
+          DEFAULT_TIMEOUT_MS: '30000'
+        }
+      }
     } : undefined;
 
     // Build system prompt: combine preset with browser-specific instructions
-    const systemPrompt = this.buildSystemPrompt(config.mcpServer);
+    const systemPrompt = this.buildSystemPrompt(config.enableMcp);
 
     // Dynamically select tools based on prompt complexity
-    const allowedTools = ToolSelector.selectTools(config.prompt, config.mcpServer || null);
+    const allowedTools = ToolSelector.selectTools(config.prompt, config.enableMcp || false);
 
     // Build options object
     const options: QueryOptions = {
@@ -72,8 +87,8 @@ export class ClaudeQueryBuilder {
       maxTurns: config.maxTurns,
       resume: config.claudeSessionId,
       mcpServers,
-      // Add sub-agents for specialized browser tasks
-      agents: config.mcpServer ? SubAgentConfig.getAgents() : undefined,
+      // Add sub-agents for specialized browser tasks (only if MCP enabled)
+      agents: config.enableMcp ? SubAgentConfig.getAgents() : undefined,
       // Use custom permission callback instead of permissionMode
       canUseTool: config.permissionMode === 'default'
         ? PermissionHandler.canUseTool.bind(PermissionHandler)
@@ -93,10 +108,10 @@ export class ClaudeQueryBuilder {
   }
 
   /**
-   * Build system prompt based on MCP server configuration
+   * Build system prompt based on MCP enablement
    */
-  private static buildSystemPrompt(mcpServer?: McpSdkServerConfigWithInstance | null): { type: 'preset'; preset: 'claude_code' } | string {
-    if (mcpServer) {
+  private static buildSystemPrompt(enableMcp?: boolean): { type: 'preset'; preset: 'claude_code' } | string {
+    if (enableMcp) {
       const browserPrompt = BrowserPrompts.getSystemPrompt();
       return `${browserPrompt}\n\n---\n\nFollow the project's coding standards and practices as defined in CLAUDE.md.`;
     }
@@ -112,12 +127,12 @@ export class ClaudeQueryBuilder {
    */
   static buildQueryConfig(
     agentConfig: AthenaAgentConfig,
-    mcpServer: McpSdkServerConfigWithInstance | null,
     prompt: string,
     claudeSessionId?: string,
     options?: {
       forkSession?: boolean;
       includePartialMessages?: boolean;
+      enableMcp?: boolean;
     }
   ): QueryConfig {
     return {
@@ -126,11 +141,11 @@ export class ClaudeQueryBuilder {
       permissionMode: agentConfig.permissionMode,
       maxThinkingTokens: agentConfig.maxThinkingTokens,
       maxTurns: agentConfig.maxTurns,
-      mcpServer,
       prompt,
       claudeSessionId,
       forkSession: options?.forkSession,
-      includePartialMessages: options?.includePartialMessages
+      includePartialMessages: options?.includePartialMessages,
+      enableMcp: options?.enableMcp ?? true  // Enable MCP by default
     };
   }
 }

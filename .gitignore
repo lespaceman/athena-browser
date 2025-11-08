@@ -39,8 +39,12 @@ test_results.xml
 *.exe
 
 ############################
-# Homepage (Node/Vite)
+# Node.js
 ############################
+# Root node_modules (for athena-browser-mcp package)
+/node_modules/
+
+# Homepage (Node/Vite)
 /homepage/node_modules/
 /homepage/dist/
 /homepage/.vite/
@@ -48,9 +52,7 @@ test_results.xml
 /homepage/coverage/
 /homepage/.eslintcache
 
-############################
 # Agent (Node/TypeScript)
-############################
 /agent/node_modules/
 /agent/dist/
 /agent/build/
