@@ -1,0 +1,103 @@
+{
+  "_comment": "Claude Desktop Configuration for athena-browser-mcp",
+  "_instructions": [
+    "1. Copy this entire 'mcpServers' object to your Claude Desktop config file:",
+    "   - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json",
+    "   - Linux: ~/.config/Claude/claude_desktop_config.json",
+    "   - Windows: %APPDATA%\\Claude\\claude_desktop_config.json",
+    "",
+    "2. Update 'CEF_BRIDGE_PORT' to match Athena Browser's CDP port (default: 9222)",
+    "",
+    "3. Start Athena Browser: ./scripts/run.sh",
+    "",
+    "4. Restart Claude Desktop",
+    "",
+    "5. Claude will now have access to 40+ browser automation tools!"
+  ],
+  "mcpServers": {
+    "athena-browser": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "athena-browser-mcp"
+      ],
+      "env": {
+        "CEF_BRIDGE_HOST": "127.0.0.1",
+        "CEF_BRIDGE_PORT": "9222",
+        "ALLOWED_FILE_DIRS": "/home/user/downloads,/tmp",
+        "DEFAULT_TIMEOUT_MS": "30000"
+      }
+    }
+  },
+  "_available_tools": {
+    "perception": [
+      "dom_tree_get - Get DOM tree structure",
+      "ax_tree_get - Get accessibility tree",
+      "ui_discover - Discover interactive elements",
+      "layout_get_bbox - Get element bounding boxes",
+      "layout_check_visible - Check element visibility",
+      "vision_ocr - OCR for canvas/SVG elements",
+      "vision_find_by_text - Find elements by text using vision",
+      "content_extract_main - Extract main content",
+      "net_observe - Monitor network requests",
+      "net_get_response_body - Get network response bodies",
+      "content_get_har - Get HAR file"
+    ],
+    "interaction": [
+      "targets_resolve - Resolve semantic hints to elements",
+      "act_click - Click elements",
+      "act_type - Type text into elements",
+      "act_select - Select dropdown options",
+      "act_scroll - Scroll to elements",
+      "act_upload - Upload files",
+      "nav_goto - Navigate to URL",
+      "nav_wait - Wait for conditions",
+      "nav_switch_frame - Switch to iframe",
+      "form_detect - Detect form elements",
+      "form_fill - Fill form fields",
+      "form_submit - Submit forms",
+      "key_press - Press key sequences",
+      "key_type - Type text with keyboard"
+    ],
+    "session": [
+      "session_save - Save cookies and storage",
+      "session_restore - Restore session",
+      "session_clear - Clear session data",
+      "memory_learn_selector - Learn stable selectors",
+      "memory_get_selector - Retrieve learned selectors",
+      "safety_set_policy - Set domain allowlists and budgets",
+      "safety_get_policy - Get current safety policy",
+      "audit_snapshot - Capture screenshot + DOM + HAR",
+      "audit_get_log - Get audit log entries",
+      "audit_clear_log - Clear audit log"
+    ]
+  },
+  "_example_prompts": [
+    "Navigate to google.com and search for 'web scraping best practices'",
+    "Find all forms on this page and tell me what fields they have",
+    "Click the login button and wait for the page to load",
+    "Fill out the search form with 'machine learning' and submit it",
+    "Get the accessibility tree of this page",
+    "Extract the main content from this article",
+    "Monitor network requests and tell me which API endpoints are being called",
+    "Take a screenshot and annotate all interactive elements",
+    "Save the current session so I can restore it later",
+    "Check if the 'Submit' button is visible and clickable"
+  ],
+  "_troubleshooting": {
+    "connection_refused": [
+      "Make sure Athena Browser is running: ./scripts/run.sh",
+      "Test CDP endpoint: curl http://localhost:9222/json",
+      "Check port with: lsof -i :9222"
+    ],
+    "tools_not_working": [
+      "Verify athena-browser-mcp version: npx athena-browser-mcp --version",
+      "Check Claude Desktop logs: ~/Library/Logs/Claude/mcp*.log",
+      "Test with MCP Inspector: CEF_BRIDGE_PORT=9222 npx @modelcontextprotocol/inspector npx athena-browser-mcp"
+    ],
+    "permission_errors": [
+      "Update ALLOWED_FILE_DIRS to include your downloads folder",
+      "Make sure directories exist and are readable"
+    ]
+  }
+}
